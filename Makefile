@@ -2,13 +2,17 @@ PREFIX ?= $(shell [ -w /usr/local/bin ] && echo /usr/local || echo $(HOME)/.loca
 CORPUS ?=
 CORPUS_OUT ?= .build/corpus
 
-.PHONY: build test install corpus
+.PHONY: build test install corpus template
 
 build:
 	swift build -c release
 
 test:
 	swift test
+
+# Re-embed Sources/XcpurgeKit/Resources/report.html after editing it (ReportTemplateTests catches drift).
+template:
+	Scripts/embed-report-template.sh
 
 install: build
 	mkdir -p $(PREFIX)/bin

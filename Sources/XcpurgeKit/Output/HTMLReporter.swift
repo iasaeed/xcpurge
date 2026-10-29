@@ -1,6 +1,6 @@
 import Foundation
 
-/// Single-file interactive HTML report: the `JSONReporter` document embedded in `Resources/report.html`
+/// Single-file interactive HTML report: the `JSONReporter` document embedded in the `Resources/report.html` template
 /// (inline CSS and JS, no network). Accepts any JSONReporter output, so a saved `.json` can be re-rendered.
 public struct HTMLReporter: Reporter {
     /// Scan date shown in the header; injectable for deterministic tests.
@@ -44,13 +44,6 @@ public struct HTMLReporter: Reporter {
             .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
     }
 
-    /// `Resources/report.html`, loaded lazily so other formats never touch the resource bundle.
-    static let template: String = {
-        guard let url = Bundle.module.url(forResource: "report", withExtension: "html", subdirectory: "Resources"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return "<!doctype html><meta charset=utf-8><title>xcpurge</title><p>report template missing</p>"
-                + "<script id=\"xcpurge-data\" type=\"application/json\">{{DATA}}</script>"
-        }
-        return text
-    }()
+    /// `Resources/report.html`, compiled in via `ReportTemplate` so a copied-out binary needs no resource bundle.
+    static var template: String { ReportTemplate.html }
 }
