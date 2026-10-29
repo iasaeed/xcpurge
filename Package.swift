@@ -11,7 +11,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
     ],
     targets: [
-        .target(name: "XcpurgeKit"),
+        .target(name: "XcpurgeKit", resources: [.copy("Resources")]),
         .executableTarget(
             name: "xcpurge",
             dependencies: [

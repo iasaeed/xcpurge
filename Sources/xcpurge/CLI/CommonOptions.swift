@@ -11,7 +11,11 @@ struct CommonOptions: ParsableArguments {
     @Option(help: "Scan the projects and packages of this .xcworkspace.") var workspace: String?
     @Option(help: "Scan only this Swift package (directory or Package.swift).") var package: String?
     @Option(parsing: .upToNextOption, help: "Only report findings in these modules.") var targets: [String] = []
-    @Option(help: "Output format: text, json, xcode, github.") var format: OutputFormat?
+    @Option(help: "Output format: text, json, xcode, github, html.") var format: OutputFormat?
+    @Option(help: "Write the report to this file (html default: <path>/.xcpurge/report-<timestamp>.html).", completion: .file())
+    var output: String?
+    @Flag(name: .customLong("open"), help: "Open the HTML report when written.") var openReport = false
+    @Option(help: "Application for --open (e.g. \"Google Chrome\"); default browser otherwise.") var browser: String?
     @Option(parsing: .upToNextOption, help: "Exit 1 when findings match: any, assets, strings, files, duplicates, unused-<category>, or a kind (dead-source).")
     var failOn: [String] = []
     @Option(help: "Hide findings below this confidence: low, medium, high.") var minConfidence: Confidence?

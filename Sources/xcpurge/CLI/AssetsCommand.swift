@@ -14,7 +14,7 @@ struct AssetsCommand: AsyncParsableCommand {
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.assets, .duplicates])
-        ScanRunner.report(result)
+        try ScanRunner.report(result, options)
         if delete {
             let deletable = ScanRunner.actionable(result, category: .assets, options: options)
             guard !deletable.isEmpty else { return }

@@ -23,11 +23,29 @@ enum ScanRunner {
         return chosen
     }
 
-    static func report(_ result: ScanResult) {
+    /// Prints the report, or writes it to `--output` (html always goes to a file) and honours `--open`.
+    static func report(_ result: ScanResult, _ options: CommonOptions? = nil) throws {
         let config = result.context.config
         let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
-        let colors = format == .text && isatty(STDOUT_FILENO) != 0 && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
-        print(format.reporter(colors: colors, verbose: config.verbose).render(result), terminator: "")
+        let file = outputURL(format: format, root: result.context.root, options: options)
+        let colors = format == .text && file == nil && isatty(STDOUT_FILENO) != 0
+            && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
+        let text = format.reporter(colors: colors, verbose: config.verbose).render(result)
+        guard let file else { print(text, terminator: ""); return }
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: file, options: .atomic)
+        FileHandle.standardError.write(Data("Wrote \(format.rawValue) report to \(file.path)\n".utf8))
+        if format == .html, options?.openReport == true { try ReportOpener.open(file, browser: options?.browser) }
+    }
+
+    /// `--output`, else `<root>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` for html; nil means stdout.
+    static func outputURL(format: OutputFormat, root: URL, options: CommonOptions?) -> URL? {
+        if let output = options?.output { return CommonOptions.absolute(output) }
+        guard format == .html else { return nil }
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        return root.appendingPathComponent(".xcpurge/report-\(stamp.string(from: Date())).html")
     }
 
     static func exitIfFailOn(_ result: ScanResult) throws {

@@ -10,7 +10,7 @@ struct ScanCommand: AsyncParsableCommand {
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: Set(XcpurgeKit.Category.allCases))
-        ScanRunner.report(result)
+        try ScanRunner.report(result, options)
         try ScanRunner.exitIfFailOn(result)
     }
 }
