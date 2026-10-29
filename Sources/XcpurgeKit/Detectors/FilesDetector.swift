@@ -13,9 +13,7 @@ public struct FilesDetector: Detector {
         findings += DeadSourceAnalyzer.find(ctx, skipping: orphanPaths)
         findings += InterfaceFileUsage.find(ctx, skipping: orphanPaths)
         findings += ResourceFileUsage.find(ctx, skipping: orphanPaths)
-        // ponytail: inline `xcpurge:ignore` markers are applied here for this detector's findings; the engine's
-        // filter only sees `Ignore.suppresses(_:)`, which has no reference index.
-        return findings.filter { !ctx.ignore.suppresses($0, refs: ctx.refs, inventory: ctx.inventory) }
+        return findings
     }
 
     /// Modules whose references can see `file`'s contents: the consumers of every module that builds it.
@@ -23,14 +21,11 @@ public struct FilesDetector: Detector {
         file.effectiveModules.reduce(into: Set<ModuleID>()) { $0.formUnion(ctx.graph.consumers(of: $1)) }
     }
 
-    /// Reference sources that can use something: files some target builds, plus synthetic build-settings
-    /// sources. Orphans build nothing, and neither do unattributed files when a project exists (stray generated
-    /// headers, scripts, docs, test goldens).
+    /// Reference sources that can use something: every source except orphans, which no target builds.
+    /// Unattributed files count (plan §3 step 6), like everywhere else in the scan.
     static func userFilter(_ ctx: ScanContext, orphans: Set<String>) -> @Sendable (Int32) -> Bool {
         let excluded = Set(orphans.compactMap { ctx.inventory.index(of: $0) }.map(Int32.init))
-        let refs = ctx.refs
-        let hasProjects = !ctx.projects.isEmpty
-        return { file in !excluded.contains(file) && !(hasProjects && refs.modules(of: file) == [.unknown]) }
+        return { file in !excluded.contains(file) }
     }
 
     /// Paths of the physical Info.plist / entitlements / xcconfig files the build settings point at.

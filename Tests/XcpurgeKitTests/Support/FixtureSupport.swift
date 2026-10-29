@@ -10,6 +10,13 @@ enum FixtureSupport {
 
     static func fixtureURL(_ name: String) -> URL { fixturesURL.appendingPathComponent(name) }
 
+    /// Goldens live outside the fixture roots so a scan never reads them as reference sources.
+    static let goldensURL = fixturesURL.deletingLastPathComponent().appendingPathComponent("Goldens")
+
+    static func goldenURL(fixture: String, category: XcpurgeKit.Category) -> URL {
+        goldensURL.appendingPathComponent(fixture).appendingPathComponent("expected-\(category.rawValue).json")
+    }
+
     /// Copies a fixture into a fresh temporary directory and returns the copy's URL.
     static func copyToTemp(_ name: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory
@@ -60,13 +67,14 @@ enum FixtureSupport {
 }
 
 /// Runs the scan for one category on a fixture and compares (kind, module, name ?? path, confidence) with
-/// `<fixture>/expected-<category>.json`. `XCPURGE_UPDATE_EXPECTED=1` rewrites the golden instead.
+/// `Tests/Goldens/<fixture>/expected-<category>.json`. `XCPURGE_UPDATE_EXPECTED=1` rewrites the golden instead.
 func assertFindings(fixture: String, category: XcpurgeKit.Category, config: Config = Config(),
                     file: StaticString = #filePath, line: UInt = #line) async throws {
     let result = try await ScanEngine(root: FixtureSupport.fixtureURL(fixture), config: config).run(categories: [category])
     let actual = Set(result.findings.map(FixtureSupport.Row.init)).sorted()
-    let golden = FixtureSupport.fixtureURL(fixture).appendingPathComponent("expected-\(category.rawValue).json")
+    let golden = FixtureSupport.goldenURL(fixture: fixture, category: category)
     if ProcessInfo.processInfo.environment["XCPURGE_UPDATE_EXPECTED"] == "1" {
+        try FileManager.default.createDirectory(at: golden.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try (encoder.encode(actual) + Data("\n".utf8)).write(to: golden)

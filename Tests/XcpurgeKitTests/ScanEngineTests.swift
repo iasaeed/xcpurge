@@ -6,12 +6,19 @@ final class ScanEngineTests: XCTestCase {
         Finding(kind: .unusedAsset, category: .assets, path: path, name: name, module: module, confidence: confidence)
     }
 
-    func testEndToEndOnFixturesWithStubbedDetectors() async throws {
-        for fixture in ["ModularWorkspace", "SyncedApp"] {
-            let result = try await ScanEngine(root: FixtureSupport.fixtureURL(fixture), config: Config()).run()
-            XCTAssertEqual(result.findings, [], fixture)
-            XCTAssertFalse(result.context.graph.modules.isEmpty, fixture)
-            XCTAssertFalse(result.context.diagnostics.entries.contains { $0.level == .warning }, "\(fixture): \(result.context.diagnostics.entries)")
+    static let allFixtures = ["ModularWorkspace", "SyncedApp", "ClassicApp", "XcprojApp", "AssetsEdgeCases", "StringsEdgeCases"]
+
+    /// Every fixture runs end-to-end with the real detectors: findings and modules exist, two runs render
+    /// byte-identical JSON, and no diagnostic is an error.
+    func testEndToEndOnEveryFixtureIsDeterministic() async throws {
+        for fixture in Self.allFixtures {
+            let first = try await ScanEngine(root: FixtureSupport.fixtureURL(fixture), config: Config()).run()
+            let second = try await ScanEngine(root: FixtureSupport.fixtureURL(fixture), config: Config()).run()
+            XCTAssertFalse(first.findings.isEmpty, fixture)
+            XCTAssertFalse(first.context.graph.modules.isEmpty, fixture)
+            XCTAssertEqual(JSONReporter().render(first), JSONReporter().render(second), "\(fixture): output not deterministic")
+            let errors = first.context.diagnostics.entries.filter { $0.level == .error }
+            XCTAssertEqual(errors, [], fixture)
         }
     }
 
@@ -26,6 +33,19 @@ final class ScanEngineTests: XCTestCase {
                      finding("vendored", .high, path: "Vendor/x.png"), finding("a", .medium)]
         let out = engine.filter(input, context: ctx)
         XCTAssertEqual(out.map(\.name), ["a", "b"])
+    }
+
+    /// Inline `xcpurge:ignore` markers are applied by the engine for every category, not by one detector.
+    func testEngineAppliesInlineMarkersToEveryCategory() async throws {
+        let root = try FixtureSupport.tempTree(["A.swift": "let a = 1\n// xcpurge:ignore\nlet b = 2\n"])
+        let engine = ScanEngine(root: root, config: Config())
+        let ctx = try await engine.makeContext()
+        let marked = [Category.assets, .strings, .files, .duplicates].map {
+            Finding(kind: .dynamicLookup, category: $0, path: "A.swift", line: 3, name: "x", module: "unknown", confidence: .high)
+        }
+        let unmarked = Finding(kind: .dynamicLookup, category: .strings, path: "A.swift", line: 1, name: "y",
+                               module: "unknown", confidence: .high)
+        XCTAssertEqual(engine.filter(marked + [unmarked], context: ctx), [unmarked])
     }
 
     func testReportOrder() {

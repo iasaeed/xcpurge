@@ -139,14 +139,15 @@ final class DeadSourceTests: XCTestCase {
         XCTAssertNil(d["Sources/Kit/Sheet.swift"], "qualified .Style use counts (and SheetView is named too)")
     }
 
-    /// Files no target compiles (stray generated headers, scripts outside any target) are not users.
-    func testUnattributedFilesDoNotKeepCodeAlive() async throws {
+    /// Plan §3 step 6: a file no target compiles is visible everywhere, so its uses keep code alive (conservative).
+    func testUnattributedFilesCountAsUsers() async throws {
         let d = try await dead([
             "Sources/Kit/Layer.swift": "final class RasterLayer {}\n",
-            "Generated/Kit-Swift.h": "@class RasterLayer;\n@interface Use : NSObject\n@property RasterLayer *layer;\n@end\n",
+            "Sources/Kit/Unused.swift": "final class NobodyUsesThis {}\n",
             "Scripts/tool.swift": "let l = RasterLayer()\n",
         ])
-        XCTAssertEqual(d["Sources/Kit/Layer.swift"]?.confidence, .high)
+        XCTAssertNil(d["Sources/Kit/Layer.swift"], "used from an unattributed script")
+        XCTAssertEqual(d["Sources/Kit/Unused.swift"]?.confidence, .high)
         XCTAssertNil(d["Scripts/tool.swift"], "unattributed files are not candidates when a project exists")
     }
 

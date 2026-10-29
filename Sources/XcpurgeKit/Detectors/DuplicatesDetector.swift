@@ -59,7 +59,7 @@ public struct DuplicatesDetector: Detector {
                 }
             }
         }
-        return findings.filter { !ctx.ignore.suppresses($0) }
+        return findings
     }
 
     static func size(_ url: URL) -> Int64 {

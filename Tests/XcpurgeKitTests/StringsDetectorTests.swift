@@ -2,12 +2,7 @@ import XCTest
 @testable import XcpurgeKit
 
 final class StringsDetectorTests: XCTestCase {
-    /// Goldens are JSON files inside the fixture: keep their string values out of the reference index.
-    static let config: Config = {
-        var c = Config()
-        c.exclude = ["expected-*.json"]
-        return c
-    }()
+    static let config = Config()
 
     func testModularWorkspaceGolden() async throws {
         try await assertFindings(fixture: "ModularWorkspace", category: .strings, config: Self.config)

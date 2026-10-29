@@ -53,13 +53,14 @@ public struct ScanEngine: Sendable {
         return ScanResult(context: context, findings: filter(raw, context: context))
     }
 
-    /// Applies confidence threshold, ignore rules, `--targets` and `--exclude`, then sorts.
+    /// Applies confidence threshold, `.xcpurgeignore` rules and inline `xcpurge:ignore` markers (for every
+    /// detector), `--targets` and `--exclude`, then sorts.
     public func filter(_ findings: [Finding], context: ScanContext) -> [Finding] {
         let excludes = config.exclude.map(Glob.init)
         let targets = Set(config.targets)
         return Array(Set(findings)).filter { f in
             f.confidence >= config.minConfidence
-                && !context.ignore.suppresses(f)
+                && !context.ignore.suppresses(f, refs: context.refs, inventory: context.inventory)
                 && (targets.isEmpty || targets.contains(f.module))
                 && !excludes.contains { $0.matches(f.path) }
         }.sorted(by: Finding.reportOrder)

@@ -83,7 +83,7 @@ public struct AssetsDetector: Detector {
                 confidence: .low,
                 reasons: ["asset name built at runtime; matching assets are reported with lower confidence"]))
         }
-        return findings.filter { !ctx.ignore.suppresses($0) }
+        return findings
     }
 
     // MARK: - Catalog entries

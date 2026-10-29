@@ -24,22 +24,11 @@ struct AssetReferenceResolver: Sendable {
     private let pathTails: [String: [Int]]
     /// Non-keyless dynamic patterns not on an `xcpurge:ignore` line.
     let patterns: [DynamicPattern]
-    /// JSON files that never ship: no target builds them and they sit outside every source root (CI configs,
-    /// `package.json`, test goldens next to a fixture). Only set when project membership is trustworthy.
-    private let outsideFiles: Set<Int32>
 
     init(_ ctx: ScanContext) {
         let refs = ctx.refs
         self.refs = refs
         self.graph = ctx.graph
-        // ponytail: plan §3.6 makes unattributed files visible everywhere, so `expected-assets.json` would keep every
-        // name it lists alive. Only JSON is excluded: other unattributed sources (KMP code, web folders copied by
-        // scripts) may be real uses, and ignoring a real use is the costly direction.
-        let trusted = !ctx.projects.isEmpty && !ctx.projects.contains(where: \.membershipUnknown)
-        outsideFiles = trusted ? Set(ctx.inventory.files.indices.filter {
-            let f = ctx.inventory.files[$0]
-            return f.kind == .json && f.modules.isEmpty && !f.inSourceRoot
-        }.map(Int32.init)) : []
         var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:]
         for (i, r) in refs.references.enumerated() {
             if r.kind == .memberSymbol {
@@ -63,7 +52,7 @@ struct AssetReferenceResolver: Sendable {
 
     /// True when a reference in `file` counts for a resource visible to `visible`.
     func counts(_ file: Int32, _ visible: Set<ModuleID>) -> Bool {
-        !outsideFiles.contains(file) && refs.isVisible(file, visible)
+        refs.isVisible(file, visible)
     }
 
     func location(_ file: Int32, _ line: Int32) -> String {
