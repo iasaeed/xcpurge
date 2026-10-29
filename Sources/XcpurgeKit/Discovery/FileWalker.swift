@@ -12,8 +12,7 @@ public struct FileWalker: Sendable {
         self.excludes = excludes
     }
 
-    /// `build` is Xcode's legacy SYMROOT and the conventional `-derivedDataPath`; never source.
-    static let skippedNames: Set<String> = ["DerivedData", "node_modules", "xcuserdata", "build"]
+    static let skippedNames: Set<String> = ["DerivedData", "node_modules", "xcuserdata"]
     /// Build products that may sit in a repo-local `build/` folder.
     static let skippedExtensions: Set<String> = ["app", "appex", "xcarchive", "dSYM", "noindex", "xctest"]
     /// A directory containing any of these is build output (DerivedData-style, SwiftPM scratch, legacy `build/`).
@@ -66,10 +65,28 @@ public struct FileWalker: Sendable {
 
     private func shouldSkip(dir rel: String, name: String, ext: String, absolute: String) -> Bool {
         if Self.skippedNames.contains(name) || Self.skippedExtensions.contains(ext) { return true }
+        if name == "build", Self.isBuildOutput(rel: rel, absolute: absolute) { return true }
         if name == "Pods" && !includePods { return true }
         if rel.hasSuffix("Carthage/Build") || rel.hasSuffix("Carthage/Checkouts") { return true }
         let fm = FileManager.default
         return Self.buildMarkers.contains { fm.fileExists(atPath: absolute + "/" + $0) }
+    }
+
+    /// `build/` is Xcode's legacy SYMROOT and the conventional `-derivedDataPath`, but also a plausible source
+    /// folder name: it is build output at the scan root, beside a project or package, or when it holds
+    /// configuration folders (`Debug-iphoneos`, `Release`), `*.build` folders or `Intermediates`.
+    static func isBuildOutput(rel: String, absolute: String) -> Bool {
+        let fm = FileManager.default
+        if !rel.contains("/") { return true }
+        let parent = (absolute as NSString).deletingLastPathComponent
+        let siblings = (try? fm.contentsOfDirectory(atPath: parent)) ?? []
+        if siblings.contains(where: { $0 == "Package.swift" || $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
+            return true
+        }
+        let children = (try? fm.contentsOfDirectory(atPath: absolute)) ?? []
+        return children.contains {
+            $0.hasSuffix(".build") || $0.hasPrefix("Debug") || $0.hasPrefix("Release") || $0.hasPrefix("Intermediates")
+        }
     }
 
     /// Total byte size of a folder tree.

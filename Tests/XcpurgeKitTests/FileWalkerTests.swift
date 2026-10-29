@@ -95,4 +95,22 @@ final class FileWalkerTests: XCTestCase {
         XCTAssertEqual(RelPath.normalize("/private/var"), "/var")
         XCTAssertEqual(RelPath.normalize("/private/varnish/x"), "/private/varnish/x")
     }
+
+    /// Review #14: a source folder named `build` is walked; build output named `build` is not.
+    func testBuildFolderOnlySkippedWhenItIsBuildOutput() throws {
+        let root = try FixtureSupport.tempTree([
+            "Sources/App/build/Builder.swift": "",
+            "Sources/App/main.swift": "",
+            "build/Release-iphoneos/x.swift": "",
+            "Packages/Kit/Package.swift": "",
+            "Packages/Kit/build/x.swift": "",
+            "Tools/build/Debug-iphonesimulator/y.swift": "",
+            "Tools/build/Gen.build/z.swift": "",
+        ])
+        let paths = Set(FileWalker().walk(root: root).files.map(\.path))
+        XCTAssertTrue(paths.contains("Sources/App/build/Builder.swift"))
+        XCTAssertFalse(paths.contains("build/Release-iphoneos/x.swift"), "scan root")
+        XCTAssertFalse(paths.contains("Packages/Kit/build/x.swift"), "beside Package.swift")
+        XCTAssertFalse(paths.contains { $0.hasPrefix("Tools/build/") }, "configuration and *.build folders")
+    }
 }
