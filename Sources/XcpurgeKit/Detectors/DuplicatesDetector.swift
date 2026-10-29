@@ -13,7 +13,8 @@ public struct DuplicatesDetector: Detector {
         var path: String
         var name: String
         var module: String
-        /// Set folder (catalog images) or the file itself: copies inside one set are not duplicates.
+        /// Set folder (catalog images) or the loose image's scale-free name (`icon@2x.png` and `icon@3x.png` are one
+        /// image): copies inside one unit are not duplicates.
         var unit: String
         var size: Int64
     }
@@ -32,7 +33,8 @@ public struct DuplicatesDetector: Detector {
         }
         for file in ctx.inventory.files where file.kind == .image && !file.modules.isEmpty {
             items.append(Item(path: file.path, name: file.fileName, module: ctx.moduleName(for: file.path),
-                              unit: file.path, size: file.size))
+                              unit: RelPath.join(RelPath.parent(file.path), LooseImageNormalizer.baseName(file.fileName)),
+                              size: file.size))
         }
 
         var findings: [Finding] = []

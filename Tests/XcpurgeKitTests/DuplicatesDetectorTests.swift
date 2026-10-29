@@ -34,4 +34,16 @@ final class DuplicatesDetectorTests: XCTestCase {
         let found = DuplicatesDetector().run(try await ScanEngine(root: root, config: Config()).makeContext())
         XCTAssertEqual(found.compactMap(\.name).sorted(), ["y", "z"])
     }
+
+    /// Scale variants of one loose image (`icon@2x.png`, `icon@3x.png`) are one unit, like files inside one set.
+    func testLooseScaleVariantsAreOneImage() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        XCTAssertEqual(Set(DuplicatesDetector().run(ctx).map(\.path)),
+                       ["ClassicApp/icon@2x.png", "ClassicApp/icon@3x.png", "ClassicApp/unused_loose.png"],
+                       "a byte-identical second image still groups with every variant")
+        try FileManager.default.removeItem(at: root.appendingPathComponent("ClassicApp/unused_loose.png"))
+        let after = try await ScanEngine(root: root, config: Config()).makeContext()
+        XCTAssertEqual(DuplicatesDetector().run(after), [])
+    }
 }
