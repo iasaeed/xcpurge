@@ -56,6 +56,19 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertFalse(HTMLReporter.render(json: "{}", scannedFiles: nil, date: Self.date).contains("{{"))
     }
 
+    /// The module graph has zoom controls and a Pods toggle; the report is light-only (no theme switch).
+    func testTemplateHasGraphControlsAndLightThemeOnly() {
+        let html = HTMLReporter.template
+        for control in [#"id="z-in""#, #"id="z-out""#, #"id="z-reset""#, #"id="z-pct""#, ">+</button>", ">−</button>",
+                        ">1:1</button>", #"id="pods-graph""#, "Show Pods", "pods=1"] {
+            XCTAssertTrue(html.contains(control), control)
+        }
+        XCTAssertTrue(html.contains("translate(") && html.contains("scale("), "graph drawn inside a transform group")
+        XCTAssertFalse(html.contains("prefers-color-scheme: dark"))
+        XCTAssertFalse(html.contains("data-theme"))
+        XCTAssertFalse(html.contains("btn-theme"))
+    }
+
     func testOpenerArguments() {
         let file = URL(fileURLWithPath: "/tmp/r.html")
         XCTAssertEqual(ReportOpener.arguments(file: file, browser: nil), ["/tmp/r.html"])
@@ -140,7 +153,7 @@ final class HTMLReporterTests: XCTestCase {
     // MARK: - Browser
 
     /// Runs headless Chrome on `html` and returns the DOM after scripts ran; skips when Chrome is missing.
-    private func dumpDOM(_ html: String) throws -> String {
+    private func dumpDOM(_ html: String, fragment: String? = nil) throws -> String {
         let chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         guard FileManager.default.isExecutableFile(atPath: chrome) else { throw XCTSkip("Google Chrome not installed") }
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("xcpurge-dom-\(UUID().uuidString)")
@@ -151,7 +164,7 @@ final class HTMLReporterTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: chrome)
         process.arguments = ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                              "--user-data-dir=\(dir.appendingPathComponent("profile").path)",
-                             "--virtual-time-budget=2000", "--dump-dom", file.absoluteString]
+                             "--virtual-time-budget=2000", "--dump-dom", file.absoluteString + (fragment.map { "#" + $0 } ?? "")]
         let out = Pipe()
         process.standardOutput = out
         process.standardError = Pipe()
@@ -193,5 +206,60 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertFalse(dom.contains("id=\"loading\""), "loading placeholder removed after render")
         let v1 = try dumpDOM(HTMLReporter.render(json: #"{"schemaVersion":1,"findings":[]}"#, scannedFiles: nil, date: Self.date))
         XCTAssertTrue(v1.contains("id=\"size-card\" aria-labelledby=\"h-size\" hidden"), "card hidden without size")
+    }
+
+    /// The part of `dom` from the first `start` marker to the next `end` marker after it.
+    private func slice(_ dom: String, from start: String, to end: String) throws -> String {
+        let a = try XCTUnwrap(dom.range(of: start), start)
+        let b = try XCTUnwrap(dom.range(of: end, range: a.upperBound..<dom.endIndex), end)
+        return String(dom[a.lowerBound..<b.lowerBound])
+    }
+
+    /// CocoaPods modules and their findings are hidden until "Show Pods" (`#pods=1`) is on.
+    func testPodModulesHiddenByDefaultAndShownWithHash() throws {
+        let json = """
+        {"schemaVersion":1,"tool":{"name":"xcpurge","version":"0"},"root":"/tmp/pods","modules":[
+         {"id":{"container":"App.xcodeproj","name":"App"},"kind":"app","dependsOn":[{"container":"Pods/Pods.xcodeproj","name":"PodKit"}],"embeds":[]},
+         {"id":{"container":"Pods/Pods.xcodeproj","name":"PodKit"},"kind":"framework","dependsOn":[],"embeds":[]}],
+         "summary":{"count":2,"bytes":20,"byKind":{"unusedAsset":2}},
+         "findings":[{"kind":"unusedAsset","category":"assets","path":"App/a.png","name":"app_marker","module":"App",
+          "confidence":"high","reasons":["r"],"sizeBytes":10},
+          {"kind":"unusedAsset","category":"assets","path":"Pods/PodKit/p.png","name":"pod_marker","module":"PodKit",
+          "confidence":"high","reasons":["r"],"sizeBytes":10}],"diagnostics":[]}
+        """
+        let html = HTMLReporter.render(json: json, scannedFiles: 2, date: Self.date)
+        let hidden = try dumpDOM(html)
+        XCTAssertTrue(hidden.contains(#"id="js-errors" hidden"#), "no JS errors")
+        let rows = try slice(hidden, from: #"<tbody id="rows">"#, to: "</tbody>")
+        XCTAssertTrue(rows.contains("app_marker"))
+        XCTAssertFalse(rows.contains("pod_marker"), "Pod findings hidden by default")
+        let graph = try slice(hidden, from: #"<div id="graph""#, to: "</section>")
+        XCTAssertTrue(graph.contains("aria-label=\"App, app"))
+        XCTAssertFalse(graph.contains("PodKit"), "Pod node and its edges hidden")
+        XCTAssertTrue(hidden.contains(#"<label class="opt" id="pods-graph-opt"><input"#), "toggle shown when Pods exist")
+        XCTAssertTrue(hidden.contains("<b>1</b> of 2"))
+
+        let shown = try dumpDOM(html, fragment: "pods=1")
+        XCTAssertTrue(shown.contains(#"id="js-errors" hidden"#), "no JS errors")
+        XCTAssertTrue(try slice(shown, from: #"<tbody id="rows">"#, to: "</tbody>").contains("pod_marker"), "#pods=1 shows them")
+        XCTAssertTrue(try slice(shown, from: #"<div id="graph""#, to: "</section>").contains("aria-label=\"PodKit, framework"))
+        XCTAssertTrue(shown.contains("<b>2</b> of 2"))
+    }
+
+    /// The real module graph renders inside one zoomable transform group, with its controls; no Pods there, so no toggle.
+    func testModuleGraphHasZoomGroupAndControls() async throws {
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: FixtureSupport.fixtureURL("ModularWorkspace"), config: config).run()
+        let dom = try dumpDOM(HTMLReporter(date: Self.date).render(result))
+        XCTAssertTrue(dom.contains(#"id="js-errors" hidden"#), "no JS errors")
+        let graph = try slice(dom, from: #"<div id="graph""#, to: "</section>")
+        XCTAssertNotNil(graph.range(of: #"<g class="vp" transform="translate\([-0-9.]+,[-0-9.]+\) scale\([0-9.]+\)">"#,
+                                    options: .regularExpression), "transform group")
+        XCTAssertTrue(graph.contains("class=\"node"), "nodes inside the graph")
+        XCTAssertTrue(dom.contains(#"<div class="gctl" id="gctl" role="group" aria-label="Graph zoom">"#), "controls visible")
+        for id in ["z-in", "z-out", "z-reset"] { XCTAssertTrue(dom.contains("id=\"\(id)\""), id) }
+        XCTAssertNotNil(dom.range(of: #"id="z-pct"[^>]*>\d+%<"#, options: .regularExpression), "zoom percentage shown")
+        XCTAssertTrue(dom.contains(#"id="pods-graph-opt" hidden"#), "no Pods, no toggle")
     }
 }
