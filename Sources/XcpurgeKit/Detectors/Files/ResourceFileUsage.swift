@@ -2,7 +2,8 @@
 import Foundation
 
 /// Loose bundle resources (plist, json, media, Core ML, Core Data, scenes, documents, databases) that no visible
-/// file names by stem, `stem.ext` or a path containing either as a component (`"art.scnassets/ship.scn"`).
+/// file names by stem, `stem.ext` or a path ending in either; folder-like units also count when a path names
+/// them as any component (`"art.scnassets/ship.scn"`).
 /// Folder loads (`urls(forResourcesWithExtension:)`, blue folder references, synchronized folders copied whole,
 /// `Package.swift` `.copy`) and dynamic name patterns downgrade to low instead of clearing. Core ML models and
 /// Reality Composer projects also count by their generated class; Core Data models are never high, since
@@ -23,6 +24,7 @@ enum ResourceFileUsage {
         let consumed = OrphanFinder.consumedFiles(ctx)
         let roots = AssetsDetector.folderLoadRoots(ctx)
         let tails = pathTails(ctx.refs)
+        let components = pathComponents(ctx.refs)
         let isUser = FilesDetector.userFilter(ctx, orphans: orphans)
         var out: [Finding] = []
         for (i, file) in ctx.inventory.files.enumerated() where isCandidate(file) {
@@ -38,6 +40,7 @@ enum ResourceFileUsage {
                 ctx.refs.sites(name, kinds: kinds, caseInsensitive: true).contains { !isUserText($0) && canSee($0.file) }
                     || (tails[name.lowercased()] ?? []).contains { canSee($0.file) }
             }) { continue }
+            if file.isUnit, (components[file.fileName.lowercased()] ?? []).contains(where: { canSee($0.file) }) { continue }
 
             let ext = (file.fileName as NSString).pathExtension.lowercased()
             let low: String?
@@ -77,17 +80,26 @@ enum ResourceFileUsage {
         kinds.contains(file.kind) || extensions.contains((file.fileName as NSString).pathExtension.lowercased())
     }
 
-    /// Literals that look like paths (`"art.scnassets/ship.scn"`), keyed by every lowercased component and its
-    /// stem, so a folder-like unit named inside the path counts as well as the file at its end.
+    /// Literals that look like paths (`"Tables/rates.csv"`), keyed by lowercased last component and its stem.
     static func pathTails(_ refs: ReferenceIndex) -> [String: [Reference]] {
         var out: [String: [Reference]] = [:]
         for r in refs.references where r.kind == .stringLiteral && r.value.contains("/") && r.value.count < 512 {
-            var keys = Set<String>()
-            for component in r.value.lowercased().split(separator: "/") where !component.isEmpty {
-                keys.insert(String(component))
-                keys.insert(RelPath.stem(String(component)))
+            let last = RelPath.lastComponent(r.value).lowercased()
+            out[last, default: []].append(r)
+            let stem = RelPath.stem(last)
+            if stem != last { out[stem, default: []].append(r) }
+        }
+        return out
+    }
+
+    /// Path literals keyed by each lowercased inner component (`"art.scnassets/ship.scn"` -> `art.scnassets`), for
+    /// folder-like units loaded through a path inside them. Whole names only: a stem would match too loosely.
+    static func pathComponents(_ refs: ReferenceIndex) -> [String: [Reference]] {
+        var out: [String: [Reference]] = [:]
+        for r in refs.references where r.kind == .stringLiteral && r.value.contains("/") && r.value.count < 512 {
+            for component in Set(r.value.lowercased().split(separator: "/").dropLast()) where component.contains(".") {
+                out[String(component), default: []].append(r)
             }
-            for key in keys { out[key, default: []].append(r) }
         }
         return out
     }

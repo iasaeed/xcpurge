@@ -72,20 +72,28 @@ public struct FileWalker: Sendable {
         return Self.buildMarkers.contains { fm.fileExists(atPath: absolute + "/" + $0) }
     }
 
-    /// `build/` is Xcode's legacy SYMROOT and the conventional `-derivedDataPath`, but also a plausible source
-    /// folder name: it is build output at the scan root, beside a project or package, or when it holds
-    /// configuration folders (`Debug-iphoneos`, `Release`), `*.build` folders or `Intermediates`.
+    /// Files whose presence next to a `build/` folder marks it as that build system's output.
+    static let buildSystemFiles: Set<String> = [
+        "Package.swift", "build.gradle", "build.gradle.kts", "settings.gradle", "gradlew", "CMakeLists.txt",
+        "package.json", "Makefile",
+    ]
+
+    /// `build/` is Xcode's legacy SYMROOT, the conventional `-derivedDataPath` and Gradle's output, but also a
+    /// plausible source folder name: it is build output at the scan root, beside a project, package or build
+    /// script, or when it holds configuration (`Debug-iphoneos`, `release`), `*.build`, `intermediates` or
+    /// `outputs` folders.
     static func isBuildOutput(rel: String, absolute: String) -> Bool {
         let fm = FileManager.default
         if !rel.contains("/") { return true }
         let parent = (absolute as NSString).deletingLastPathComponent
         let siblings = (try? fm.contentsOfDirectory(atPath: parent)) ?? []
-        if siblings.contains(where: { $0 == "Package.swift" || $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
+        if siblings.contains(where: { buildSystemFiles.contains($0) || $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
             return true
         }
         let children = (try? fm.contentsOfDirectory(atPath: absolute)) ?? []
-        return children.contains {
-            $0.hasSuffix(".build") || $0.hasPrefix("Debug") || $0.hasPrefix("Release") || $0.hasPrefix("Intermediates")
+        return children.contains { child in
+            let name = child.lowercased()
+            return name.hasSuffix(".build") || ["debug", "release", "intermediates", "outputs"].contains { name.hasPrefix($0) }
         }
     }
 

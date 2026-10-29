@@ -106,11 +106,16 @@ final class FileWalkerTests: XCTestCase {
             "Packages/Kit/build/x.swift": "",
             "Tools/build/Debug-iphonesimulator/y.swift": "",
             "Tools/build/Gen.build/z.swift": "",
+            "android/app/build/intermediates/a.json": "",
+            "android/app/build.gradle": "",
+            "web/build/outputs/b.js": "",
         ])
         let paths = Set(FileWalker().walk(root: root).files.map(\.path))
         XCTAssertTrue(paths.contains("Sources/App/build/Builder.swift"))
         XCTAssertFalse(paths.contains("build/Release-iphoneos/x.swift"), "scan root")
         XCTAssertFalse(paths.contains("Packages/Kit/build/x.swift"), "beside Package.swift")
         XCTAssertFalse(paths.contains { $0.hasPrefix("Tools/build/") }, "configuration and *.build folders")
+        XCTAssertFalse(paths.contains { $0.hasPrefix("android/app/build/") }, "Gradle output")
+        XCTAssertFalse(paths.contains { $0.hasPrefix("web/build/") }, "outputs folder")
     }
 }
