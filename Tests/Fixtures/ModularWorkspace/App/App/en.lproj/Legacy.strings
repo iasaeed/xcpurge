@@ -1,0 +1,5 @@
+/* Greeting on the legacy screen */
+"legacy_greeting" = "Hello";
+
+/* Nothing references this key */
+"legacy_unused" = "Never shown";

@@ -1,0 +1,6 @@
+{
+  "apiBase" : "https://example.invalid",
+  "featureFlags" : [
+    "onboarding"
+  ]
+}
