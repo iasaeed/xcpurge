@@ -1,0 +1,86 @@
+[
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "Edge",
+    "name" : "theme_*"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "Edge",
+    "name" : "tile_*"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "Icons/Settings/unused_gear"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "badge_2"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "indexed-only"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "loose_unused.png"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "odr_level"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "plain_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "swiftgen_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "theme_dark"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "tile_7"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Edge",
+    "name" : "truly_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedFont",
+    "module" : "Edge",
+    "name" : "Edge-Declared.ttf"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedFont",
+    "module" : "Edge",
+    "name" : "Edge-Unused.otf"
+  }
+]

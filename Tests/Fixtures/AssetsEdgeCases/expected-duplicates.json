@@ -1,0 +1,14 @@
+[
+  {
+    "confidence" : "high",
+    "kind" : "duplicate",
+    "module" : "Edge",
+    "name" : "dupe_one"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "duplicate",
+    "module" : "Edge",
+    "name" : "dupe_two.png"
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "confidence" : "high",
+    "kind" : "duplicate",
+    "module" : "App",
+    "name" : "dup_a"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "duplicate",
+    "module" : "Core",
+    "name" : "core_dup"
+  }
+]
