@@ -13,16 +13,18 @@ struct FilesCommand: AsyncParsableCommand {
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.files])
-        try ScanRunner.report(result, options)
         if delete {
             let deletable = ScanRunner.actionable(result, category: .files, options: options)
             guard !deletable.isEmpty,
-                  ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", assumeYes: yes) else { return }
+                  ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(\.path), assumeYes: yes)
+            else { return try ScanRunner.report(result, options) }
             let store = try TrashStore.begin(root: result.context.root)
             let report = try Trash(store: store).apply(deletable, context: result.context)
+            try ScanRunner.report(result.afterAction(report, acted: deletable), options)
             ScanRunner.printAction(report, verb: "trashed", session: store.sessionID)
             return
         }
+        try ScanRunner.report(result, options)
         try ScanRunner.exitIfFailOn(result)
     }
 }

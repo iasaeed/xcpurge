@@ -38,6 +38,22 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertEqual(try snapshot(root), before)
     }
 
+    /// After `--delete`, the re-printed report no longer lists what was moved (nor duplicates inside it).
+    func testReportAfterDeleteDropsTrashedFindings() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.files])
+        let store = try TrashStore.begin(root: result.context.root)
+        let report = try Trash(store: store).apply(result.findings, context: result.context)
+        let after = result.afterAction(report, acted: result.findings)
+        XCTAssertFalse(after.findings.contains { report.moved.contains($0.path) })
+        XCTAssertEqual(Set(after.findings.map(\.path)), Set(report.skipped.map(\.path)), "only skipped findings remain")
+        let pruned = ActionReport(rewritten: ["T.strings"])
+        let kept = Finding(kind: .unusedString, category: .strings, path: "T.strings", name: "k", module: "M", confidence: .medium)
+        let gone = Finding(kind: .unusedString, category: .strings, path: "T.strings", name: "g", module: "M", confidence: .high)
+        let strings = ScanResult(context: result.context, findings: [gone, kept]).afterAction(pruned, acted: [gone])
+        XCTAssertEqual(strings.findings, [kept], "unacted keys in a rewritten table stay")
+    }
+
     func testClassicProjectRoundTripIsByteIdentical() async throws {
         let root = try FixtureSupport.copyToTemp("AssetsEdgeCases")
         let before = try snapshot(root)
