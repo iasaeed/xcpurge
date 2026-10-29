@@ -118,6 +118,27 @@ final class StringsDetectorTests: XCTestCase {
         XCTAssertFalse(result.findings.contains { $0.kind == .dynamicLookup }, "matched interpolations are not dynamic lookups")
     }
 
+    /// Review #6: a dotted code key in a table named like a xib is not an object ID; code evidence decides.
+    func testCodeKeysInInterfaceNamedTable() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Onboarding.xib": "<?xml version=\"1.0\"?><document><objects><view id=\"aaa-bb-ccc\"/></objects></document>",
+            "en.lproj/Onboarding.strings": "\"onboarding.title\" = \"Welcome\";\n\"onboarding.unused\" = \"x\";\n"
+                + "\"aaa-bb-ccc.text\" = \"Hi\";\n\"zzz-99-zzz.text\" = \"Gone\";\n\"42.title\" = \"Old\";\n",
+            "O.swift": "let t = NSLocalizedString(\"onboarding.title\", tableName: \"Onboarding\", comment: \"\")\n",
+        ])
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        let byName = Dictionary(result.findings.map { ($0.name ?? "", $0) }, uniquingKeysWith: { a, _ in a })
+        XCTAssertNil(byName["onboarding.title"], "used from code via tableName:")
+        XCTAssertNil(byName["aaa-bb-ccc.text"])
+        XCTAssertEqual(byName["onboarding.unused"]?.reasons, ["no reference found"])
+        XCTAssertTrue(byName["zzz-99-zzz.text"]?.reasons.first?.contains("object ID") == true)
+        XCTAssertTrue(byName["42.title"]?.reasons.first?.contains("object ID") == true, "numeric IDs of old xibs")
+        XCTAssertNil(IBStringsResolver.split("onboarding.title"))
+        XCTAssertNotNil(IBStringsResolver.split("UIa-b2-C3d.normalTitle"))
+    }
+
     func testDynamicLookupInfoFindings() async throws {
         let ctx = try await FixtureSupport.context("StringsEdgeCases", config: Self.config)
         let lookups = StringsDetector().run(ctx).filter { $0.kind == .dynamicLookup }
