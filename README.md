@@ -47,12 +47,32 @@ Requires macOS 14+ and Swift 6 (Xcode 26 or newer). A Mint package is planned.
 
 ```sh
 xcpurge scan                          # everything, text report (the default subcommand)
+xcpurge scan --format html --open     # everything, interactive HTML report opened in your browser
 xcpurge scan --min-confidence medium  # hide low-confidence findings
 xcpurge assets path/to/App            # assets + duplicates only
 xcpurge modules --verbose             # how files were attributed to modules
 xcpurge init                          # starter xcpurge.json and .xcpurgeignore
 xcpurge doctor                        # Xcode/Swift versions and project formats found
 ```
+
+### Interactive HTML report
+
+```sh
+cd /path/to/YourApp
+xcpurge scan --format html --open                              # writes .xcpurge/report-<timestamp>.html and opens it
+xcpurge scan --format html --open --browser "Google Chrome"    # pick the browser
+xcpurge scan --format html --output ~/Desktop/report.html      # choose the file, don't open
+xcpurge assets --format html --open                            # one category only (assets | strings | files)
+```
+
+One self-contained file, no network: summary cards, charts by kind/confidence/module, the module
+dependency graph, and a searchable, filterable table of every finding (search tokens like
+`kind:unused-asset conf:high module:App`, regex with `/.../`). Export the filtered view as JSON or CSV,
+or copy `.xcpurgeignore` entries for it. Details in [HTML report](#html-report).
+
+![xcpurge HTML report](docs/report-light.png)
+
+### Text report
 
 Text output is grouped by category, kind and module, with sizes and a total (colors only on a TTY, never
 when `NO_COLOR` is set):
