@@ -8,3 +8,4 @@ DerivedData/
 
 # The global gitignore of some machines ignores *.xcconfig; fixtures need theirs.
 !Tests/Fixtures/**/*.xcconfig
+.xcpurge/

@@ -113,12 +113,19 @@ Modules (5)
 | `.xcworkspace` at the root | Expanded to its projects and packages |
 | Tuist, XcodeGen | Run on the generated projects |
 
-`Pods/` is skipped unless `--include-pods`. `build/`, `DerivedData`, `node_modules`, `.build`, hidden folders
-and folders containing `XCBuildData` / `workspace-state.json` are never walked.
+`Pods/` is skipped unless `--include-pods`. `DerivedData`, `node_modules`, `.build`, hidden folders and folders
+containing `XCBuildData` / `workspace-state.json` are never walked. A `build/` folder is skipped when it is build
+output: at the scan root, beside a project or `Package.swift`, or holding `Debug*`/`Release*`/`*.build` folders;
+a source folder that happens to be called `build` is scanned.
+
+Every Swift, Objective-C, storyboard, xib and plist file is read whatever its size. Generic text (JSON, HTML,
+CSS, JS, xcconfig) over 5 MB is skipped with a warning, and then no finding is reported above medium, since the
+skipped file could hold the only use.
 
 ## Output formats and CI
 
-`--format text|json|xcode|github`. `--fail-on` exits 1 when a finding matches: `any`, a category
+`--format text|json|xcode|github|html`. `--output FILE` writes the report to a file instead of stdout.
+`--fail-on` exits 1 when a finding matches: `any`, a category
 (`assets`, `unused-assets`, `strings`, `files`, `duplicates`) or a kind (`dead-source`). Exit codes: 0 ok,
 1 `--fail-on` hit, 2 usage or config error, 3 internal error.
 
@@ -150,6 +157,26 @@ fi
 JSON (`schemaVersion: 1`) contains `tool`, `root`, `modules`, `summary`, `findings` (sorted by category, kind,
 path, name, line) and `diagnostics`. Two runs on the same tree produce identical output.
 
+### HTML report
+
+`--format html` writes one self-contained page (inline CSS and JS, no network requests) with filters by
+category, confidence and module, search, sorting and a detail drawer with every reason. It always goes to a
+file: `--output FILE`, else `<path>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` (add `.xcpurge/` to `.gitignore`).
+`--open` opens it when written, in the default browser or the app given by `--browser` ("Google Chrome",
+"Safari", ...).
+
+```sh
+xcpurge scan --format html --open
+xcpurge assets ~/src/MyApp --format html --output /tmp/assets.html --open --browser "Google Chrome"
+```
+
+![HTML report, light](docs/report-light.png)
+![HTML report, dark](docs/report-dark.png)
+
+The template lives in `Sources/XcpurgeKit/Resources/report.html` and is compiled into the binary as
+`ReportTemplate.swift`, so a copied-out `xcpurge` needs no resource bundle. After editing the HTML run
+`make template`; a test fails when the two drift.
+
 ## Ignoring things
 
 `.xcpurgeignore` at the scan root, gitignore style; the last matching rule wins, `!` re-includes:
@@ -175,7 +202,7 @@ commas are allowed, unknown keys are ignored.
 | `workspace` | string | - | `--workspace` |
 | `package` | string | - | `--package` |
 | `targets` | [string] | `[]` (all) | `--targets` |
-| `format` | `text` \| `json` \| `xcode` \| `github` | `text` | `--format` |
+| `format` | `text` \| `json` \| `xcode` \| `github` \| `html` | `text` | `--format` |
 | `failOn` | [string] | `[]` | `--fail-on` |
 | `minConfidence` | `low` \| `medium` \| `high` | `low` | `--min-confidence` |
 | `exclude` | [glob] | `[]` | `--exclude` (adds) |
@@ -186,6 +213,11 @@ commas are allowed, unknown keys are ignored.
 | `noSwift` | bool | `false` | `--no-swift` |
 | `verbose` | bool | `false` | `--verbose` |
 | `localizationMacros` | [string] | `[]` | `--localization-macro` (adds) |
+
+`exclude` globs hide **findings**: nothing inside them is reported (and they cannot make another file a
+duplicate), and no project or package inside them is discovered. Excluded files are still read as references,
+so excluding generated code (SwiftGen, R.swift) or vendored code never makes what they use look unused.
+`xcpurge init` writes `"exclude": ["Vendor/**"]`; generated accessor files are recognized without excluding them.
 
 ## Safe cleanup
 
@@ -202,12 +234,19 @@ given explicitly. Everything moved or rewritten goes into `.xcpurge-trash/<sessi
 `.bak` next to the file, which would ship inside a synced folder or `.lproj`). Add `.xcpurge-trash/` to
 `.gitignore`. Dead-source and ghost findings are reported, never deleted.
 
+Project edits are dry-run first: a file is moved only when every project referencing it can drop the
+reference (classic `project.pbxproj`, LF or CRLF, `.xcdatamodeld` version groups included). Files referenced
+by a `project.xcproj`, or by a pbxproj line the editor cannot change safely, stay in place and are listed as
+skipped. After the action the report lists only what is left.
+
 ## Known limitations
 
 | Limitation | Effect | Workaround |
 |---|---|---|
 | Static text matching, no type checking | A name spelled in an unrelated literal keeps a resource alive | `--min-confidence` and review medium findings |
-| Unattributed files are visible everywhere | Docs or design mockups that mention a name keep it alive (a mockup HTML with `font-family: "Delius"` keeps the Delius font) | `--exclude 'docs/**'` |
+| Unattributed files are visible everywhere | Docs or design mockups that mention a name keep it alive (a mockup HTML with `font-family: "Delius"` keeps the Delius font) | Scan a subfolder or keep mockups outside the scan root (`--exclude` hides findings, not references) |
+| Bundle-less lookups in packages (`Image("logo")` in a design-system package) | Read `Bundle.main` at runtime, so they count for the app's own resources at medium only | Pass `bundle:` or review the medium finding |
+| Format keys (`"%lld of %lld"`) | Matched to interpolations (`"\(a) of \(b)"`) by their literal segments; unmatched ones are medium, never high | |
 | Names built at runtime | Matching resources are only ever low, never removed by default | `asset:`/`string:` ignore entries |
 | Dead-source works per file | A file whose declarations are used only by itself and other dead files is found; dead declarations inside a live file are not | Use Periphery for declaration-level analysis |
 | Unattributed files in a project scan are not dead-source candidates | Stray scripts are not reported as dead code | They are reported as orphans when inside a source root |
@@ -240,7 +279,7 @@ check before publishing or announcing.
 
 ## Contributing
 
-`make build`, `make test`. Fixtures live in `Tests/Fixtures/<Name>`, expected findings in
+`make build`, `make test`, `make template` (after editing the HTML report template). Fixtures live in `Tests/Fixtures/<Name>`, expected findings in
 `Tests/Goldens/<Name>/expected-<category>.json` (kept outside the fixtures so scans never read them). Rewrite
 goldens with `XCPURGE_UPDATE_EXPECTED=1 swift test` and review the diff. `make corpus` runs read-only scans
 over real projects listed in `CORPUS`.
