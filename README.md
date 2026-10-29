@@ -16,7 +16,7 @@ Total: 12 findings (12 high, 0 medium, 0 low), 2.5 KB reclaimable
 |---|---|
 | assets | `unused-asset` (image/color/data/symbol sets, app icons, loose images), `unused-font`, `dynamic-lookup` (info) |
 | strings | `unused-string`, `stale-string` (`.xcstrings`, `.strings`, `.stringsdict`, Settings.bundle), `dynamic-lookup` (info) |
-| files | `orphan-file` (on disk, in no target), `ghost-reference` (in the project, missing on disk), `dead-source`, `unused-interface-file`, `unused-resource` |
+| files | `orphan-file` (on disk, in no target: synced-folder exclusions, group files in no build phase, stray sources), `ghost-reference` (in the project, missing on disk), `dead-source`, `unused-interface-file`, `unused-resource` |
 | duplicates | `duplicate` (byte-identical images across catalogs and loose files) |
 
 Confidence:
@@ -107,6 +107,7 @@ Modules (5)
 |---|---|
 | `project.pbxproj`, classic groups and build phases (tested with objectVersion 54, 56, 77) | Full: membership, variant groups, embed/link phases, build settings, xcconfig `#include` |
 | Synchronized folders (Xcode 16+, objectVersion 77) | Full: exception sets, inclusions for other targets, build-phase exceptions |
+| Mixed groups + folders in one project (classic `PBXGroup` files, synchronized folders, blue folder references, `PBXVariantGroup`) | Supported (see the `MixedApp` fixture, which also builds with `xcodebuild`) |
 | `project.xcproj` (Xcode 27.2 JSON5 format) | Best effort: used when newer than `project.pbxproj`; unknown keys warn; unknown `required-capabilities` turn membership off (files become unattributed) |
 | Swift packages | `swift package dump-package` (30 s timeout), regex fallback with `--no-swift` or `XCPURGE_NO_SWIFT=1` |
 | `.xcworkspace` at the root | Expanded to its projects and packages |
@@ -213,7 +214,8 @@ given explicitly. Everything moved or rewritten goes into `.xcpurge-trash/<sessi
 | Generated accessors | Recognized for SwiftGen, R.swift and Xcode's `GeneratedAssetSymbols.swift` (by header or file name) | `--derived-data` for Xcode's symbol index |
 | `.xcproj` | Best effort until the format is final; unknown capabilities make membership untrusted | `xcpurge doctor` shows which format was used |
 | `.copy` package resources, blue folder references, `urls(forResourcesWithExtension:)` | Contents reported low only | |
-| Classic groups without paths (Expo/React Native templates) | Files there are not in a "source root", so orphans are not reported | |
+| Classic groups without paths (Expo/React Native templates) | Files there are not in a "source root", so only stray `.swift/.m/.c` files are reported as orphans (low) | |
+| Sources in a project folder outside every group (`Stray/Stray.swift`) | Reported as low orphans; top-level files and tooling folders (`Scripts`, `fastlane`, `Vendor`, ...) are skipped | `.xcpurgeignore` |
 
 ## Roadmap
 
