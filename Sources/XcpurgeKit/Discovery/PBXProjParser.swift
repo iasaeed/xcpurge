@@ -75,7 +75,10 @@ public enum PBXProjParser {
                         continue
                     }
                     guard let refID = graph.string(buildFileID, "fileRef") else { continue }
-                    if productOwner[refID] != nil || graph.isa(refID) == "PBXReferenceProxy" {
+                    // Products: our own, a subproject's reference proxy, or another workspace project's product
+                    // (`sourceTree = BUILT_PRODUCTS_DIR`), matched by file name in `ModuleGraph`.
+                    if productOwner[refID] != nil || graph.isa(refID) == "PBXReferenceProxy"
+                        || graph.string(refID, "sourceTree") == "BUILT_PRODUCTS_DIR" {
                         let file = graph.string(refID, "path") ?? ""
                         if phaseISA == "PBXFrameworksBuildPhase" { target.linkedProducts.append(file) }
                         else if phaseISA == "PBXCopyFilesBuildPhase" { target.embeddedProducts.append(file) }
@@ -96,6 +99,12 @@ public enum PBXProjParser {
                           let remote = graph.string(proxy, "remoteGlobalIDString"),
                           let depName = graph.string(remote, "name") {
                     target.dependencies.append(depName)
+                } else if let proxy = graph.string(depID, "targetProxy"),
+                          let portal = graph.string(proxy, "containerPortal"), portal != rootID,
+                          let remoteName = graph.string(proxy, "remoteInfo") {
+                    let container = graph.path(of: portal).map(rel)
+                    let dep = ExternalTargetDependency(container: container, target: remoteName)
+                    if !target.externalDependencies.contains(dep) { target.externalDependencies.append(dep) }
                 } else if let productRef = graph.string(depID, "productRef"),
                           let dep = productDependency(productRef, graph: &graph, rootPath: rootPath),
                           !target.productDependencies.contains(dep) {

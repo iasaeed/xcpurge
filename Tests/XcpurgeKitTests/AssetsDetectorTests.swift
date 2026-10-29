@@ -17,6 +17,11 @@ final class AssetsDetectorTests: XCTestCase {
         try await assertFindings(fixture: "SyncedApp", category: .assets)
     }
 
+    /// Review #5: Kit's image used only from App (another project of the workspace) is used.
+    func testCrossProjectGolden() async throws {
+        try await assertFindings(fixture: "CrossProject", category: .assets)
+    }
+
     func testAssetsEdgeCasesGolden() async throws {
         try await assertFindings(fixture: "AssetsEdgeCases", category: .assets)
     }

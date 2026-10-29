@@ -1,0 +1,158 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BB000000000000000000030 /* KitMarker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000010 /* KitMarker.swift */; };
+		BB000000000000000000031 /* Media.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000011 /* Media.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BB000000000000000000005 /* Kit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Kit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000000000000000000010 /* KitMarker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitMarker.swift; sourceTree = "<group>"; };
+		BB000000000000000000011 /* Media.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Media.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		BB000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000004 /* Kit */,
+				BB000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BB000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000005 /* Kit.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BB000000000000000000004 /* Kit */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000010 /* KitMarker.swift */,
+				BB000000000000000000011 /* Media.xcassets */,
+			);
+			path = Kit;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BB000000000000000000006 /* Kit */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BB000000000000000000094 /* Build configuration list for PBXNativeTarget "Kit" */;
+			buildPhases = (
+				BB000000000000000000040 /* Sources */,
+				BB000000000000000000041 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Kit;
+			productName = Kit;
+			productReference = BB000000000000000000005 /* Kit.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BB000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			buildConfigurationList = BB000000000000000000095 /* Build configuration list for PBXProject "Kit" */;
+			mainGroup = BB000000000000000000002;
+			productRefGroup = BB000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BB000000000000000000006 /* Kit */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BB000000000000000000041 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB000000000000000000031 /* Media.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BB000000000000000000040 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BB000000000000000000030 /* KitMarker.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BB000000000000000000090 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				GENERATE_INFOPLIST_FILE = YES;
+			};
+			name = Debug;
+		};
+		BB000000000000000000091 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				GENERATE_INFOPLIST_FILE = YES;
+			};
+			name = Release;
+		};
+		BB000000000000000000092 /* Project Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		BB000000000000000000093 /* Project Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SDKROOT = iphoneos;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BB000000000000000000094 /* Build configuration list for PBXNativeTarget "Kit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB000000000000000000090 /* Debug */,
+				BB000000000000000000091 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BB000000000000000000095 /* Build configuration list for PBXProject "Kit" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB000000000000000000092 /* Project Debug */,
+				BB000000000000000000093 /* Project Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BB000000000000000000001 /* Project object */;
+}

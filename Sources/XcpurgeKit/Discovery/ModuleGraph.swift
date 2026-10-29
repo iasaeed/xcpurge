@@ -89,6 +89,9 @@ public struct ModuleGraph: Sendable {
                     let dep = ModuleID(container: project.container, name: name)
                     if modules[dep] != nil, dep != id { depends.insert(dep) }
                 }
+                for external in t.externalDependencies {
+                    depends.formUnion(externalOwners(external, in: projects))
+                }
                 for file in t.linkedProducts { depends.formUnion(productOwners(file, preferring: project, in: projects)) }
                 for file in t.embeddedProducts { embeds.formUnion(productOwners(file, preferring: project, in: projects)) }
                 for dep in t.productDependencies {
@@ -107,14 +110,32 @@ public struct ModuleGraph: Sendable {
         return ModuleGraph(modules: Array(modules.values), ignoreTestReferences: ignoreTestReferences)
     }
 
+    /// The target producing `file` (`Kit.framework`): by product file, else by product or target name
+    /// (`Kit`), preferring `project`. Cross-project links in a workspace only name the product file.
     private static func productOwners(_ file: String, preferring project: ProjectModel, in projects: [ProjectModel]) -> Set<ModuleID> {
-        let ordered = [project] + projects.filter { $0.container != project.container }
+        let ordered = [project] + projects.filter { $0.container != project.container && $0.format != .package }
         for p in ordered {
             if let t = p.targets.first(where: { $0.productFile == file }) {
                 return [ModuleID(container: p.container, name: t.name)]
             }
         }
+        let stem = RelPath.stem(file)
+        for p in ordered {
+            if let t = p.targets.first(where: { $0.productName == stem }) ?? p.targets.first(where: { $0.name == stem }) {
+                return [ModuleID(container: p.container, name: t.name)]
+            }
+        }
         return []
+    }
+
+    /// A cross-project target dependency: the named target in its container, else any project's target of that name.
+    private static func externalOwners(_ dep: ExternalTargetDependency, in projects: [ProjectModel]) -> Set<ModuleID> {
+        if let container = dep.container, let p = projects.first(where: { $0.container == container }),
+           p.target(named: dep.target) != nil {
+            return [ModuleID(container: container, name: dep.target)]
+        }
+        let owners = projects.filter { $0.format != .package && $0.target(named: dep.target) != nil }
+        return owners.count == 1 ? [ModuleID(container: owners[0].container, name: dep.target)] : []
     }
 
     private static func resolve(_ dep: ProductDependency, from project: ProjectModel,

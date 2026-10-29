@@ -70,4 +70,14 @@ final class ModuleGraphTests: XCTestCase {
         XCTAssertEqual(ModuleGraph(modules: [a, b, c, t], ignoreTestReferences: true).consumers(of: id("p", "C")),
                        [id("p", "A"), id("p", "B"), id("p", "C"), .unknown])
     }
+
+    /// Review #5: App links and embeds Kit.framework from another project of the workspace and depends on its
+    /// target through a container proxy; both resolve to Kit.xcodeproj's Kit target.
+    func testCrossProjectWorkspaceEdges() async throws {
+        let g = try await FixtureSupport.context("CrossProject", config: config()).graph
+        let app = id("App/App.xcodeproj", "App"), kit = id("Kit/Kit.xcodeproj", "Kit")
+        XCTAssertEqual(g.module(app)?.dependsOn, [kit])
+        XCTAssertEqual(g.module(app)?.embeds, [kit])
+        XCTAssertTrue(g.consumers(of: kit).contains(app))
+    }
 }

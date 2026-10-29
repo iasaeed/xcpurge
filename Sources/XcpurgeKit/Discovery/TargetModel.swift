@@ -7,8 +7,11 @@ public struct TargetModel: Sendable {
     public var productFile: String?
     /// Same-container target names this target depends on.
     public var dependencies: [String]
+    /// Targets of other projects this target depends on (cross-project container proxies).
+    public var externalDependencies: [ExternalTargetDependency] = []
     public var productDependencies: [ProductDependency]
-    /// Product file names linked in a frameworks phase.
+    /// Product file names linked in a frameworks phase (own products, reference proxies, and
+    /// `BUILT_PRODUCTS_DIR` references to other projects' products in a workspace).
     public var linkedProducts: [String]
     /// Product file names copied by a copy-files (embed) phase.
     public var embeddedProducts: [String]

@@ -143,4 +143,35 @@ final class PBXProjParserTests: XCTestCase {
         XCTAssertEqual(modules("Stray/Stray.swift"), [], "in no group and no synchronized folder")
         XCTAssertEqual(ctx.inventory.file(at: "Stray/Stray.swift")?.inSourceRoot, false)
     }
+
+    /// Review #5: another project's product (`sourceTree = BUILT_PRODUCTS_DIR`) in link / embed phases and a
+    /// foreign container proxy are recorded, not dropped.
+    func testCrossProjectProductsAndProxies() throws {
+        let text = """
+        { archiveVersion = 1; objectVersion = 54; rootObject = P0;
+          objects = {
+            P0 = { isa = PBXProject; mainGroup = G0; targets = (T0); };
+            G0 = { isa = PBXGroup; children = (FW, PR, KP); sourceTree = "<group>"; };
+            KP = { isa = PBXFileReference; path = ../Kit/Kit.xcodeproj; sourceTree = "<group>"; };
+            FW = { isa = PBXFileReference; explicitFileType = wrapper.framework; path = Kit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+            PR = { isa = PBXFileReference; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+            T0 = { isa = PBXNativeTarget; name = App; productType = "com.apple.product-type.application"; productReference = PR; buildPhases = (F0, E0); dependencies = (D0); };
+            D0 = { isa = PBXTargetDependency; targetProxy = X0; };
+            X0 = { isa = PBXContainerItemProxy; containerPortal = KP; proxyType = 1; remoteGlobalIDString = K0; remoteInfo = Kit; };
+            F0 = { isa = PBXFrameworksBuildPhase; files = (B1); };
+            E0 = { isa = PBXCopyFilesBuildPhase; dstSubfolderSpec = 10; files = (B2); };
+            B1 = { isa = PBXBuildFile; fileRef = FW; };
+            B2 = { isa = PBXBuildFile; fileRef = FW; };
+          };
+        }
+        """
+        let root = URL(fileURLWithPath: "/tmp/fixture-root")
+        let model = try PBXProjParser.parse(data: Data(text.utf8), xcodeproj: root.appendingPathComponent("App/App.xcodeproj"),
+                                            root: root, diagnostics: Diagnostics())
+        let app = try XCTUnwrap(model.target(named: "App"))
+        XCTAssertEqual(app.linkedProducts, ["Kit.framework"])
+        XCTAssertEqual(app.embeddedProducts, ["Kit.framework"])
+        XCTAssertEqual(app.externalDependencies, [ExternalTargetDependency(container: "Kit/Kit.xcodeproj", target: "Kit")])
+        XCTAssertFalse(model.fileRefs.contains { $0.path.hasSuffix("Kit.framework") }, "built products are not files")
+    }
 }

@@ -18,6 +18,10 @@ final class FilesDetectorTests: XCTestCase {
         try await assertFindings(fixture: "SyncedApp", category: .files)
     }
 
+    func testCrossProjectGolden() async throws {
+        try await assertFindings(fixture: "CrossProject", category: .files)
+    }
+
     func testClassicAppGolden() async throws {
         try await assertFindings(fixture: "ClassicApp", category: .files)
     }
