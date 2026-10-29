@@ -1,0 +1,7 @@
+/* Used with tableName: "Legacy" */
+"table_key" = "Tableau";
+
+// Line comment for an unused key
+"legacy_unused" = "Inutilisé";
+unquoted_key = "Clé";
+"trailing_key" = "Commentaire"; /* trailing */

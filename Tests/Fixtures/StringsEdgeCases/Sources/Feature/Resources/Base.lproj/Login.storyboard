@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23504" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" initialViewController="vc1">
+    <scenes>
+        <scene sceneID="sc1">
+            <objects>
+                <viewController id="vc1" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="v01">
+                        <subviews>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Sign in" id="abc-12-def"/>
+                        </subviews>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+    </scenes>
+</document>

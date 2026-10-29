@@ -1,0 +1,10 @@
+/* Legacy table (section header, kept on prune) */
+
+/* Used with tableName: "Legacy" */
+"table_key" = "Table";
+
+// Line comment for an unused key
+"legacy_unused" = "Unused \"quoted\" value";
+unquoted_key = "Bare word key";
+"trailing_key" = "Has a trailing comment"; /* trailing */
+"bare_key";
