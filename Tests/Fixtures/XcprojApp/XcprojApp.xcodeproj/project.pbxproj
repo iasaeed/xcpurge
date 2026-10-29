@@ -1,0 +1,67 @@
+// !$*UTF8*$!
+// Stale leftover from before the project was converted to project.xcproj. Its only target is
+// StaleTarget; tests make this file older than project.xcproj, so it must be ignored.
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+		DD0000000000000000000001 = {
+			isa = PBXProject;
+			buildConfigurationList = DD0000000000000000000004;
+			compatibilityVersion = "Xcode 14.0";
+			mainGroup = DD0000000000000000000002;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DD0000000000000000000003,
+			);
+		};
+		DD0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+			);
+			sourceTree = "<group>";
+		};
+		DD0000000000000000000003 = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DD0000000000000000000006;
+			buildPhases = (
+			);
+			dependencies = (
+			);
+			name = StaleTarget;
+			productName = StaleTarget;
+			productType = "com.apple.product-type.application";
+		};
+		DD0000000000000000000004 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD0000000000000000000005,
+			);
+			defaultConfigurationName = Release;
+		};
+		DD0000000000000000000005 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		DD0000000000000000000006 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD0000000000000000000007,
+			);
+			defaultConfigurationName = Release;
+		};
+		DD0000000000000000000007 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+	};
+	rootObject = DD0000000000000000000001;
+}

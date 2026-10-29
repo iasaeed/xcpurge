@@ -1,0 +1,71 @@
+// Hand-written Xcode 27.2 project file (JSON5), following apple/xcode-project-format's schema:
+// comments, unquoted keys and trailing commas are all legal here.
+{
+  "default-configuration": "Release",
+  configurations: ["Debug", "Release",],
+  localizations: { development: "en", },
+  "build-settings": {
+    SWIFT_VERSION: "6.0",
+    "SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug]": "DEBUG",
+  },
+  files: [
+    // Synchronized folder owned by App. Info.plist and Old/ are excluded from App;
+    // Shared/Helpers.swift is also compiled into AppTests.
+    {
+      kind: "folder",
+      path: "App",
+      "target-membership": ["App"],
+      "membership-exceptions": [
+        { target: "App", exclusions: ["Info.plist", "Old/Legacy.swift",], },
+        { target: "AppTests", inclusions: ["Shared/Helpers.swift"], },
+      ],
+    },
+    {
+      kind: "group",
+      path: "Explicit",
+      children: [
+        { path: "Tool.swift", "target-membership": ["App/compile-sources"] },
+      ],
+    },
+    {
+      kind: "group",
+      path: "AppTests",
+      children: [
+        { path: "AppTests.swift", "target-membership": ["AppTests/compile-sources"] },
+      ],
+    },
+    {
+      kind: "group",
+      name: "Products",
+      children: [
+        { path: "<PRODUCTS>/XcprojApp.app" },
+        { path: "<PRODUCTS>/AppTests.xctest" },
+      ],
+    },
+  ],
+  targets: [
+    {
+      name: "App",
+      id: "A1B2C3D4E5F60718293A4B5C",
+      "product-type": "application",
+      product: "Products/XcprojApp.app",
+      "build-phases": ["compile-sources", "frameworks", "resources",],
+      "build-settings": {
+        INFOPLIST_FILE: "App/Info.plist",
+        PRODUCT_NAME: "XcprojApp",
+        PRODUCT_BUNDLE_IDENTIFIER: "com.example.xcproj",
+      },
+    },
+    {
+      name: "AppTests",
+      id: "B1B2C3D4E5F60718293A4B5C",
+      "product-type": "bundle.unit-test",
+      product: "Products/AppTests.xctest",
+      dependencies: ["App"],
+      "build-phases": ["compile-sources", "frameworks", "resources"],
+      "build-settings": { GENERATE_INFOPLIST_FILE: "YES" },
+    },
+  ],
+  // Not part of the 0.1.0 schema: readers should warn and carry on.
+  "future-key": { enabled: true },
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "confidence" : "high",
+    "kind" : "deadSource",
+    "module" : "App",
+    "name" : "App/App/Dead/DeadHelper.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "deadSource",
+    "module" : "App",
+    "name" : "App/App/ExtensionOnly.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "deadSource",
+    "module" : "App",
+    "name" : "App/App/PreviewOnly.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "deadSource",
+    "module" : "Core",
+    "name" : "Packages/Core/Sources/Core/CoreImages.swift"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedInterfaceFile",
+    "module" : "App",
+    "name" : "App/App/Unused.xib"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedResource",
+    "module" : "App",
+    "name" : "App/App/Data/unused.json"
+  }
+]

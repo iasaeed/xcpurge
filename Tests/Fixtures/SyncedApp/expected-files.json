@@ -1,0 +1,14 @@
+[
+  {
+    "confidence" : "medium",
+    "kind" : "orphanFile",
+    "module" : "SyncedApp",
+    "name" : "SyncedApp/Excluded/Legacy.swift"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedResource",
+    "module" : "SyncedApp",
+    "name" : "SyncedApp/Web/index.html"
+  }
+]
