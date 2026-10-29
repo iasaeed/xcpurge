@@ -33,7 +33,8 @@ enum ModulesPrinter {
             lines.append("Attribution")
             for f in files {
                 let mods = f.modules.isEmpty ? "-" : f.modules.sorted().map(label).joined(separator: ", ")
-                lines.append("  \(f.path) -> \(mods)\(f.inSourceRoot ? "" : "  (outside source roots)")")
+                let note = f.modules.isEmpty && !f.inSourceRoot ? "  (outside source roots)" : ""
+                lines.append("  \(f.path) -> \(mods)\(note)")
             }
         }
         let diagnostics = ctx.diagnostics.entries.filter { verbose || $0.level != .info }
