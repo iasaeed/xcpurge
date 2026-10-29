@@ -18,10 +18,13 @@ struct FilesCommand: AsyncParsableCommand {
             guard !deletable.isEmpty,
                   ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
+            let sizeBefore = SizeMeasurer.snapshot(result, categories: [.files])
             let store = try TrashStore.begin(root: result.context.root)
             let report = try Trash(store: store).apply(deletable, context: result.context)
             // The session ID goes out first: writing or opening the report may still fail.
             ScanRunner.printAction(report, verb: "trashed", session: store.sessionID)
+            await ScanRunner.recordSizes(before: sizeBefore, result: result, store: store,
+                                         categories: [.files], options: options)
             try ScanRunner.report(result.afterAction(report, acted: deletable), options)
             return
         }

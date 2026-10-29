@@ -62,6 +62,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .stats dd { margin: 2px 0 0; font-size: 19px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .stats dd.small { font-size: 14px; padding-top: 4px; }
 .stats small { color: var(--faint); font-size: 11px; }
+.size-dl { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.size-dl > div { background: var(--panel-2); border-radius: 10px; padding: 9px 12px; min-width: 0; }
+.size-dl dt { color: var(--muted); font-size: 12px; }
+.size-dl dd { margin: 2px 0 0; font-size: 17px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.size-dl small { color: var(--faint); font-size: 11px; }
 
 main { padding-top: 20px; padding-bottom: 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 section > h2, .sec-head h2 { margin-bottom: 10px; }
@@ -224,7 +229,7 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
 }
 @media (max-width: 640px) {
   .wrap { padding: 0 16px; }
-  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats, .size-dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .charts, .lower { grid-template-columns: minmax(0, 1fr); }
   col.c-reason, th.c-reason, td.reason, col.c-module, th.c-module, td.mod { display: none; }
 }
@@ -260,6 +265,17 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
   </dl>
 </header>
 <main class="wrap">
+  <section class="card" id="size-card" aria-labelledby="h-size" hidden>
+    <h2 id="h-size">Size <span class="hint">· files in the scanned tree</span></h2>
+    <dl class="size-dl">
+      <div><dt>Resources</dt><dd id="z-res">–</dd></div>
+      <div><dt>Source</dt><dd id="z-src">–</dd></div>
+      <div><dt>Whole tree</dt><dd id="z-total">–</dd></div>
+      <div><dt>Reclaimable <small>high</small></dt><dd id="z-high">–</dd></div>
+      <div><dt>Reclaimable <small>high + medium</small></dt><dd id="z-hm">–</dd></div>
+    </dl>
+  </section>
+
   <section aria-labelledby="h-overview">
     <h2 id="h-overview">Overview <span class="hint">· click a bar or segment to filter</span></h2>
     <div class="charts">
@@ -951,6 +967,20 @@ $('#s-findings').textContent = fmt(N);
 $('#s-bytes').textContent = human(reclaim);
 $('#s-modules').textContent = fmt(MODULES.length);
 const filesEl = $('#s-files'); filesEl.textContent = /^\d+$/.test(filesEl.textContent.trim()) ? fmt(+filesEl.textContent.trim()) : '—';
+// Size card: schemaVersion 2 documents carry `size`; older ones (or a saved v1 .json) simply hide the card.
+const Z = D.size && D.size.tree && Array.isArray(D.size.tree.categories) ? D.size : null;
+if (Z) {
+  const cat = n => (Z.tree.categories.find(c => c.name === n) || { bytes: 0, files: 0 });
+  const RES = ['Asset catalogs', 'Loose images', 'Fonts', 'Strings', 'Interface Builder', 'Other resources'];
+  let res = 0, resFiles = 0; for (const n of RES) { res += cat(n).bytes; resFiles += cat(n).files; }
+  const setZ = (id, bytes, title) => { const el = $(id); el.textContent = human(bytes); if (title) el.title = title; };
+  setZ('#z-res', res, fmt(resFiles) + ' files: ' + RES.map(n => n + ' ' + human(cat(n).bytes)).join(', '));
+  setZ('#z-src', cat('Source').bytes, fmt(cat('Source').files) + ' files');
+  setZ('#z-total', Z.tree.total || 0, fmt(Z.tree.files || 0) + ' files');
+  setZ('#z-high', Z.reclaimable ? Z.reclaimable.high : 0);
+  setZ('#z-hm', Z.reclaimable ? Z.reclaimable.highMedium : 0);
+  $('#size-card').hidden = false;
+}
 const dt = new Date($('#s-date').getAttribute('datetime'));
 if (!isNaN(dt)) $('#s-date').textContent = dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 

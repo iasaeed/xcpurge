@@ -37,7 +37,7 @@ final class CoreReporterTests: XCTestCase {
         let json = JSONReporter().render(r)
         XCTAssertEqual(json, JSONReporter().render(r))
         let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
-        XCTAssertEqual(object["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 2)
         XCTAssertEqual((object["tool"] as? [String: String])?["name"], "xcpurge")
         let summary = try XCTUnwrap(object["summary"] as? [String: Any])
         XCTAssertEqual(summary["count"] as? Int, 3)

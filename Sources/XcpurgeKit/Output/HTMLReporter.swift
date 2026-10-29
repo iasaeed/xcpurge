@@ -14,7 +14,7 @@ public struct HTMLReporter: Reporter {
         Self.render(json: JSONReporter().render(result), scannedFiles: result.context.inventory.files.count, date: date)
     }
 
-    /// Fills the template from a JSONReporter document (`schemaVersion` 1).
+    /// Fills the template from a JSONReporter document (`schemaVersion` 1, or 2 with `size`).
     public static func render(json: String, scannedFiles: Int?, date: Date) -> String {
         let doc = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
         let tool = doc["tool"] as? [String: Any]

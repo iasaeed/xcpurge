@@ -50,6 +50,7 @@ xcpurge scan                          # everything, text report (the default sub
 xcpurge scan --format html --open     # everything, interactive HTML report opened in your browser
 xcpurge scan --min-confidence medium  # hide low-confidence findings
 xcpurge assets path/to/App            # assets + duplicates only
+xcpurge size                          # bytes by category and module, and what a purge would reclaim
 xcpurge modules --verbose             # how files were attributed to modules
 xcpurge init                          # starter xcpurge.json and .xcpurgeignore
 xcpurge doctor                        # Xcode/Swift versions and project formats found
@@ -216,7 +217,8 @@ if command -v xcpurge >/dev/null; then
 fi
 ```
 
-JSON (`schemaVersion: 1`) contains `tool`, `root`, `modules`, `summary`, `findings` (sorted by category, kind,
+JSON (`schemaVersion: 2`) contains `tool`, `root`, `modules`, `summary`, `size` (tree bytes by category and
+module plus the reclaimable estimate; new in 2), `findings` (sorted by category, kind,
 path, name, line) and `diagnostics`. Two runs on the same tree produce identical output.
 
 ### HTML report
@@ -302,6 +304,85 @@ Project edits are dry-run first: a file is moved only when every project referen
 reference (classic `project.pbxproj`, LF or CRLF, `.xcdatamodeld` version groups included). Files referenced
 by a `project.xcproj`, or by a pbxproj line the editor cannot change safely, stay in place and are listed as
 skipped. After the action the report lists only what is left.
+
+## Measuring size
+
+`xcpurge size` measures the scanned tree (the same walk and module attribution as `scan`) by category and by
+module, breaks asset catalogs down per catalog and per set type, and runs the detectors to estimate what a purge
+would reclaim. Nothing is built; `--app` measures a bundle you already have.
+
+```sh
+xcpurge size                                  # text tables
+xcpurge size --format json --save before.json # JSON snapshot to stdout and to a file
+xcpurge size --compare before.json            # before / after / change / % per category, module, app section
+xcpurge size --targets App                    # only files of the App module
+xcpurge size --app ~/Library/Developer/Xcode/DerivedData/<App>-*/Build/Products/Debug-iphonesimulator/<App>.app
+xcpurge size --app MyApp.ipa                  # an .ipa is unzipped to a temporary folder first
+```
+
+```
+$ xcpurge size Tests/Fixtures/ModularWorkspace
+Size of Tests/Fixtures/ModularWorkspace
+
+Category           Files     Size
+Asset catalogs         4  17.3 KB
+Loose images           0      0 B
+Fonts                  2    112 B
+Strings                5   3.5 KB
+Interface Builder      2   4.1 KB
+Other resources        6   2.2 KB
+Source                12   3.9 KB
+Other files            4   1.0 KB
+Total                 35  32.1 KB
+
+Asset catalog                                                               Files     Size
+App/App/Assets.xcassets                                                        21  15.2 KB
+App/AppWidget/Assets.xcassets                                                   4    623 B
+Packages/Core/Sources/Core/Resources/Core.xcassets                              5    522 B
+Packages/DesignSystem/Sources/DesignSystem/Resources/DesignSystem.xcassets      8   1.1 KB
+
+Asset type  Files     Size
+appiconset      4  13.1 KB
+imageset       26   2.9 KB
+colorset        3    987 B
+other           5    371 B
+
+Module                              Files     Size
+App/App.xcodeproj:App                  23  26.2 KB
+Packages/DesignSystem:DesignSystem      4   2.4 KB
+App/App.xcodeproj:AppWidget             5   1.9 KB
+Packages/Core:Core                      2    921 B
+(unattributed)                          2    865 B
+App/App.xcodeproj:AppTests              3    331 B
+
+Estimated reclaimable: 2.5 KB (high) / 9.1 KB (high+medium)
+```
+
+Categories: asset catalogs, loose images, fonts, strings (`.xcstrings`, `.strings`, `.stringsdict`), Interface
+Builder, other resources (data files a module builds), source (Swift, Objective-C, C, Metal) and other files.
+A file built by several modules counts in each module's row. With `--app` the bundle is split into the
+executable, `Assets.car`, each `*.lproj`, each `Frameworks/*`, `PlugIns/*` (and `Extensions/*`, `Watch/*`,
+`AppClips/*`) and other resources: the real shipped size before and after a purge (rebuild in between).
+
+The snapshot (`--save`, `--format json`) is `{schemaVersion: 1, root, measuredAt, tree: {total, files,
+categories: [{name, files, bytes}], modules: [{id, files, bytes}], assetCatalogs, assetTypes}, reclaimable:
+{high, highMedium, categories}, app?: {path, total, sections: [{name, bytes}]}}`. `--compare` with
+`--format json` prints `{before, after}`. Changes are colored on a terminal (shrinking green, growing red).
+
+### Before and after a purge
+
+`assets --delete`, `files --delete` and `strings --prune` measure the tree before acting and again after, store
+both as `size-before.json` and `size-after.json` in the trash session, and print the categories that changed:
+
+```
+Size before → after:
+  Loose images   210 B  →   140 B  -70 B (-33.3%)
+  Total         3.9 KB  →  3.9 KB   -70 B (-1.7%)
+```
+
+`xcpurge restore` prints the same table reversed, and `xcpurge size --compare
+.xcpurge-trash/<session>/size-before.json` compares any later state with the tree before that action. A purge's
+reclaimable estimate covers only its own categories (shown in parentheses in a comparison).
 
 ## Known limitations
 

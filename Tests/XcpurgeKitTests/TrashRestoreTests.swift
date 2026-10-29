@@ -299,4 +299,27 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(TrashStore.directoryName).path))
         XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
     }
+
+    /// `assets --delete` stores size-before.json / size-after.json in the session; the tree shrank by exactly the
+    /// bytes moved to the trash, and restore prints the reverse table.
+    func testDeleteRecordsSizeBeforeAndAfter() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let run = try CLISupport.run(["assets", root.path, "--delete", "--yes", "--no-swift", "--format", "json"])
+        XCTAssertEqual(run.status, 0, run.stderr)
+        let manifest = try XCTUnwrap(try TrashStore.sessions(root: root).first)
+        let session = TrashStore.sessionURL(root: root, id: manifest.id)
+        let before = try SizeSnapshot.load(from: session.appendingPathComponent(SizeSnapshot.beforeFileName))
+        let after = try SizeSnapshot.load(from: session.appendingPathComponent(SizeSnapshot.afterFileName))
+        let moved = manifest.entries.filter { $0.action == .moved }.map(\.sizeBytes).reduce(0, +)
+        XCTAssertGreaterThan(moved, 0)
+        XCTAssertLessThan(after.tree.total, before.tree.total)
+        XCTAssertEqual(before.tree.total - after.tree.total, moved)
+        XCTAssertEqual(before.reclaimable.categories, ["assets", "duplicates"])
+        XCTAssertTrue(run.stderr.contains("Size before → after:\n"), run.stderr)
+        XCTAssertTrue(run.stderr.contains("  Total "), run.stderr)
+
+        let restore = try CLISupport.run(["restore", root.path])
+        XCTAssertEqual(restore.status, 0, restore.stderr)
+        XCTAssertTrue(restore.stderr.contains(SizeText.compact(after, before)), restore.stderr)
+    }
 }

@@ -176,4 +176,22 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertTrue(dom.contains("data-r=\"0\""), "finding rows rendered")
         XCTAssertTrue(dom.contains("cyclic_marker"))
     }
+
+    /// Schema 2 reports carry `size`, shown in the Size card; a schema 1 document hides the card.
+    func testSizeCardRendersAndToleratesItsAbsence() async throws {
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: FixtureSupport.fixtureURL("ModularWorkspace"), config: config).run()
+        let json = JSONReporter().render(result)
+        let doc = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let size = try XCTUnwrap(doc["size"] as? [String: Any])
+        XCTAssertNotNil((size["tree"] as? [String: Any])?["categories"])
+        XCTAssertNil((size["tree"] as? [String: Any])?["assetTypes"], "the report's size object reads no files")
+        let dom = try dumpDOM(HTMLReporter.render(json: json, scannedFiles: 1, date: Self.date))
+        XCTAssertTrue(dom.contains("<section class=\"card\" id=\"size-card\" aria-labelledby=\"h-size\">"), "card shown")
+        XCTAssertFalse(dom.contains("id=\"z-res\">–<"), "resources filled in")
+        XCTAssertFalse(dom.contains("id=\"loading\""), "loading placeholder removed after render")
+        let v1 = try dumpDOM(HTMLReporter.render(json: #"{"schemaVersion":1,"findings":[]}"#, scannedFiles: nil, date: Self.date))
+        XCTAssertTrue(v1.contains("id=\"size-card\" aria-labelledby=\"h-size\" hidden"), "card hidden without size")
+    }
 }

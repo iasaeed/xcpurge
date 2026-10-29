@@ -27,6 +27,26 @@ enum ScanRunner {
 
     static func stderr(_ text: String) { FileHandle.standardError.write(Data(text.utf8)) }
 
+    /// ANSI colors for text on stdout: a terminal and no `NO_COLOR`.
+    static var stdoutColors: Bool { isatty(STDOUT_FILENO) != 0 && ProcessInfo.processInfo.environment["NO_COLOR"] == nil }
+
+    /// After `--delete` / `--prune`: re-scans the tree, stores `size-before.json` (`before`, measured before the
+    /// action) and `size-after.json` in the trash session, and prints the compact before → after table. A failure
+    /// here is a warning; the action already happened and can be undone.
+    static func recordSizes(before: SizeSnapshot, result: ScanResult, store: TrashStore,
+                            categories: Set<XcpurgeKit.Category>, options: CommonOptions) async {
+        guard FileManager.default.fileExists(atPath: store.sessionURL.path) else { return }
+        do {
+            let rescan = try await ScanEngine(root: result.context.root, config: result.context.config).run(categories: categories)
+            let after = SizeMeasurer.snapshot(rescan, categories: categories)
+            try before.write(to: store.sessionURL.appendingPathComponent(SizeSnapshot.beforeFileName))
+            try after.write(to: store.sessionURL.appendingPathComponent(SizeSnapshot.afterFileName))
+            if !options.quiet { stderr(SizeText.compact(before, after, colors: StderrTerminal.isTTY && StderrTerminal.colors)) }
+        } catch {
+            stderr("warning: could not measure the size after the action: \(error)\n")
+        }
+    }
+
     /// Findings `--delete` / `--prune` act on: non-informational findings of `category` at or above the explicit
     /// `--min-confidence`, or high only when it is not given. Notes on stderr how many were left in place.
     static func actionable(_ result: ScanResult, category: XcpurgeKit.Category, options: CommonOptions) -> [Finding] {

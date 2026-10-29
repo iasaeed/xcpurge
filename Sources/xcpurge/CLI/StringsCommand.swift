@@ -19,10 +19,13 @@ struct StringsCommand: AsyncParsableCommand {
                   ConfirmPrompt.confirm("Remove \(prunable.count) string key(s)?",
                                         details: prunable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
+            let sizeBefore = SizeMeasurer.snapshot(result, categories: [.strings])
             let store = try TrashStore.begin(root: result.context.root)
             let report = try PruneStrings(store: store).apply(prunable, context: result.context)
             // The session ID goes out first: writing or opening the report may still fail.
             ScanRunner.printAction(report, verb: "pruned", session: store.sessionID)
+            await ScanRunner.recordSizes(before: sizeBefore, result: result, store: store,
+                                         categories: [.strings], options: options)
             try ScanRunner.report(result.afterAction(report, acted: prunable), options)
             return
         }

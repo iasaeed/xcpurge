@@ -109,17 +109,7 @@ final class ProgressTests: XCTestCase {
 
     // MARK: - CLI
 
-    private static let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent()
-
-    /// The `xcpurge` built next to this test bundle (whatever the scratch path), else `.build/debug`.
-    private static var binary: URL {
-        for bundle in Bundle.allBundles where bundle.bundlePath.hasSuffix(".xctest") {
-            let candidate = bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("xcpurge")
-            if FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate }
-        }
-        return packageRoot.appendingPathComponent(".build/debug/xcpurge")
-    }
+    private static var binary: URL { CLISupport.binary }
 
     /// Runs the CLI with stdout on a pipe and stderr on a pseudo-terminal (or a pipe), returning both.
     private func run(_ args: [String], stderrTTY: Bool) throws -> (status: Int32, stdout: Data, stderr: String) {

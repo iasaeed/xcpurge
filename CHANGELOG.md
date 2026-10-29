@@ -17,6 +17,19 @@
   `open "<path>"` command.
 - A hint when the scan root holds three or more independent repositories (e.g. `~/Projects`).
 - The HTML report shows "Loading N findings…" in the table until its script has rendered the rows.
+- `xcpurge size`: bytes and file counts of the scanned tree by category (asset catalogs, loose images, fonts,
+  strings, Interface Builder, other resources, source, other files), per asset catalog, per asset set type and
+  per module, plus `Estimated reclaimable: X (high) / Y (high+medium)` from the detectors. `--app` measures a
+  built `.app` or `.ipa` (executable, `Assets.car`, each `.lproj`, `Frameworks/*`, `PlugIns/*`, other
+  resources); `--save` writes a JSON snapshot and `--compare` diffs against one (before, after, change, %).
+- `assets|files --delete` and `strings --prune` store `size-before.json` / `size-after.json` in the trash
+  session and print a before → after table of the categories that changed; `restore` prints it reversed.
+- The HTML report has a Size card (resources, source, whole tree, reclaimable high and high + medium).
+
+### Changed
+
+- JSON reports are `schemaVersion` 2: they add a `size` object (tree sizes by category and module, reclaimable
+  estimate). The HTML page still renders schema 1 documents (without the Size card).
 
 ### Fixed
 

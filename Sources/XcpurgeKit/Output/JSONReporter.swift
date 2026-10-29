@@ -1,8 +1,8 @@
 import Foundation
 
-/// Machine-readable report: `schemaVersion` 1, stable key order and finding order.
+/// Machine-readable report: `schemaVersion` 2 (adds `size` to 1), stable key order and finding order.
 public struct JSONReporter: Reporter {
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     public init() {}
 
@@ -21,6 +21,7 @@ public struct JSONReporter: Reporter {
         let root: String
         let modules: [ModuleEntry]
         let summary: Summary
+        let size: SizeReport
         let findings: [Finding]
         let diagnostics: [Diagnostics.Entry]
     }
@@ -37,6 +38,7 @@ public struct JSONReporter: Reporter {
             root: result.context.root.path,
             modules: modules,
             summary: .init(byKind: byKind, count: findings.count, bytes: findings.compactMap(\.sizeBytes).reduce(0, +)),
+            size: SizeMeasurer.report(result),
             findings: findings,
             diagnostics: result.context.diagnostics.entries)
         let encoder = JSONEncoder()
