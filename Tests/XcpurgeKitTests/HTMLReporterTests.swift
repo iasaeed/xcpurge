@@ -124,4 +124,44 @@ final class HTMLReporterTests: XCTestCase {
                 .write(to: out.appendingPathComponent("\(name).html"))
         }
     }
+
+    // MARK: - Browser
+
+    /// Runs headless Chrome on `html` and returns the DOM after scripts ran; skips when Chrome is missing.
+    private func dumpDOM(_ html: String) throws -> String {
+        let chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        guard FileManager.default.isExecutableFile(atPath: chrome) else { throw XCTSkip("Google Chrome not installed") }
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("xcpurge-dom-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("report.html")
+        try Data(html.utf8).write(to: file)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: chrome)
+        process.arguments = ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                             "--user-data-dir=\(dir.appendingPathComponent("profile").path)",
+                             "--virtual-time-budget=2000", "--dump-dom", file.absoluteString]
+        let out = Pipe()
+        process.standardOutput = out
+        process.standardError = Pipe()
+        try process.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Review 2 #3: a module graph without a leaf (App embeds Ext, Ext depends on App) still renders the report.
+    func testCyclicModuleGraphStillRendersRows() throws {
+        let json = """
+        {"schemaVersion":1,"tool":{"name":"xcpurge","version":"0"},"root":"/tmp/cyclic","modules":[
+         {"id":{"container":"A.xcodeproj","name":"App"},"kind":"app","dependsOn":[{"container":"A.xcodeproj","name":"Ext"}],
+          "embeds":[{"container":"A.xcodeproj","name":"Ext"}]},
+         {"id":{"container":"A.xcodeproj","name":"Ext"},"kind":"appExtension","dependsOn":[{"container":"A.xcodeproj","name":"App"}],"embeds":[]}],
+         "summary":{"count":1,"bytes":10,"byKind":{"unusedAsset":1}},
+         "findings":[{"kind":"unusedAsset","category":"assets","path":"A/x.png","name":"cyclic_marker","module":"App",
+          "confidence":"high","reasons":["r"],"sizeBytes":10}],"diagnostics":[]}
+        """
+        let dom = try dumpDOM(HTMLReporter.render(json: json, scannedFiles: 1, date: Self.date))
+        XCTAssertTrue(dom.contains("data-r=\"0\""), "finding rows rendered")
+        XCTAssertTrue(dom.contains("cyclic_marker"))
+    }
 }

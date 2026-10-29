@@ -740,8 +740,11 @@ const G = (() => {
     stack.delete(n.i); memo.set(n.i, l); return l;
   };
   nodes.forEach(n => { n.layer = layer(n, new Set()); });
-  const layers = [];
-  for (const n of nodes) (layers[n.layer] = layers[n.layer] || []).push(n);
+  const sparse = [];
+  for (const n of nodes) (sparse[n.layer] = sparse[n.layer] || []).push(n);
+  // A cycle (App embeds Ext, Ext depends on App) can leave layer numbers unused: compact and renumber.
+  const layers = sparse.filter(Boolean);
+  layers.forEach((L, k) => L.forEach(n => { n.layer = k; }));
   for (const L of layers) L.sort((a, b) => cmpStr(a.name, b.name));
   const pos = () => { for (const L of layers) L.forEach((n, j) => { n.y01 = (j + 0.5) / L.length; }); };
   pos();
