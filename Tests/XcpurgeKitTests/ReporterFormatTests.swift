@@ -36,10 +36,10 @@ final class ReporterFormatTests: XCTestCase {
 
     func testGitHubFormat() async throws {
         let r = try await result()
-        let lines = GitHubReporter().render(r).split(separator: "\n").map(String.init)
+        let lines = GitHubReporter(base: r.context.root.path).render(r).split(separator: "\n").map(String.init)
         XCTAssertEqual(lines, [
             "::notice file=SyncedApp/SyncedAppApp.swift,line=3,title=xcpurge dynamic-lookup::'icon_*' in SyncedApp (low)",
-            "::warning file=SyncedApp/Assets.xcassets/AppIcon.appiconset,line=1,title=xcpurge unused-asset::"
+            "::warning file=SyncedApp/Assets.xcassets/AppIcon.appiconset/Contents.json,line=1,title=xcpurge unused-asset::"
                 + "'AppIcon' in SyncedApp: no APPICON setting names it (medium)",
             "::warning file=Odd%2C name%3A 100%25.swift,line=7,title=xcpurge dead-source::"
                 + "'Odd, name: 100%25.swift' in SyncedApp: line one%0Aline two (high)",
@@ -47,6 +47,11 @@ final class ReporterFormatTests: XCTestCase {
                 + "'Legacy.swift': excluded from every target (medium)",
             "::notice::xcpurge: 4 findings (1 high, 2 medium, 1 low)",
         ])
+        // Scanning a subfolder of the checkout: paths stay relative to the checkout, not the scan root.
+        let parent = RelPath.parent(r.context.root.path)
+        let first = GitHubReporter(base: parent).render(r).split(separator: "\n").first.map(String.init)
+        XCTAssertEqual(first, "::notice file=\(RelPath.lastComponent(r.context.root.path))/SyncedApp/SyncedAppApp.swift,line=3,"
+                       + "title=xcpurge dynamic-lookup::'icon_*' in SyncedApp (low)")
     }
 
     func testEmptyResults() async throws {
