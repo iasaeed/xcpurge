@@ -85,5 +85,10 @@ final class FileWalkerTests: XCTestCase {
         XCTAssertTrue(RelPath.isUnder("a/b", "a"))
         XCTAssertFalse(RelPath.isUnder("ab/c", "a"))
         XCTAssertEqual(RelPath.stem("Fonts/Brand-Regular.ttf"), "Brand-Regular")
+        // `swift package` reports /private/tmp, Foundation /tmp: both forms must meet.
+        XCTAssertEqual(RelPath.relative("/private/tmp/r/Packages/Core", to: "/tmp/r"), "Packages/Core")
+        XCTAssertEqual(RelPath.relative("/var/folders/x/a", to: "/private/var/folders/x"), "a")
+        XCTAssertEqual(RelPath.normalize("/private/var"), "/var")
+        XCTAssertEqual(RelPath.normalize("/private/varnish/x"), "/private/varnish/x")
     }
 }

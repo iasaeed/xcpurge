@@ -1,8 +1,17 @@
 /// String helpers for `/`-separated paths: normalize, join, and make root-relative.
 public enum RelPath {
+    /// macOS aliases `/tmp`, `/var` and `/etc` to `/private/…`; Foundation reports one form, `swift package` and
+    /// `realpath` the other. Absolute paths use the short form so both compare equal.
+    static let privateAliases = ["/private/tmp", "/private/var", "/private/etc"]
+
     /// Collapses `.`, `..` and duplicate separators; keeps a leading `/` and leading `..` components.
+    /// Absolute `/private/{tmp,var,etc}` paths become `/{tmp,var,etc}`.
     public static func normalize(_ path: String) -> String {
         let absolute = path.hasPrefix("/")
+        var path = path
+        if absolute, privateAliases.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
+            path.removeFirst("/private".count)
+        }
         var out: [Substring] = []
         for part in path.split(separator: "/", omittingEmptySubsequences: true) {
             if part == "." { continue }
