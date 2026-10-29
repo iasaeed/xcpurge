@@ -95,7 +95,8 @@ struct TokenReferenceExtractor {
         if tok.isPunct(":") { return }
 
         if var f = frames.last, !f.isBarrier {
-            if f.label == "bundle" { f.bundleTokens.append(tok.text) }
+            // `bundle:` (localization, `Image(_:bundle:)`) and `in:` (`UIImage(named:in:compatibleWith:)`).
+            if f.label == "bundle" || f.label == "in" { f.bundleTokens.append(tok.text) }
             if f.awaitingArg {
                 f.awaitingArg = false
                 // A localization call whose key is a variable: keyless lookup. An argument starting with a type

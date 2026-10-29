@@ -165,6 +165,26 @@ final class StringsDetectorTests: XCTestCase {
         }
     }
 
+    /// Review #9: a bundle-less `NSLocalizedString` in DesignSystem (App depends on it) reads App's table.
+    func testBundlelessLocalizationInDependencyReachesAppTable() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        let legacy = root.appendingPathComponent("App/App/en.lproj/Legacy.strings")
+        let text = try String(contentsOf: legacy, encoding: .utf8)
+        try Data((text + "\n\"ds_reads_app\" = \"From DS\";\n\"nobody_reads\" = \"x\";\n").utf8).write(to: legacy)
+        try Data("""
+        import Foundation
+        let fromApp = NSLocalizedString("ds_reads_app", tableName: "Legacy", comment: "")
+        let explicit = NSLocalizedString("nobody_reads", tableName: "Legacy", bundle: .module, comment: "")
+        """.utf8).write(to: root.appendingPathComponent("Packages/DesignSystem/Sources/DesignSystem/ReadsApp.swift"))
+        var config = Config()
+        config.noSwift = true
+        let findings = try await ScanEngine(root: root, config: config).run(categories: [.strings]).findings
+        let key = try XCTUnwrap(findings.first { $0.name == "ds_reads_app" })
+        XCTAssertEqual(key.confidence, .medium)
+        XCTAssertTrue(key.reasons.contains { $0.contains("referenced from DesignSystem without a bundle") }, "\(key.reasons)")
+        XCTAssertEqual(findings.first { $0.name == "nobody_reads" }?.confidence, .high)
+    }
+
     func testDynamicLookupInfoFindings() async throws {
         let ctx = try await FixtureSupport.context("StringsEdgeCases", config: Self.config)
         let lookups = StringsDetector().run(ctx).filter { $0.kind == .dynamicLookup }

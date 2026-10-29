@@ -172,4 +172,37 @@ final class AssetsDetectorTests: XCTestCase {
         XCTAssertNotNil(protection.reason(for: ["Other"], consumers: consumers, includeAllApplies: true))
         XCTAssertNil(protection.reason(for: ["AppIcon"], consumers: [.unknown]))
     }
+
+    /// Review #9: `Image("brandLogo")` without a bundle in DesignSystem (a dependency of App) reads Bundle.main,
+    /// so App's own `brandLogo` is medium, not high. Same for an `NSLocalizedString` key of App's table.
+    func testBundlelessLookupsInDependenciesReachTheAppBundle() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        let fm = FileManager.default
+        let set = root.appendingPathComponent("App/App/Assets.xcassets/brandLogo.imageset")
+        try fm.createDirectory(at: set, withIntermediateDirectories: true)
+        try Data(#"{"images":[{"filename":"brandLogo.png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#.utf8)
+            .write(to: set.appendingPathComponent("Contents.json"))
+        try Data("brand-logo-bytes".utf8).write(to: set.appendingPathComponent("brandLogo.png"))
+        let other = root.appendingPathComponent("App/App/Assets.xcassets/elsewhere.imageset")
+        try fm.createDirectory(at: other, withIntermediateDirectories: true)
+        try Data(#"{"images":[{"filename":"elsewhere.png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#.utf8)
+            .write(to: other.appendingPathComponent("Contents.json"))
+        try Data("elsewhere-bytes".utf8).write(to: other.appendingPathComponent("elsewhere.png"))
+        try Data("""
+        import SwiftUI
+        import UIKit
+        public struct BrandMark: View {
+            public var body: some View { Image("brandLogo") }
+            let moduleOnly = UIImage(named: "elsewhere", in: .module, compatibleWith: nil)
+        }
+        """.utf8).write(to: root.appendingPathComponent("Packages/DesignSystem/Sources/DesignSystem/BrandMark.swift"))
+
+        var config = Config()
+        config.noSwift = true
+        let findings = try await ScanEngine(root: root, config: config).run(categories: [.assets]).findings
+        let logo = try XCTUnwrap(findings.first { $0.name == "brandLogo" })
+        XCTAssertEqual(logo.confidence, .medium)
+        XCTAssertTrue(logo.reasons.contains { $0.contains("referenced from DesignSystem without a bundle") }, "\(logo.reasons)")
+        XCTAssertEqual(findings.first { $0.name == "elsewhere" }?.confidence, .high, "an explicit .module bundle is not Bundle.main")
+    }
 }

@@ -43,6 +43,21 @@ public struct ModuleGraph: Sendable {
     /// `{M, .unknown}` ∪ every module that depends on or embeds M, transitively.
     public func consumers(of id: ModuleID) -> Set<ModuleID> { consumerMap[id] ?? [id, .unknown] }
 
+    /// Modules whose bundle-less lookups (`Image("x")`, `NSLocalizedString` without `bundle:`) read the main
+    /// bundle of an owner in `owners`: everything an app or extension owner depends on or embeds, transitively.
+    public func mainBundleReach(of owners: Set<ModuleID>) -> Set<ModuleID> {
+        var reach = Set<ModuleID>()
+        var queue = owners.filter { modules[$0]?.resourceBundleAccess == .main }.sorted()
+        var seen = Set(queue)
+        while let next = queue.popLast() {
+            for d in (modules[next]?.dependsOn ?? []).union(modules[next]?.embeds ?? []) where seen.insert(d).inserted {
+                reach.insert(d)
+                queue.append(d)
+            }
+        }
+        return reach.subtracting(owners)
+    }
+
     /// True when a site attributed to `siteModules` can see resources of `id`.
     public func isVisible(from siteModules: Set<ModuleID>, to id: ModuleID) -> Bool {
         let sites = siteModules.isEmpty ? [ModuleID.unknown] : siteModules

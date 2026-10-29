@@ -42,8 +42,10 @@ public struct AssetsDetector: Detector {
             let visible = resolver.consumers(of: unit.effectiveModules)
             let module = ctx.moduleName(for: unit.path)
             for asset in AssetCatalogReader.read(catalog: unit.path, root: ctx.root) where !asset.type.isAlwaysKept {
-                candidates.append(evaluate(asset, module: module, visible: visible, resolver: resolver,
-                                           protection: protection, index: index, ctx: ctx))
+                var c = evaluate(asset, module: module, visible: visible, resolver: resolver,
+                                 protection: protection, index: index, ctx: ctx)
+                Self.applyMainBundleEvidence(&c, owners: unit.effectiveModules, resolver: resolver)
+                candidates.append(c)
             }
         }
         for unit in ctx.inventory.files where unit.kind == .iconComposer {
@@ -51,8 +53,9 @@ public struct AssetsDetector: Detector {
         }
         let folderLoads = Self.folderLoadRoots(ctx)
         for file in ctx.inventory.files where file.kind == .image && !file.modules.isEmpty {
-            candidates.append(evaluateLooseImage(file, ctx: ctx, resolver: resolver, protection: protection,
-                                                 folderLoads: folderLoads))
+            var c = evaluateLooseImage(file, ctx: ctx, resolver: resolver, protection: protection, folderLoads: folderLoads)
+            Self.applyMainBundleEvidence(&c, owners: file.effectiveModules, resolver: resolver)
+            candidates.append(c)
         }
         for file in ctx.inventory.files where file.kind == .font && !file.modules.isEmpty {
             candidates.append(evaluateFont(file, ctx: ctx, resolver: resolver, folderLoads: folderLoads))
@@ -207,6 +210,13 @@ public struct AssetsDetector: Detector {
             c.reasons.append(reason)
         }
         return c
+    }
+
+    /// Review #9: bundle-less lookups in modules an app depends on read the app's bundle; never high then.
+    private static func applyMainBundleEvidence(_ c: inout Candidate, owners: Set<ModuleID>, resolver: AssetReferenceResolver) {
+        guard !c.used, c.confidence > .medium, let e = resolver.mainBundleEvidence(c.names, owners: owners) else { return }
+        c.confidence = .medium
+        c.reasons.append(e.reason)
     }
 
     /// Folders whose contents are copied or loaded wholesale: package `.copy` resources, folder references

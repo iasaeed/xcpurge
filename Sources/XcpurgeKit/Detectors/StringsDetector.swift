@@ -150,7 +150,8 @@ public struct StringsDetector: Detector {
             }
 
             let visibleModules = visible(table)
-            let ev = evidence(entry, table, visibleModules)
+            var ev = evidence(entry, table, visibleModules)
+            if !ev.strong, ev.weak.isEmpty, let reason = mainBundleEvidence(key, table) { ev.weak.append(reason) }
             var result: Finding
             if entry.state == "stale" {
                 result = ev.strong || !ev.weak.isEmpty
@@ -225,6 +226,23 @@ public struct StringsDetector: Detector {
                 }
             }
             return ev
+        }
+
+        /// Review #9: `NSLocalizedString("k", comment:)` without `bundle:` in a module the owning app depends on
+        /// reads `Bundle.main`, i.e. the app's table. Weak (medium) evidence only.
+        func mainBundleEvidence(_ key: String, _ table: Table) -> String? {
+            let reach = ctx.graph.mainBundleReach(of: table.owners)
+            guard !reach.isEmpty else { return nil }
+            for r in ctx.refs.sites(key, kinds: .stringLiteral) where ctx.refs.isVisible(r.file, reach) {
+                guard let context = r.context, LocalizationCallClassifier.isLocalization(context, extraMacros: macros),
+                      (context.table ?? "Localizable") == table.stem else { continue }
+                let bundle = LocalizationCallClassifier.bundle(context)
+                guard bundle == .none || bundle == .main else { continue }
+                let module = ctx.refs.modules(of: r.file).intersection(reach).sorted().first?.name ?? "a dependency"
+                return "referenced from \(module) without a bundle at \(site(r.file, r.line)); "
+                    + "resolves to the main bundle at runtime"
+            }
+            return nil
         }
 
         /// Narrowing of a localization literal by `tableName:` and `bundle:` (§4.2 step 5).

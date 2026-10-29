@@ -86,6 +86,23 @@ struct AssetReferenceResolver: Sendable {
         return nil
     }
 
+    /// Review #9: a lookup without a bundle argument in a module the owning app depends on reads `Bundle.main`, i.e.
+    /// the app's own resources (`Image("brandLogo")` in a design-system package). Medium evidence at best.
+    func mainBundleEvidence(_ names: [String], owners: Set<ModuleID>) -> Evidence? {
+        let reach = graph.mainBundleReach(of: owners)
+        guard !reach.isEmpty else { return nil }
+        for name in names {
+            for r in refs.sites(name, kinds: .stringLiteral) where refs.isVisible(r.file, reach) {
+                guard let context = r.context, context.isAssetLookup,
+                      context.bundle == nil || LocalizationCallClassifier.bundle(context) == .main else { continue }
+                let module = refs.modules(of: r.file).intersection(reach).sorted().first?.name ?? "a dependency"
+                return Evidence(strength: .medium, reason: "referenced from \(module) without a bundle at "
+                    + "\(location(r.file, r.line)); resolves to the main bundle at runtime")
+            }
+        }
+        return nil
+    }
+
     /// Generated-symbol use: Swift member symbols (`.brandMark`, `ImageResource.hero`) or ObjC identifiers.
     func symbolEvidence(swift: [String], objc: [String], visible: Set<ModuleID>, strength: Confidence) -> Evidence? {
         for symbol in swift {
