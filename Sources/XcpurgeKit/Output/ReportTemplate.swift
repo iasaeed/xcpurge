@@ -312,6 +312,7 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
+          <div id="loading" class="empty" role="status">Loading {{COUNT}}…</div>
           <div id="empty" class="empty" hidden>No findings match the current filters.</div>
         </div>
       </div>
@@ -964,6 +965,7 @@ addEventListener('resize', () => { if (innerWidth === lastW) return; lastW = inn
 readHash();
 renderLower();
 apply({ resetScroll: true });
+$('#loading').remove();
 timings.firstRender = performance.now() - t0;
 console.debug('[xcpurge] %d findings: parse %sms, index %sms, first render %sms', N, timings.parse.toFixed(1), timings.index.toFixed(1), timings.firstRender.toFixed(1));
 window.xcpurge = { data: D, timings, state, search(q) { qInput.value = q; state.q = q; pred = parseQuery(q); const t = performance.now(); apply({ selChanged: false, resetScroll: true }); return { ms: performance.now() - t, filterMs: timings.filter, rows: view.length }; } };

@@ -19,7 +19,8 @@ public struct FileWalker: Sendable {
     static let buildMarkers = ["workspace-state.json", "XCBuildData", "Index.noindex", "ModuleCache.noindex",
                                "Build/Intermediates.noindex"]
 
-    public func walk(root: URL) -> WalkResult {
+    /// - Parameter onFile: called with the running file count after each file is inventoried.
+    public func walk(root: URL, onFile: (Int) -> Void = { _ in }) -> WalkResult {
         let fm = FileManager.default
         let rootPath = root.standardizedFileURL.path
         var result = WalkResult(files: [], xcodeprojs: [], workspaces: [], packages: [])
@@ -39,6 +40,7 @@ public struct FileWalker: Sendable {
                 if name == "Package.swift", !excluded { result.packages.append(RelPath.parent(rel)) }
                 let size = (enumerator.fileAttributes?[.size] as? NSNumber)?.int64Value ?? 0
                 result.files.append(SourceFile(path: rel, kind: FileKind(path: rel), size: size))
+                onFile(result.files.count)
                 continue
             }
             let ext = (name as NSString).pathExtension
@@ -55,6 +57,7 @@ public struct FileWalker: Sendable {
                 enumerator.skipDescendants()
                 result.files.append(SourceFile(path: rel, kind: FileKind(path: rel),
                                                size: Self.treeSize(rootPath + "/" + rel), isUnit: true))
+                onFile(result.files.count)
             }
         }
         result.xcodeprojs.sort()

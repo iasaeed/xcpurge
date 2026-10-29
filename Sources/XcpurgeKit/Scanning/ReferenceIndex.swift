@@ -86,9 +86,12 @@ public struct ReferenceIndex: Sendable {
     // MARK: - Build
 
     public static func build(inventory: FileInventory, graph: ModuleGraph, rootPath: String,
-                             localizationMacros: [String] = [], diagnostics: Diagnostics) async -> ReferenceIndex {
+                             localizationMacros: [String] = [], diagnostics: Diagnostics,
+                             progress: (@Sendable (_ done: Int, _ total: Int) -> Void)? = nil) async -> ReferenceIndex {
         let files = inventory.files
         let candidates = files.indices.filter { files[$0].kind.isReferenceSource && !files[$0].isUnit }
+        let counter = ProgressCounter()
+        progress?(0, candidates.count)
         let chunkCount = max(1, min(candidates.count, ProcessInfo.processInfo.activeProcessorCount * 4))
         let chunks = (0..<chunkCount).map { c in stride(from: c, to: candidates.count, by: chunkCount).map { candidates[$0] } }
 
@@ -96,8 +99,9 @@ public struct ReferenceIndex: Sendable {
             for chunk in chunks {
                 group.addTask {
                     chunk.compactMap { i in
-                        scanFile(files[i], index: Int32(i), rootPath: rootPath, macros: localizationMacros,
-                                 diagnostics: diagnostics).map { (i, $0) }
+                        defer { if let progress { progress(counter.increment(), candidates.count) } }
+                        return scanFile(files[i], index: Int32(i), rootPath: rootPath, macros: localizationMacros,
+                                        diagnostics: diagnostics).map { (i, $0) }
                     }
                 }
             }
@@ -191,4 +195,13 @@ public struct ReferenceIndex: Sendable {
         default: false
         }
     }
+}
+
+/// Thread-safe running count for progress reporting.
+final class ProgressCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    /// Adds one and returns the new count.
+    func increment() -> Int { lock.withLock { value += 1; return value } }
 }

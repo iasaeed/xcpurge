@@ -3,10 +3,13 @@ public struct ScanResult: Sendable {
     public let context: ScanContext
     /// Filtered and sorted in report order.
     public let findings: [Finding]
+    /// Wall-clock seconds the scan took (0 when unknown).
+    public let elapsed: Double
 
-    public init(context: ScanContext, findings: [Finding]) {
+    public init(context: ScanContext, findings: [Finding], elapsed: Double = 0) {
         self.context = context
         self.findings = findings
+        self.elapsed = elapsed
     }
 
     /// The report after `--delete` / `--prune`: drops findings whose path was moved to the trash, and acted-on
@@ -17,6 +20,6 @@ public struct ScanResult: Sendable {
             if action.moved.contains(where: { RelPath.isUnder(f.path, $0) }) { return false }
             return !(actedSet.contains(f) && action.rewritten.contains(f.path))
         }
-        return ScanResult(context: context, findings: kept)
+        return ScanResult(context: context, findings: kept, elapsed: elapsed)
     }
 }

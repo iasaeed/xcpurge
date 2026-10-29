@@ -26,6 +26,7 @@ public struct HTMLReporter: Reporter {
             "ROOT": escapeHTML(doc["root"] as? String ?? ""),
             "DATE": formatter.string(from: date),
             "FILES": scannedFiles.map(String.init) ?? "",
+            "COUNT": ScanSummary.count((doc["findings"] as? [Any])?.count ?? 0, "finding"),
         ]
         var html = template
         for (key, value) in values { html = html.replacingOccurrences(of: "{{\(key)}}", with: value) }

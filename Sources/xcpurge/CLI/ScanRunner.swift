@@ -4,10 +4,28 @@ import XcpurgeKit
 
 /// Shared body of scan-style commands: build config, run the engine, print, apply `--fail-on`.
 enum ScanRunner {
+    /// Runs the scan with live progress on stderr (terminal only, not under `--quiet`). The summary line is left
+    /// behind when the report goes to stdout; a report written to a file prints it with the file's path instead.
     static func scan(_ options: CommonOptions, categories: Set<XcpurgeKit.Category>) async throws -> ScanResult {
         let config = try options.makeConfig()
-        return try await ScanEngine(root: options.rootURL, config: config).run(categories: categories)
+        let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
+        if !options.quiet { hintIfManyRepositories(options.rootURL) }
+        let progress = TerminalProgress(isTTY: StderrTerminal.isTTY, quiet: options.quiet, colors: StderrTerminal.colors,
+                                        width: StderrTerminal.width,
+                                        printsSummary: outputURL(format: format, root: options.rootURL, options: options) == nil)
+        defer { progress.stop() }
+        return try await ScanEngine(root: options.rootURL, config: config, progress: progress).run(categories: categories)
     }
+
+    /// A root holding several unrelated repositories (e.g. `~/Projects`) makes one slow, mixed scan; say so.
+    static func hintIfManyRepositories(_ root: URL) {
+        let count = RepositorySurvey.independentRepositories(under: root)
+        guard count >= 3 else { return }
+        stderr("Scanning \(count) independent repositories under \(root.path); results are per-module and may take a while. "
+            + "Run xcpurge inside one project for faster, more precise results.\n")
+    }
+
+    static func stderr(_ text: String) { FileHandle.standardError.write(Data(text.utf8)) }
 
     /// Findings `--delete` / `--prune` act on: non-informational findings of `category` at or above the explicit
     /// `--min-confidence`, or high only when it is not given. Notes on stderr how many were left in place.
@@ -34,12 +52,16 @@ enum ScanRunner {
         guard let file else { print(text, terminator: ""); return }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: file, options: .atomic)
-        FileHandle.standardError.write(Data("Wrote \(format.rawValue) report to \(file.path)\n".utf8))
+        let quiet = options?.quiet == true
+        var block = "Wrote \(format.rawValue) report to \(file.path)\n"
+        if !quiet { block += ScanSummary(result).line + "\n" }
         if format == .html, options?.openReport == true {
-            do { try ReportOpener.open(file, browser: options?.browser) } catch {
-                FileHandle.standardError.write(Data("warning: could not open the report: \(error)\n".utf8))
-            }
+            let outcome = ReportOpener.open(file, browser: options?.browser)
+            if case .opened = outcome, quiet {} else { block += outcome.describe(path: file.path) + "\n" }
+        } else if format == .html, !quiet {
+            block += "Open it with: open \"\(file.path)\"\n"
         }
+        stderr(block)
     }
 
     /// `--output`, else `<root>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` for html; nil means stdout.

@@ -70,6 +70,15 @@ dependency graph, and a searchable, filterable table of every finding (search to
 `kind:unused-asset conf:high module:App`, regex with `/.../`). Export the filtered view as JSON or CSV,
 or copy `.xcpurgeignore` entries for it. Details in [HTML report](#html-report).
 
+While it scans, xcpurge shows live progress on stderr (walking files, discovering projects, attributing to
+modules, indexing references, running detectors, with elapsed time); it appears only when stderr is a terminal,
+never on stdout, so piped JSON or text stays clean. When the report is written it prints the absolute path, a
+summary such as `Scanned 3,498 files in 5 modules in 1.7s — 38 findings (8 high, 30 medium, 0 low)` and whether
+the browser opened (if `--browser` names an app that is not installed it says so and uses the default browser;
+if nothing opens it prints the `open "<path>"` command to run). `--quiet` / `-q` turns off progress, the summary
+and hints. Scanning a folder of several repositories (e.g. `~/Projects`) prints a hint to scan one project
+instead.
+
 ![xcpurge HTML report](docs/report-light.png)
 
 ### Text report
@@ -216,7 +225,9 @@ path, name, line) and `diagnostics`. Two runs on the same tree produce identical
 category, confidence and module, search, sorting and a detail drawer with every reason. It always goes to a
 file: `--output FILE`, else `<path>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` (add `.xcpurge/` to `.gitignore`).
 `--open` opens it when written, in the default browser or the app given by `--browser` ("Google Chrome",
-"Safari", ...).
+"Safari", ...); a `--browser` that cannot be found falls back to the default browser with a warning. The report
+path, the findings summary and the open result are printed to stderr. A report with no findings is still written
+(and opened).
 
 ```sh
 xcpurge scan --format html --open

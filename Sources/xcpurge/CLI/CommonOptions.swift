@@ -28,6 +28,8 @@ struct CommonOptions: ParsableArguments {
     @Flag(help: "Keep public declarations of libraries (dead-source).") var retainPublic = false
     @Flag(help: "Do not run swift to read Package.swift (text fallback).") var noSwift = false
     @Flag(name: .shortAndLong, help: "More detail (reasons, info diagnostics, per-file attribution).") var verbose = false
+    @Flag(name: .shortAndLong, help: "No progress, summary or hints on stderr (warnings and errors still print).")
+    var quiet = false
 
     var rootURL: URL { Self.absolute(path) }
 

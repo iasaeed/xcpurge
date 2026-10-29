@@ -4,11 +4,14 @@ import Foundation
 public struct ScanEngine: Sendable {
     public let root: URL
     public let config: Config
+    /// Receives each phase as it runs; `NoProgress` by default.
+    public let progress: any ProgressSink
 
     /// - Parameter root: scan root; resolved to an absolute, symlink-free path.
-    public init(root: URL, config: Config) {
+    public init(root: URL, config: Config, progress: (any ProgressSink)? = nil) {
         self.root = root.standardizedFileURL.resolvingSymlinksInPath()
         self.config = config
+        self.progress = progress ?? NoProgress()
     }
 
     /// Runs discovery and indexing without detectors.
@@ -19,16 +22,24 @@ public struct ScanEngine: Sendable {
         guard FileManager.default.fileExists(atPath: rootPath, isDirectory: &isDir), isDir.boolValue else {
             throw XcpurgeError.notFound(rootPath)
         }
-        let walk = FileWalker(includePods: config.includePods, excludes: config.exclude.map(Glob.init)).walk(root: root)
+        let progress = self.progress
+        let walk = FileWalker(includePods: config.includePods, excludes: config.exclude.map(Glob.init))
+            .walk(root: root) { progress.report(.walking(files: $0)) }
+        progress.report(.walking(files: walk.files.count))
         let located = try ProjectLocator.locate(root: root, walk: walk, config: config)
+        progress.report(.discovering(projects: located.xcodeprojs.count, packages: located.packages.count))
         let projects = await parseProjects(located, diagnostics: diagnostics)
+        let packageCount = projects.filter { $0.format == .package }.count
+        progress.report(.discovering(projects: projects.count - packageCount, packages: packageCount))
         if projects.isEmpty { diagnostics.info("no Xcode project or Swift package found; all files are unattributed") }
         let graph = ModuleGraph.build(projects: projects, rootPath: rootPath,
                                       ignoreTestReferences: config.ignoreTestReferences, diagnostics: diagnostics)
+        progress.report(.attributing(modules: graph.modules.count))
         var inventory = FileInventory(files: walk.files, caseInsensitive: !FileInventory.isCaseSensitiveVolume(root))
         Attribution.apply(to: &inventory, projects: projects, graph: graph)
         let refs = await ReferenceIndex.build(inventory: inventory, graph: graph, rootPath: rootPath,
-                                              localizationMacros: config.localizationMacros, diagnostics: diagnostics)
+                                              localizationMacros: config.localizationMacros, diagnostics: diagnostics,
+                                              progress: { progress.report(.indexing(done: $0, total: $1)) })
         let names = (located.workspaces + located.xcodeprojs).map(RelPath.stem)
         let derivedData = DerivedDataLocator.locate(names: names, override: config.derivedData)
         let ignore: Ignore
@@ -42,15 +53,25 @@ public struct ScanEngine: Sendable {
 
     /// Full scan for the given categories.
     public func run(categories: Set<Category> = Set(Category.allCases)) async throws -> ScanResult {
+        let start = Date()
         let context = try await makeContext()
         let detectors = DetectorRegistry.detectors(for: categories)
-        let raw: [Finding] = await withTaskGroup(of: [Finding].self) { group in
-            for detector in detectors { group.addTask { detector.run(context) } }
+        var states = detectors.map { ScanProgress.DetectorState(name: $0.category.rawValue, done: false) }
+        progress.report(.detecting(states))
+        let raw: [Finding] = await withTaskGroup(of: (Int, [Finding]).self) { group in
+            for (i, detector) in detectors.enumerated() { group.addTask { (i, detector.run(context)) } }
             var all: [Finding] = []
-            for await part in group { all += part }
+            for await (i, part) in group {
+                all += part
+                states[i].done = true
+                progress.report(.detecting(states))
+            }
             return all
         }
-        return ScanResult(context: context, findings: filter(capForSkippedSources(raw, refs: context.refs), context: context))
+        let result = ScanResult(context: context, findings: filter(capForSkippedSources(raw, refs: context.refs), context: context),
+                                elapsed: Date().timeIntervalSince(start))
+        progress.report(.finished(ScanSummary(result)))
+        return result
     }
 
     /// A reference source that could not be read may hold the only use of anything, so no unused-style

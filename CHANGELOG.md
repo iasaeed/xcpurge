@@ -8,6 +8,15 @@
   `<path>/.xcpurge/report-<timestamp>.html`; `--open` and `--browser` open it. The template is compiled into
   the binary (`make template` regenerates it).
 - `CrossProject` fixture: a workspace whose app links and embeds another project's framework.
+- Live scan progress on stderr when it is a terminal (phases with counts and elapsed time, throttled to ~10
+  updates a second), ending with `Scanned N files in M modules in Xs — K findings (h high, m medium, l low)`.
+  Never written to stdout; off when stderr is not a terminal, unstyled under `NO_COLOR`; `--quiet` /
+  `-q` turns it off. `ScanEngine` takes an optional `ProgressSink`.
+- After writing a report xcpurge prints its absolute path, the findings summary (`No findings.` when empty) and
+  `Opened in <app>` / `Opened in default browser`, or a warning with `open`'s error and the manual
+  `open "<path>"` command.
+- A hint when the scan root holds three or more independent repositories (e.g. `~/Projects`).
+- The HTML report shows "Loading N findings…" in the table until its script has rendered the rows.
 
 ### Fixed
 
@@ -41,6 +50,8 @@
   with exact build-folder names count.
 - The undo command is printed before the report is written; a failing `--open` is a warning; actions that
   change nothing leave no empty trash session.
+- `--browser` naming an app that is not installed falls back to the default browser and says so, instead of
+  failing quietly; `open`'s error output is shown when nothing could be opened.
 
 ## 0.1.0 - 2026-10-29
 
