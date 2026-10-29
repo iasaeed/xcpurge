@@ -21,7 +21,8 @@ public final class TrashStore: @unchecked Sendable {
     public var sessionID: String { lock.withLock { manifest.id } }
     public var entries: [TrashEntry] { lock.withLock { manifest.entries } }
 
-    /// Creates a new session directory and an empty manifest.
+    /// Starts a session. Its directory and manifest are created by the first move or backup, so an action that
+    /// ends up changing nothing leaves no empty session behind.
     public static func begin(root: URL, now: Date = Date()) throws -> TrashStore {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -29,12 +30,14 @@ public final class TrashStore: @unchecked Sendable {
         let base = formatter.string(from: now)
         let trash = root.appendingPathComponent(directoryName)
         var id = base, n = 1
-        while FileManager.default.fileExists(atPath: trash.appendingPathComponent(id).path) { n += 1; id = "\(base)-\(n)" }
+        // Sessions materialize lazily, so IDs handed out in this process are reserved as well as those on disk.
+        while FileManager.default.fileExists(atPath: trash.appendingPathComponent(id).path)
+            || !Reservations.shared.reserve(trash.appendingPathComponent(id).path) {
+            n += 1
+            id = "\(base)-\(n)"
+        }
         let url = trash.appendingPathComponent(id)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        let store = TrashStore(root: root, sessionURL: url, manifest: TrashManifest(id: id, createdAt: now))
-        try store.flush()
-        return store
+        return TrashStore(root: root, sessionURL: url, manifest: TrashManifest(id: id, createdAt: now))
     }
 
     /// Moves a root-relative file or folder into the session and records a `moved` entry.
@@ -91,6 +94,7 @@ public final class TrashStore: @unchecked Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         encoder.dateEncodingStrategy = .iso8601
         let data = try lock.withLock { try encoder.encode(manifest) }
+        try FileManager.default.createDirectory(at: sessionURL, withIntermediateDirectories: true)
         try data.write(to: sessionURL.appendingPathComponent(Self.manifestName), options: .atomic)
     }
 
@@ -100,4 +104,14 @@ public final class TrashStore: @unchecked Sendable {
         if isDir.boolValue { return FileWalker.treeSize(url.path) }
         return ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
     }
+}
+
+/// Session directories handed out by `TrashStore.begin` in this process (not yet on disk).
+private final class Reservations: @unchecked Sendable {
+    static let shared = Reservations()
+    private let lock = NSLock()
+    private var paths = Set<String>()
+
+    /// False when `path` was already reserved.
+    func reserve(_ path: String) -> Bool { lock.withLock { paths.insert(path).inserted } }
 }

@@ -286,4 +286,17 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertTrue(report.skipped.contains { $0.path == "ClassicApp/Unused.plist" && $0.reason.hasPrefix("cannot move") })
         XCTAssertEqual(try Data(contentsOf: pbxproj), original, "reference restored")
     }
+
+    /// Review 2 #7: an action that moves and rewrites nothing leaves no empty trash session behind.
+    func testNothingTrashedLeavesNoSession() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.files])
+        let onlySkipped = result.findings.filter { $0.kind == .deadSource || $0.kind == .ghostReference }
+        XCTAssertFalse(onlySkipped.isEmpty)
+        let store = try TrashStore.begin(root: result.context.root)
+        let report = try Trash(store: store).apply(onlySkipped, context: result.context)
+        XCTAssertTrue(report.moved.isEmpty && report.rewritten.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(TrashStore.directoryName).path))
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
 }

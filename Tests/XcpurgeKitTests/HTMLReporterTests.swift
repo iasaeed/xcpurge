@@ -107,6 +107,18 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertTrue(run.stderr.contains(dir.appendingPathComponent(name).path))
     }
 
+    /// Review 2 #5: after `--delete` the undo command is printed before the report is written, so a failing
+    /// `--output` still tells the user how to restore.
+    func testCLIPrintsSessionBeforeWritingTheReport() throws {
+        let root = try FixtureSupport.copyToTemp("AssetsEdgeCases")
+        let run = try runCLI(["assets", root.path, "--delete", "--yes", "--no-swift", "--format", "html",
+                              "--output", "/dev/null/report.html"])
+        XCTAssertNotEqual(run.status, 0, "the report could not be written")
+        XCTAssertTrue(run.stderr.contains("Undo with: xcpurge restore --session"), run.stderr)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("Edge/Images/loose_unused.png").path))
+        XCTAssertFalse(try TrashStore.sessions(root: root).isEmpty)
+    }
+
     /// Writes reports for visual checks when `XCPURGE_HTML_OUT` is set (plus `XCPURGE_CORPUS_JSON`, `:`-separated).
     func testWriteVerificationReports() throws {
         let env = ProcessInfo.processInfo.environment

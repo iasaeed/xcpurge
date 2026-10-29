@@ -17,12 +17,13 @@ struct StringsCommand: AsyncParsableCommand {
             let prunable = ScanRunner.actionable(result, category: .strings, options: options)
             guard !prunable.isEmpty,
                   ConfirmPrompt.confirm("Remove \(prunable.count) string key(s)?",
-                                        details: prunable.map { "\($0.name ?? "") (\($0.path))" }, assumeYes: yes)
+                                        details: prunable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
             let store = try TrashStore.begin(root: result.context.root)
             let report = try PruneStrings(store: store).apply(prunable, context: result.context)
-            try ScanRunner.report(result.afterAction(report, acted: prunable), options)
+            // The session ID goes out first: writing or opening the report may still fail.
             ScanRunner.printAction(report, verb: "pruned", session: store.sessionID)
+            try ScanRunner.report(result.afterAction(report, acted: prunable), options)
             return
         }
         try ScanRunner.report(result, options)

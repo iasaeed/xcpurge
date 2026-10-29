@@ -30,12 +30,16 @@ final class TrashStoreTests: XCTestCase {
     }
 
     func testSessionIDsAreUniqueAndSortedNewestFirst() throws {
-        let root = try FixtureSupport.tempTree(["a": ""])
+        let root = try FixtureSupport.tempTree(["a": "", "b": "", "c": ""])
         let t = Date(timeIntervalSince1970: 1_800_000_000)
         let first = try TrashStore.begin(root: root, now: t)
         let second = try TrashStore.begin(root: root, now: t)
         let third = try TrashStore.begin(root: root, now: t.addingTimeInterval(60))
-        XCTAssertNotEqual(first.sessionID, second.sessionID)
+        XCTAssertNotEqual(first.sessionID, second.sessionID, "unique even before either session is on disk")
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty, "sessions materialize on first move")
+        try first.move("a")
+        try second.move("b")
+        try third.move("c")
         XCTAssertEqual(try TrashStore.sessions(root: root).first?.id, third.sessionID)
         XCTAssertEqual(TrashStore.sessionURL(root: root, id: first.sessionID).standardizedFileURL, first.sessionURL.standardizedFileURL)
     }

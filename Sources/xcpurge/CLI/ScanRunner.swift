@@ -35,7 +35,11 @@ enum ScanRunner {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: file, options: .atomic)
         FileHandle.standardError.write(Data("Wrote \(format.rawValue) report to \(file.path)\n".utf8))
-        if format == .html, options?.openReport == true { try ReportOpener.open(file, browser: options?.browser) }
+        if format == .html, options?.openReport == true {
+            do { try ReportOpener.open(file, browser: options?.browser) } catch {
+                FileHandle.standardError.write(Data("warning: could not open the report: \(error)\n".utf8))
+            }
+        }
     }
 
     /// `--output`, else `<root>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` for html; nil means stdout.
@@ -46,6 +50,11 @@ enum ScanRunner {
         stamp.locale = Locale(identifier: "en_US_POSIX")
         stamp.dateFormat = "yyyyMMdd-HHmmss"
         return root.appendingPathComponent(".xcpurge/report-\(stamp.string(from: Date())).html")
+    }
+
+    /// One confirmation line per finding: `[high] unused-asset App/Assets.xcassets/x.imageset (x)`.
+    static func describe(_ f: Finding) -> String {
+        "[\(f.confidence.rawValue)] \(f.kind.rawValue) \(f.path)" + (f.name.map { " (\($0))" } ?? "")
     }
 
     static func exitIfFailOn(_ result: ScanResult) throws {
