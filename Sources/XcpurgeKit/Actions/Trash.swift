@@ -7,7 +7,9 @@ public struct Trash: Sendable {
     public let store: TrashStore
 
     /// Finding kinds whose path can be moved to the trash.
-    public static let deletableKinds: Set<FindingKind> = [.unusedAsset, .unusedFont]
+    public static let deletableKinds: Set<FindingKind> = [
+        .unusedAsset, .unusedFont, .orphanFile, .unusedResource, .unusedInterfaceFile,
+    ]
 
     public init(store: TrashStore) {
         self.store = store
@@ -18,7 +20,7 @@ public struct Trash: Sendable {
         var report = ActionReport()
         var requested = Set<String>()
         for f in findings {
-            if f.category == .assets, Self.deletableKinds.contains(f.kind) { requested.insert(f.path) }
+            if Self.deletableKinds.contains(f.kind) { requested.insert(f.path) }
             else { report.skipped.append(.init(path: f.path, reason: "\(f.kind.rawValue) findings are not deleted")) }
         }
         // Parents sort before their children, so nested paths are dropped.

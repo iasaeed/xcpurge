@@ -21,6 +21,23 @@ final class TrashRestoreTests: XCTestCase {
         return (report, store)
     }
 
+    /// `files --delete`: orphans and unused resources move to the trash, project references go, restore is exact.
+    func testFilesRoundTripIsByteIdentical() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.files])
+        let store = try TrashStore.begin(root: result.context.root)
+        let report = try Trash(store: store).apply(result.findings, context: result.context)
+        XCTAssertEqual(Set(report.moved), ["ClassicApp/Orphan.swift", "ClassicApp/Unused.plist"])
+        XCTAssertEqual(report.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertEqual(Set(report.skipped.map(\.path)), ["ClassicApp/DeadObjC.m", "ClassicApp/Ghost.swift"],
+                       "dead-source and ghost findings are never deleted")
+        let edited = try String(contentsOf: root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj"), encoding: .utf8)
+        XCTAssertFalse(edited.contains("Unused.plist"))
+        _ = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
     func testClassicProjectRoundTripIsByteIdentical() async throws {
         let root = try FixtureSupport.copyToTemp("AssetsEdgeCases")
         let before = try snapshot(root)
