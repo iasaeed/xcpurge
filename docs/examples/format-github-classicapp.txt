@@ -1,0 +1,7 @@
+$ cd /tmp/demo
+$ xcpurge files --format github
+::warning file=ClassicApp/DeadObjC.m,line=1,title=xcpurge dead-source::'DeadObjC.m' in ClassicApp: declares DeadObjC; not referenced from another visible file (high)
+::warning file=ClassicApp/Ghost.swift,line=1,title=xcpurge ghost-reference::'Ghost.swift' in ClassicApp: file reference in ClassicApp.xcodeproj points at a missing path (high)
+::warning file=ClassicApp/Orphan.swift,line=1,title=xcpurge orphan-file::'Orphan.swift': inside a project group folder but not referenced by any project (medium)
+::warning file=ClassicApp/Unused.plist,line=1,title=xcpurge unused-resource::'Unused.plist' in ClassicApp: no reference to 'Unused' or 'Unused.plist' from a visible file (medium)
+::notice::xcpurge: 4 findings (2 high, 2 medium, 0 low)

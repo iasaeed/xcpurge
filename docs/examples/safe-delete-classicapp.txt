@@ -1,0 +1,49 @@
+$ cp -R Tests/Fixtures/ClassicApp /tmp/demo && cd /tmp/demo && git init -q && git add -A && git commit -qm base
+$ git status --short
+$ xcpurge assets
+Assets (1, 70 B)
+  unused-asset
+    ClassicApp
+      [high]   ClassicApp/unused_loose.png  unused_loose.png  (70 B)
+
+Duplicates (3, 140 B)
+  duplicate
+    ClassicApp
+      [high]   ClassicApp/icon@2x.png  icon@2x.png  group 6b287a4088d3
+      [high]   ClassicApp/icon@3x.png  icon@3x.png  (70 B)  group 6b287a4088d3
+      [high]   ClassicApp/unused_loose.png  unused_loose.png  (70 B)  group 6b287a4088d3
+
+Total: 4 findings (4 high, 0 medium, 0 low), 210 B reclaimable
+$ xcpurge assets --delete --yes
+  moved ClassicApp/unused_loose.png
+  rewrote ClassicApp.xcodeproj/project.pbxproj
+Trashed 2 item(s). Undo with: xcpurge restore --session 20261029-115650
+Size before → after:
+  Loose images   210 B  →   140 B  -70 B (-33.3%)
+  Total         3.9 KB  →  3.9 KB   -70 B (-1.7%)
+Duplicates (2, 70 B)
+  duplicate
+    ClassicApp
+      [high]   ClassicApp/icon@2x.png  icon@2x.png  group 6b287a4088d3
+      [high]   ClassicApp/icon@3x.png  icon@3x.png  (70 B)  group 6b287a4088d3
+
+Total: 2 findings (2 high, 0 medium, 0 low), 70 B reclaimable
+$ git status --short
+ M ClassicApp.xcodeproj/project.pbxproj
+ D ClassicApp/unused_loose.png
+?? .xcpurge-trash/
+$ git diff --stat
+ ClassicApp.xcodeproj/project.pbxproj |   4 ----
+ ClassicApp/unused_loose.png          | Bin 70 -> 0 bytes
+ 2 files changed, 4 deletions(-)
+$ xcpurge restore --list
+20261029-115650  2 entries  12410 bytes
+$ xcpurge restore --session 20261029-115650
+  restored ClassicApp/unused_loose.png
+  restored ClassicApp.xcodeproj/project.pbxproj
+Restored 2 item(s) from session 20261029-115650.
+Size before → after:
+  Loose images   140 B  →   210 B  +70 B (+50.0%)
+  Total         3.9 KB  →  3.9 KB   +70 B (+1.8%)
+$ git status --short
+# (no output: the tree matches the base commit again)

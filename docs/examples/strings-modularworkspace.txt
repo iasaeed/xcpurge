@@ -1,0 +1,31 @@
+$ xcpurge strings Tests/Fixtures/ModularWorkspace
+Strings (10)
+  dynamic-lookup
+    App
+      [low]    App/App/ContentView.swift:20  error_*
+          localization key built at runtime ("error_…")
+    DesignSystem
+      [low]    Packages/DesignSystem/Sources/DesignSystem/DSButton.swift:15
+          localization call with a non-literal key
+  stale-string
+    App
+      [high]   App/App/Localizable.xcstrings:49  old_banner
+  unused-string
+    App
+      [low]    App/App/Localizable.xcstrings:4  error_404
+          no reference found; Xcode will mark it stale on the next build
+          may be built dynamically at App/App/ContentView.swift:20
+      [low]    App/App/Localizable.xcstrings:15  error_500
+          no reference found; Xcode will mark it stale on the next build
+          may be built dynamically at App/App/ContentView.swift:20
+      [high]   App/App/Localizable.xcstrings:26  manual_unused
+      [medium] App/App/en.lproj/InfoPlist.strings:2  RandomKey
+          not a known Info.plist key and not referenced
+      [high]   App/App/en.lproj/Legacy.strings:5  legacy_unused
+    DesignSystem
+      [medium] Packages/DesignSystem/Sources/DesignSystem/Resources/Localizable.xcstrings:4  ds_no_bundle
+          Packages/DesignSystem/Sources/DesignSystem/DSStrings.swift:6 has no bundle: argument, so it reads Bundle.main (likely wrong bundle)
+      [medium] Packages/DesignSystem/Sources/DesignSystem/Resources/Localizable.xcstrings:24  shared_key
+          App/App/ContentView.swift:22 reads the main bundle, not DesignSystem's bundle
+
+Total: 10 findings (3 high, 3 medium, 4 low)

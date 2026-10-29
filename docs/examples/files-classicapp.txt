@@ -1,0 +1,20 @@
+$ xcpurge files Tests/Fixtures/ClassicApp
+Files (4, 455 B)
+  dead-source
+    ClassicApp
+      [high]   ClassicApp/DeadObjC.m  (91 B)
+  ghost-reference
+    ClassicApp
+      [high]   ClassicApp/Ghost.swift
+  orphan-file
+    unknown
+      [medium] ClassicApp/Orphan.swift  (143 B)
+          inside a project group folder but not referenced by any project
+          Xcode may exclude it on purpose
+  unused-resource
+    ClassicApp
+      [medium] ClassicApp/Unused.plist  (221 B)
+          no reference to 'Unused' or 'Unused.plist' from a visible file
+          plists are sometimes read by SDKs by convention
+
+Total: 4 findings (2 high, 2 medium, 0 low), 455 B reclaimable

@@ -1,0 +1,33 @@
+Field results: read-only `xcpurge scan <repo> --format json` runs of xcpurge 0.1.0 (main at 9c9387a)
+on four private iOS repositories, 2026-10-29. Repository, path, asset and key names are removed.
+Scan time is the "Scanned … in Ns" summary xcpurge prints on a terminal.
+The counts match the earlier corpus JSON runs of the same repositories.
+
+A. Video editing app (pbxproj objectVersion 56, 183 Swift files outside vendored code, 1 xcassets;
+   Kotlin Multiplatform sources and a vendored C/C++ library alongside)
+   Scanned 3,498 files in 5 modules in 1.6s
+   38 findings: 8 high, 30 medium, 0 low; 3,349,535 bytes reclaimable (all confidences)
+   high   unused-asset      2   image sets nothing visible to the app names
+   high   unused-resource   1   audio file (106,908 B) bundled into the UI-test target, never loaded
+   high   ghost-reference   4   project references to missing files, all in the vendored library's example .xcodeproj
+   high   dead-source       1   Objective-C file in that same example project that nothing uses
+   medium unused-font      30   fonts (3,229,588 B) declared in UIAppFonts; their names appear only in shared Kotlin code
+
+B. Localization tool (pbxproj objectVersion 77 + 2 local Swift packages, 3 .strings tables)
+   Scanned 70 files in 7 modules in 0.6s
+   6 findings: 1 high, 4 medium, 1 low; 739,362 bytes reclaimable (all confidences)
+   high   unused-string     1   key in a demo fixture's legacy .strings table that nothing reads
+   medium orphan-file       3   2 icon source PNGs and 1 ExportOptions.plist in a group folder no target builds
+   medium unused-string     1   key whose only mention is a plain string literal in a unit test
+   low    dynamic-lookup    1   localization call with a non-literal key
+
+C. Monorepo workspace (2 xcodeproj at objectVersion 54, 4 asset catalogs, CocoaPods,
+   an Android project and node_modules folders alongside)
+   Scanned 2,367 files in 5 modules in 0.5s
+   3 findings: 1 high, 2 medium, 0 low; 1,076 bytes reclaimable
+   high   unused-asset      1   template color set (splash background) nothing names
+   medium unused-resource   2   SDK configuration plists (one per app) that no code names
+
+D. Small SwiftUI app with Xcode 16 synchronized folders (pbxproj objectVersion 77)
+   Scanned 108 files in 2 modules in 0.0s
+   No findings.

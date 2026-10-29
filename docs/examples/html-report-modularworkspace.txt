@@ -1,0 +1,4 @@
+$ xcpurge scan Tests/Fixtures/ModularWorkspace --format html --output /tmp/xcpurge-report.html
+Wrote html report to /tmp/xcpurge-report.html
+Scanned 35 files in 5 modules in 0.2s — 27 findings (12 high, 5 medium, 10 low)
+Open it with: open "/tmp/xcpurge-report.html"

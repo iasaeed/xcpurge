@@ -1,0 +1,21 @@
+$ xcpurge files Tests/Fixtures/MixedApp
+Files (4, 237 B)
+  orphan-file
+    MixedApp
+      [medium] Modern/Excluded.swift  (105 B)
+          in synchronized folder Modern of MixedApp.xcodeproj but excluded from every target
+          Xcode may exclude it on purpose
+    unknown
+      [low]    Stray/Stray.swift  (104 B)
+          in the folder of MixedApp.xcodeproj but outside every group and synchronized folder
+          may be a script or tool
+  unused-resource
+    MixedApp
+      [low]    Content/a.json  (14 B)
+          no reference to 'a' or 'a.json' from a visible file
+          inside folder reference Content
+      [low]    Content/b.json  (14 B)
+          no reference to 'b' or 'b.json' from a visible file
+          inside folder reference Content
+
+Total: 4 findings (0 high, 1 medium, 3 low), 237 B reclaimable

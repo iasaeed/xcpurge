@@ -1,0 +1,35 @@
+$ xcpurge size Tests/Fixtures/ModularWorkspace
+Size of /path/to/xcpurge/Tests/Fixtures/ModularWorkspace
+
+Category           Files     Size
+Asset catalogs         4  17.3 KB
+Loose images           0      0 B
+Fonts                  2    112 B
+Strings                5   3.5 KB
+Interface Builder      2   4.1 KB
+Other resources        6   2.2 KB
+Source                12   3.9 KB
+Other files            4   1.0 KB
+Total                 35  32.1 KB
+
+Asset catalog                                                               Files     Size
+App/App/Assets.xcassets                                                        21  15.2 KB
+App/AppWidget/Assets.xcassets                                                   4    623 B
+Packages/Core/Sources/Core/Resources/Core.xcassets                              5    522 B
+Packages/DesignSystem/Sources/DesignSystem/Resources/DesignSystem.xcassets      8   1.1 KB
+
+Asset type  Files     Size
+appiconset      4  13.1 KB
+imageset       26   2.9 KB
+colorset        3    987 B
+other           5    371 B
+
+Module                              Files     Size
+App/App.xcodeproj:App                  23  26.2 KB
+Packages/DesignSystem:DesignSystem      4   2.4 KB
+App/App.xcodeproj:AppWidget             5   1.9 KB
+Packages/Core:Core                      2    921 B
+(unattributed)                          2    865 B
+App/App.xcodeproj:AppTests              3    331 B
+
+Estimated reclaimable: 2.5 KB (high) / 9.1 KB (high+medium)

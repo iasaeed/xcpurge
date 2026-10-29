@@ -1,0 +1,13 @@
+$ xcpurge modules Tests/Fixtures/CrossProject
+Root: /path/to/xcpurge/Tests/Fixtures/CrossProject
+Container: App/App.xcodeproj [pbxproj, objectVersion 56] 1 target(s)
+Container: Kit/Kit.xcodeproj [pbxproj, objectVersion 56] 1 target(s)
+
+Modules (2)
+  App  [app]  App/App.xcodeproj  files: 1
+    depends on: Kit
+    embeds: Kit
+  Kit  [framework]  Kit/Kit.xcodeproj  files: 2
+    visible to: App
+
+Files: 3 (0 unattributed, 0 of them in a source root)

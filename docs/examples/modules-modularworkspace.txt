@@ -1,0 +1,27 @@
+$ xcpurge modules Tests/Fixtures/ModularWorkspace
+Root: /path/to/xcpurge/Tests/Fixtures/ModularWorkspace
+Container: App/App.xcodeproj [pbxproj, objectVersion 77] 3 target(s)
+Container: Packages/Core [package] 1 target(s)
+Container: Packages/DesignSystem [package] 1 target(s)
+
+Modules (5)
+  App  [app]  App/App.xcodeproj  files: 23
+    depends on: AppWidget, Core, DesignSystem
+    embeds: AppWidget
+    visible to: AppTests
+    roots: App/App
+  AppTests  [unitTest]  App/App.xcodeproj  files: 3
+    depends on: App
+    roots: App/AppTests
+  AppWidget  [appExtension]  App/App.xcodeproj  files: 5
+    visible to: App, AppTests
+    roots: App/AppWidget
+  Core  [packageLibrary]  Packages/Core  files: 2
+    visible to: App, AppTests, DesignSystem
+    roots: Packages/Core/Sources/Core
+  DesignSystem  [packageLibrary]  Packages/DesignSystem  files: 4
+    depends on: Core
+    visible to: App, AppTests
+    roots: Packages/DesignSystem/Sources/DesignSystem
+
+Files: 35 (2 unattributed, 0 of them in a source root)

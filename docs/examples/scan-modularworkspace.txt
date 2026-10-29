@@ -1,0 +1,85 @@
+$ xcpurge scan Tests/Fixtures/ModularWorkspace
+Assets (9, 8.1 KB)
+  dynamic-lookup
+    App
+      [low]    App/App/ContentView.swift:15  icon_*
+          asset name built at runtime; matching assets are reported with lower confidence
+  unused-asset
+    App
+      [medium] App/App/Assets.xcassets/LegacyIcon.appiconset  LegacyIcon  (6.6 KB)
+          app icon set not named by ASSETCATALOG_COMPILER_APPICON_NAME, ALTERNATE_APPICON_NAMES, INCLUDE_ALL_APPICON_ASSETS or Info.plist icons
+      [low]    App/App/Assets.xcassets/icon_1.imageset  icon_1  (226 B)
+          no reference by name, generated symbol or accessor visible to App
+          may be built dynamically at App/App/ContentView.swift:15 ("icon_…")
+      [low]    App/App/Assets.xcassets/icon_2.imageset  icon_2  (226 B)
+          no reference by name, generated symbol or accessor visible to App
+          may be built dynamically at App/App/ContentView.swift:15 ("icon_…")
+      [high]   App/App/Assets.xcassets/unused_app_image.imageset  unused_app_image  (236 B)
+    Core
+      [high]   Packages/Core/Sources/Core/Resources/Core.xcassets/core_unused.imageset  core_unused  (231 B)
+    DesignSystem
+      [high]   Packages/DesignSystem/Sources/DesignSystem/Resources/DesignSystem.xcassets/ds_isolated.imageset  ds_isolated  (231 B)
+      [high]   Packages/DesignSystem/Sources/DesignSystem/Resources/DesignSystem.xcassets/ds_unused.colorset  ds_unused  (329 B)
+  unused-font
+    App
+      [medium] App/App/Fonts/Unused-Bold.otf  Unused-Bold.otf  (55 B)
+          declared in UIAppFonts of App but never used by file, PostScript, family or full name
+
+Strings (10)
+  dynamic-lookup
+    App
+      [low]    App/App/ContentView.swift:20  error_*
+          localization key built at runtime ("error_…")
+    DesignSystem
+      [low]    Packages/DesignSystem/Sources/DesignSystem/DSButton.swift:15
+          localization call with a non-literal key
+  stale-string
+    App
+      [high]   App/App/Localizable.xcstrings:49  old_banner
+  unused-string
+    App
+      [low]    App/App/Localizable.xcstrings:4  error_404
+          no reference found; Xcode will mark it stale on the next build
+          may be built dynamically at App/App/ContentView.swift:20
+      [low]    App/App/Localizable.xcstrings:15  error_500
+          no reference found; Xcode will mark it stale on the next build
+          may be built dynamically at App/App/ContentView.swift:20
+      [high]   App/App/Localizable.xcstrings:26  manual_unused
+      [medium] App/App/en.lproj/InfoPlist.strings:2  RandomKey
+          not a known Info.plist key and not referenced
+      [high]   App/App/en.lproj/Legacy.strings:5  legacy_unused
+    DesignSystem
+      [medium] Packages/DesignSystem/Sources/DesignSystem/Resources/Localizable.xcstrings:4  ds_no_bundle
+          Packages/DesignSystem/Sources/DesignSystem/DSStrings.swift:6 has no bundle: argument, so it reads Bundle.main (likely wrong bundle)
+      [medium] Packages/DesignSystem/Sources/DesignSystem/Resources/Localizable.xcstrings:24  shared_key
+          App/App/ContentView.swift:22 reads the main bundle, not DesignSystem's bundle
+
+Files (6, 2.0 KB)
+  dead-source
+    App
+      [high]   App/App/Dead/DeadHelper.swift  (71 B)
+      [low]    App/App/ExtensionOnly.swift  (87 B)
+          declares shouted; not referenced from another visible file
+          extension-only file
+      [low]    App/App/PreviewOnly.swift  (150 B)
+          declares PreviewOnlyBadge; not referenced from another visible file
+          only used from SwiftUI previews
+    Core
+      [low]    Packages/Core/Sources/Core/CoreImages.swift  (399 B)
+          declares CoreImages; not referenced from another visible file
+          public API of a library with no in-repo consumer
+  unused-interface-file
+    App
+      [high]   App/App/Unused.xib  (1.3 KB)
+  unused-resource
+    App
+      [high]   App/App/Data/unused.json  (22 B)
+
+Duplicates (2, 70 B)
+  duplicate
+    App
+      [high]   App/App/Assets.xcassets/dup_a.imageset/dup_a.png  dup_a  group 9cdae0dd58a8
+    Core
+      [high]   Packages/Core/Sources/Core/Resources/Core.xcassets/core_dup.imageset/core_dup.png  core_dup  (70 B)  group 9cdae0dd58a8
+
+Total: 27 findings (12 high, 5 medium, 10 low), 10.1 KB reclaimable
