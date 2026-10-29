@@ -154,4 +154,96 @@ final class TrashRestoreTests: XCTestCase {
         """
         XCTAssertEqual(PBXProjEditor.removeObjects(["F1", "B1"], from: text), expected)
     }
+
+    // MARK: - Review #8: project edits are dry-run before anything moves
+
+    private func finding(_ path: String, _ kind: FindingKind = .unusedResource) -> Finding {
+        Finding(kind: kind, category: .files, path: path, module: "ClassicApp", confidence: .high)
+    }
+
+    private func trash(_ paths: [String], in root: URL, config: Config = Config()) async throws -> ActionReport {
+        let context = try await ScanEngine(root: root, config: config).makeContext()
+        let store = try TrashStore.begin(root: context.root)
+        return try Trash(store: store).apply(paths.map { finding($0) }, context: context)
+    }
+
+    /// A CRLF pbxproj is edited line by line with its CRLF endings kept, and restores byte for byte.
+    func testCRLFProjectIsEditedAndRestored() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let lf = try String(contentsOf: pbxproj, encoding: .utf8)
+        try Data(lf.replacingOccurrences(of: "\n", with: "\r\n").utf8).write(to: pbxproj)
+        let before = try snapshot(root)
+        let report = try await trash(["ClassicApp/Unused.plist"], in: root)
+        XCTAssertEqual(report.moved, ["ClassicApp/Unused.plist"])
+        XCTAssertEqual(report.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        let edited = try String(contentsOf: pbxproj, encoding: .utf8)
+        XCTAssertFalse(edited.contains("Unused.plist"))
+        XCTAssertFalse(edited.replacingOccurrences(of: "\r\n", with: "").contains("\n"), "every line still ends in CRLF")
+        _ = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
+    /// When the reference cannot be removed (unusual formatting), the file stays where it is.
+    func testFileStaysWhenItsReferenceCannotBeRemoved() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        var text = try String(contentsOf: pbxproj, encoding: .utf8)
+        // Two list entries on one line: the line editor cannot drop just one of them.
+        text = text.replacingOccurrences(of: "CC0000000000000000000023 /* Unused.plist */,\n\t\t\t\t",
+                                         with: "CC0000000000000000000023 /* Unused.plist */, ")
+        try Data(text.utf8).write(to: pbxproj)
+        let before = try snapshot(root)
+        let report = try await trash(["ClassicApp/Unused.plist", "ClassicApp/Orphan.swift"], in: root)
+        XCTAssertEqual(report.moved, ["ClassicApp/Orphan.swift"], "an unreferenced file still moves")
+        XCTAssertTrue(report.rewritten.isEmpty)
+        let skipped = try XCTUnwrap(report.skipped.first { $0.path == "ClassicApp/Unused.plist" })
+        XCTAssertTrue(skipped.reason.contains("cannot be removed"), skipped.reason)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/Unused.plist").path))
+        _ = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
+    /// `.xcdatamodeld` version groups are removed with their `.xcdatamodel` children.
+    func testDataModelVersionGroupIsRemoved() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let report = try await trash(["ClassicApp/Model.xcdatamodeld"], in: root)
+        XCTAssertEqual(report.moved, ["ClassicApp/Model.xcdatamodeld"])
+        XCTAssertEqual(report.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        let edited = try String(contentsOf: root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj"), encoding: .utf8)
+        for gone in ["Model.xcdatamodel", "CC000000000000000000001C", "CC000000000000000000001B", "CC0000000000000000000035"] {
+            XCTAssertFalse(edited.contains(gone), gone)
+        }
+        _ = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
+    /// Files referenced by a `project.xcproj` (never edited) are not moved.
+    func testXcprojReferencedFilesAreNotMoved() async throws {
+        let root = try FixtureSupport.copyToTemp("XcprojApp")
+        let xcodeproj = root.appendingPathComponent("XcprojApp.xcodeproj")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_577_836_800)],
+                                              ofItemAtPath: xcodeproj.appendingPathComponent("project.pbxproj").path)
+        try FileManager.default.setAttributes([.modificationDate: Date()],
+                                              ofItemAtPath: xcodeproj.appendingPathComponent("project.xcproj").path)
+        var config = Config()
+        config.noSwift = true
+        let context = try await ScanEngine(root: root, config: config).makeContext()
+        XCTAssertEqual(context.projects.first?.format, .xcproj)
+        let referenced = try XCTUnwrap(context.projects.first?.fileRefs.map(\.path).first {
+            !$0.hasSuffix(".swift") && FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
+        })
+        let report = try Trash(store: try TrashStore.begin(root: context.root)).apply([finding(referenced)], context: context)
+        XCTAssertTrue(report.moved.isEmpty)
+        XCTAssertTrue(report.skipped.contains { $0.path == referenced && $0.reason.contains("not edited") }, "\(report.skipped)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(referenced).path))
+    }
+
+    func testLineSplitterKeepsEveryEnding() {
+        let text = "a\r\nb\nc\rd"
+        XCTAssertEqual(PBXProjEditor.lines(text).map(\.ending), ["\r\n", "\n", "\r", ""])
+        XCTAssertEqual(PBXProjEditor.removeObjects([], from: text), text)
+        XCTAssertEqual(PBXProjEditor.removeObjects(["X"], from: "a\r\n\t\tX /* x */,\r\nb\r\n"), "a\r\nb\r\n")
+    }
 }
