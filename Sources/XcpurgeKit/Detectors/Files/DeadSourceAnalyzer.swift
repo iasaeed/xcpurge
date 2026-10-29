@@ -18,6 +18,18 @@ enum DeadSourceAnalyzer {
         let hasDataModel = files.contains { $0.kind == .dataModel }
         let markedFiles = Set(ctx.refs.ignoredLines.map(\.file))
 
+        // Declarations of other files, tokenized on demand (nested-type checks only).
+        var declsCache: [Int32: DeclarationCollector.Result] = [:]
+        func declarations(of g: Int32) -> DeclarationCollector.Result? {
+            if let cached = declsCache[g] { return cached }
+            let other = files.indices.contains(Int(g)) ? files[Int(g)] : nil
+            guard let other, other.kind == .swift,
+                  let data = try? Data(contentsOf: ctx.url(for: other.path), options: .alwaysMapped) else { return nil }
+            let result = DeclarationCollector.collect(SwiftTokenizer.tokenize(data, dialect: .swift).tokens, dialect: .swift)
+            declsCache[g] = result
+            return result
+        }
+
         var out: [Finding] = []
         for (i, file) in files.enumerated() {
             let index = Int32(i)
@@ -47,8 +59,16 @@ enum DeadSourceAnalyzer {
                 }
             }
             if names.contains(where: usedElsewhere) { continue }
-            // Nested types are generic names (`Coordinator`, `Style`); only a qualified `.Name` use counts.
+            // Nested types are generic names (`Coordinator`, `Style`); only a qualified `.Name` use counts, or an
+            // unqualified one from a file that declares or extends the outer type (`Bar()` inside `struct Foo`).
             if decls.nestedTypes.contains(where: { spelledElsewhere($0, .memberSymbol) }) { continue }
+            let outer = Set(decls.types + decls.extendedTypes)
+            if !outer.isEmpty, dialect == .swift, decls.nestedTypes.contains(where: { nested in
+                (usage[nested] ?? []).contains { g in
+                    g != index && ctx.refs.isVisible(g, visible)
+                        && declarations(of: g).map { !outer.isDisjoint(with: $0.types + $0.extendedTypes) } == true
+                }
+            }) { continue }
             if dialect == .objc, usedElsewhere(RelPath.stem(file.path) + ".h") { continue }
 
             var confidence: Confidence = !decls.types.isEmpty ? .high : (nominalOrMember ? .medium : .low)

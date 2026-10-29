@@ -12,6 +12,8 @@ enum DeclarationCollector {
         var members: [String] = []
         /// Members added by `extension X { … }` (and extended type names of ObjC categories).
         var extensionMembers: [String] = []
+        /// Type names a Swift `extension` names (`extension A.B` -> `A`, `B`).
+        var extendedTypes: [String] = []
         /// An extension adds a conformance, an initializer, a subscript or an operator: its use is invisible by name.
         var hasOpaqueExtension = false
         /// ObjC categories (`@interface X (Cat)`), by class name.
@@ -79,8 +81,12 @@ enum DeclarationCollector {
                     pendingExtension = true
                     note(t.line)
                     // `extension A.B` — the dotted name; a `:` right after it is a conformance.
+                    r.extendedTypes.append(n.text)
                     var j = i + 2
-                    while j + 1 < tokens.count, tokens[j].isPunct("."), tokens[j + 1].isName { j += 2 }
+                    while j + 1 < tokens.count, tokens[j].isPunct("."), tokens[j + 1].isName {
+                        r.extendedTypes.append(tokens[j + 1].text)
+                        j += 2
+                    }
                     if j < tokens.count, tokens[j].isPunct(":") {
                         r.hasOpaqueExtension = true
                         j = inheritance(tokens, after: j, into: &r)

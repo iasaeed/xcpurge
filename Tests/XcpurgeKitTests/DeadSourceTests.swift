@@ -139,6 +139,21 @@ final class DeadSourceTests: XCTestCase {
         XCTAssertNil(d["Sources/Kit/Sheet.swift"], "qualified .Style use counts (and SheetView is named too)")
     }
 
+    /// Review #12: `Foo+Bar.swift` adds `Foo.Bar` in an extension; `Bar()` unqualified inside `Foo` uses it.
+    /// An unrelated type spelling `Bar()` does not.
+    func testNestedTypeUsedUnqualifiedInsideOuterType() async throws {
+        let d = try await dead([
+            "Sources/Kit/Foo.swift": "public struct Foo { public init() {}; let b = Bar() }\n",
+            "Sources/Kit/Foo+Bar.swift": "extension Foo { struct Bar {} }\n",
+            "Sources/Kit/Baz+Qux.swift": "extension Baz { struct Qux {} }\n",
+            "Sources/Kit/Baz.swift": "public struct Baz { public init() {} }\n",
+            "Sources/Kit/Unrelated.swift": "public struct Unrelated { public init() {}; let q = Qux() }\n",
+            "Sources/Tool/main.swift": "import Kit\nprint(Foo(), Baz(), Unrelated())\n",
+        ])
+        XCTAssertNil(d["Sources/Kit/Foo+Bar.swift"], "used inside Foo")
+        XCTAssertNotNil(d["Sources/Kit/Baz+Qux.swift"], "Qux() outside Baz is another type")
+    }
+
     /// Plan §3 step 6: a file no target compiles is visible everywhere, so its uses keep code alive (conservative).
     func testUnattributedFilesCountAsUsers() async throws {
         let d = try await dead([
