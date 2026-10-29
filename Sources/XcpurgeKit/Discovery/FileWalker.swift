@@ -23,7 +23,6 @@ public struct FileWalker: Sendable {
         let rootPath = root.standardizedFileURL.path
         var result = WalkResult(files: [], xcodeprojs: [], workspaces: [], packages: [])
         guard let enumerator = fm.enumerator(atPath: rootPath) else { return result }
-        if fm.fileExists(atPath: rootPath + "/Package.swift") { result.packages.append("") }
 
         while let rel = enumerator.nextObject() as? String {
             let name = RelPath.lastComponent(rel)

@@ -117,18 +117,19 @@ public enum XcprojParser {
         var refs: [ProjectFileRef] = []
         for file in walker.files {
             var targets = Set<String>()
+            let fileName = RelPath.lastComponent(file.path)
             for (targetName, phaseKind) in file.membership {
                 guard let index = model.targets.firstIndex(where: { $0.name == targetName }) else { continue }
-                let fileName = RelPath.lastComponent(file.path)
                 if productOwners[fileName] != nil, phaseKind == "copy" || phaseKind == "frameworks" {
                     if phaseKind == "copy" { model.targets[index].embeddedProducts.append(fileName) }
                     else { model.targets[index].linkedProducts.append(fileName) }
                     continue
                 }
+                guard file.resolved else { continue }
                 targets.insert(targetName)
                 if !model.membershipUnknown { model.targets[index].members.insert(file.path) }
             }
-            if productOwners[RelPath.lastComponent(file.path)] != nil && file.isProductsGroup { continue }
+            guard file.resolved, !(file.isProductsGroup && productOwners[fileName] != nil) else { continue }
             refs.append(ProjectFileRef(path: file.path, targets: model.membershipUnknown ? [] : targets))
         }
         model.fileRefs = refs.sorted { $0.path < $1.path }
@@ -198,6 +199,8 @@ public enum XcprojParser {
             /// (target name, phase kind) pairs from `target-membership`.
             var membership: [(String, String)]
             var isProductsGroup: Bool
+            /// False for build-products / SDK paths; `path` is then just the raw path.
+            var resolved: Bool
         }
 
         let projectDir: String
@@ -228,7 +231,13 @@ public enum XcprojParser {
 
         mutating func visit(_ node: JSONValue, base: String) {
             let rawPath = node["path"]?.stringValue ?? ""
-            guard let abs = resolve(rawPath, base: base) else { return }
+            guard let abs = resolve(rawPath, base: base) else {
+                // Build products and SDK files: keep only their membership (embed / link phases).
+                if (node["kind"]?.stringValue ?? "file-reference") == "file-reference" {
+                    files.append(FileNode(path: rawPath, membership: membership(node), isProductsGroup: inProducts, resolved: false))
+                }
+                return
+            }
             let rel = RelPath.relative(abs, to: rootPath)
             switch node["kind"]?.stringValue ?? "file-reference" {
             case "group", "variant-group":
@@ -262,13 +271,17 @@ public enum XcprojParser {
                     explicitFolders: (node["opaque-folders"]?.arrayValue ?? []).compactMap(\.stringValue),
                     explicitFileTypes: fileTypes))
             default:
-                var membership: [(String, String)] = []
-                for entry in node["target-membership"]?.arrayValue ?? [] {
-                    guard let phase = entry.stringValue ?? entry["build-phase"]?.stringValue else { continue }
-                    let parts = phase.split(separator: "/").map(String.init)
-                    if let target = parts.first { membership.append((target, parts.count > 1 ? parts[1] : "")) }
-                }
-                files.append(FileNode(path: rel, membership: membership, isProductsGroup: inProducts))
+                files.append(FileNode(path: rel, membership: membership(node), isProductsGroup: inProducts, resolved: true))
+            }
+        }
+
+        /// `target-membership` entries (`"App/compile-sources"` or `{ "build-phase": … }`) as (target, phase kind).
+        private func membership(_ node: JSONValue) -> [(String, String)] {
+            (node["target-membership"]?.arrayValue ?? []).compactMap { entry in
+                guard let phase = entry.stringValue ?? entry["build-phase"]?.stringValue else { return nil }
+                let parts = phase.split(separator: "/").map(String.init)
+                guard let target = parts.first else { return nil }
+                return (target, parts.count > 1 ? parts[1] : "")
             }
         }
     }

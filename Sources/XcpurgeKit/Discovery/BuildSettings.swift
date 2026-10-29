@@ -71,7 +71,8 @@ public struct BuildSettings: Sendable, Hashable {
 
     /// Expands `$(VAR)`, `${VAR}` and `$(VAR:op)`; unknown variables expand to "".
     public static func expand(_ value: String, in settings: [String: String], depth: Int = 0) -> String {
-        guard value.contains("$"), depth < 8 else { return value }
+        guard value.contains("$") else { return value }
+        guard depth < 8 else { return "" }  // runaway self-reference
         var out = ""
         var chars = Array(value)[...]
         while let c = chars.first {
