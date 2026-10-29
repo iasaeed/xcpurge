@@ -12,7 +12,7 @@ struct StringsCommand: AsyncParsableCommand {
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.strings])
-        ScanRunner.report(result)
+        try ScanRunner.report(result, options)
         if prune {
             let prunable = result.findings.filter { $0.category == .strings && !$0.kind.isInformational }
             guard !prunable.isEmpty,

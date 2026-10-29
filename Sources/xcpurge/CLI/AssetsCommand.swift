@@ -13,7 +13,7 @@ struct AssetsCommand: AsyncParsableCommand {
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.assets, .duplicates])
-        ScanRunner.report(result)
+        try ScanRunner.report(result, options)
         if delete {
             let deletable = result.findings.filter { $0.category == .assets && !$0.kind.isInformational }
             guard !deletable.isEmpty else { return }
