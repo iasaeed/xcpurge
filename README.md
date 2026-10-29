@@ -101,6 +101,29 @@ Modules (5)
 - `shared_key` exists in DesignSystem's string catalog, but App reads it without `bundle: .module`, i.e. from
   the main bundle: **medium, "reads the main bundle, not DesignSystem's bundle"**.
 
+### Several projects in one workspace
+
+Projects of a workspace link to each other without a package: the app's Frameworks and Embed phases list the
+other project's product with `sourceTree = BUILT_PRODUCTS_DIR` (Xcode's implicit dependencies), and a target
+dependency may go through a `PBXContainerItemProxy` whose `containerPortal` is the other `.xcodeproj`. xcpurge
+resolves both across every project it scans: product files by file, product or target name, proxies by
+container and `remoteInfo`. The `CrossProject` fixture is an app whose image lives in another project's
+framework:
+
+```
+$ xcpurge modules Tests/Fixtures/CrossProject
+Modules (2)
+  App  [app]  App/App.xcodeproj  files: 1
+    depends on: Kit
+    embeds: Kit
+  Kit  [framework]  Kit/Kit.xcodeproj  files: 2
+    visible to: App
+```
+
+`kit_hero` is used only from App (`UIImage(named: "kit_hero", in: Bundle(for: KitMarker.self), ...)`), so it is
+used; `kit_unused` is **unused, high**. Scan the workspace's folder (or pass `--workspace`) so both projects are
+parsed; a scan of one project alone cannot see the other's uses.
+
 ## Project formats
 
 | Format | Support |
