@@ -21,8 +21,8 @@ public struct ReferenceIndex: Sendable {
     private let byValue: [String: [Int32]]
     private let byLowercased: [String: [Int32]]
 
-    /// Max bytes read per generic text file (json, html, css, js, xcconfig); larger ones are skipped.
-    /// Source code, Interface Builder files and plists are always read: skipping them would hide real uses.
+    /// Generic text files (json, html, css, js, xcconfig) larger than this are streamed in chunks instead of
+    /// loaded whole. Nothing is skipped by size; only unreadable files are.
     public static let maxFileSize: Int64 = 5 * 1024 * 1024
 
     /// Build settings whose values name resources (app icons, accent colors, storyboards).
@@ -161,12 +161,14 @@ public struct ReferenceIndex: Sendable {
     static func scanFile(_ file: SourceFile, index: Int32, rootPath: String, macros: [String],
                          diagnostics: Diagnostics) -> ScanOutput? {
         var skipped = ScanOutput()
+        let url = URL(fileURLWithPath: RelPath.join(rootPath, file.path))
         if isSizeCapped(file.kind), file.size > maxFileSize {
-            diagnostics.warn("skipped (larger than 5 MB); related findings capped at medium", path: file.path)
-            skipped.skipReason = "larger than 5 MB"
+            diagnostics.info("larger than 5 MB; scanned in chunks", path: file.path)
+            if let out = GenericTextScanner.scanStreaming(url, file: index, kind: file.kind) { return out }
+            diagnostics.warn("cannot read file; related findings capped at medium", path: file.path)
+            skipped.skipReason = "unreadable"
             return skipped
         }
-        let url = URL(fileURLWithPath: RelPath.join(rootPath, file.path))
         guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else {
             diagnostics.warn("cannot read file; related findings capped at medium", path: file.path)
             skipped.skipReason = "unreadable"
@@ -182,7 +184,7 @@ public struct ReferenceIndex: Sendable {
         }
     }
 
-    /// Only generic text is size-capped (large data files); code, IB files and plists are always scanned.
+    /// Only generic text is streamed when large (data files); code, IB files and plists are always read whole.
     static func isSizeCapped(_ kind: FileKind) -> Bool {
         switch kind {
         case .json, .html, .css, .js, .xcconfig: true

@@ -15,22 +15,60 @@ public enum GenericTextScanner {
         var line: Int32 = 0
         for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
             line += 1
-            if raw.contains(SwiftTokenizer.ignoreMarker) { out.ignoredLines.append(line) }
-            if kind == .xcconfig {
-                if let eq = raw.firstIndex(of: "="), !raw.hasPrefix("//") {
-                    let key = raw[..<eq].trimmingCharacters(in: .whitespaces)
-                    for word in BuildSettings.splitList(String(raw[raw.index(after: eq)...])) {
-                        add(word, line: line, label: key, file: file, to: &out)
-                    }
-                }
-                continue
-            }
-            for value in quoted(raw) { add(value, line: line, label: nil, file: file, to: &out) }
-            if kind == .css || kind == .html {
-                for value in cssValues(raw) { add(value, line: line, label: "css", file: file, to: &out) }
-            }
+            scanLine(raw, line: line, kind: kind, file: file, into: &out)
         }
         return out
+    }
+
+    /// Files too large to load whole (over `ReferenceIndex.maxFileSize`): read in chunks and scanned line by line
+    /// as text (JSON included, without key labels). A line longer than one chunk is cut at the chunk boundary,
+    /// so a literal straddling that cut can be missed. Nil when the file cannot be read.
+    public static func scanStreaming(_ url: URL, file: Int32, kind: FileKind, chunkSize: Int = 1 << 20) -> ScanOutput? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        var out = ScanOutput()
+        var line: Int32 = 0
+        var carry = Data()
+        func flush(_ bytes: Data) {
+            line += 1
+            scanLine(Substring(String(decoding: bytes, as: UTF8.self)), line: line, kind: kind, file: file, into: &out)
+        }
+        while true {
+            let read: Data?
+            do { read = try handle.read(upToCount: chunkSize) } catch { return nil }
+            guard let chunk = read, !chunk.isEmpty else { break }   // nil or empty at end of file
+            carry.append(chunk)
+            var start = carry.startIndex
+            while let newline = carry[start...].firstIndex(of: 0x0A) {
+                flush(carry[start..<newline])
+                start = carry.index(after: newline)
+            }
+            carry = carry[start...]
+            if carry.count > chunkSize {   // one huge line (minified JSON): scan what we have
+                flush(carry)
+                line -= 1
+                carry = Data()
+            }
+        }
+        flush(carry)
+        return out
+    }
+
+    private static func scanLine(_ raw: Substring, line: Int32, kind: FileKind, file: Int32, into out: inout ScanOutput) {
+        if raw.contains(SwiftTokenizer.ignoreMarker) { out.ignoredLines.append(line) }
+        if kind == .xcconfig {
+            if let eq = raw.firstIndex(of: "="), !raw.hasPrefix("//") {
+                let key = raw[..<eq].trimmingCharacters(in: .whitespaces)
+                for word in BuildSettings.splitList(String(raw[raw.index(after: eq)...])) {
+                    add(word, line: line, label: key, file: file, to: &out)
+                }
+            }
+            return
+        }
+        for value in quoted(raw) { add(value, line: line, label: nil, file: file, to: &out) }
+        if kind == .css || kind == .html {
+            for value in cssValues(raw) { add(value, line: line, label: "css", file: file, to: &out) }
+        }
     }
 
     private static func add(_ value: String, line: Int32, label: String?, file: Int32, to out: inout ScanOutput) {

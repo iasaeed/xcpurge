@@ -119,9 +119,10 @@ output: at the scan root, beside a project, `Package.swift` or build script (`bu
 `Makefile`, ...), or holding `Debug*`/`Release*`/`intermediates`/`outputs`/`*.build` folders;
 a source folder that happens to be called `build` is scanned.
 
-Every Swift, Objective-C, storyboard, xib and plist file is read whatever its size. Generic text (JSON, HTML,
-CSS, JS, xcconfig) over 5 MB is skipped with a warning, and then no finding is reported above medium, since the
-skipped file could hold the only use.
+Every file is scanned whatever its size. Generic text (JSON, HTML, CSS, JS, xcconfig) over 5 MB is streamed in
+1 MB chunks and scanned line by line; a literal on a single line longer than a chunk can be cut at a chunk
+boundary and missed. A reference source that cannot be read at all caps every finding at medium (it could hold
+the only use), unless it is under `--exclude`.
 
 ## Output formats and CI
 

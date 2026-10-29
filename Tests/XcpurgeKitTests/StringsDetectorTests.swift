@@ -75,20 +75,43 @@ final class StringsDetectorTests: XCTestCase {
         XCTAssertTrue(result.context.refs.skippedSources.isEmpty)
     }
 
-    /// Review #1: when a reference source is skipped, nothing stays high (it may hold the only use).
-    func testSkippedSourceCapsFindingsAtMedium() async throws {
-        let big = "[\"" + String(repeating: "x", count: Int(ReferenceIndex.maxFileSize)) + "\", \"maybe_key\"]"
+    func testLargeTextIsStreamedNotSkipped() async throws {
+        // Review 2 #2: a >5 MB JSON is scanned in chunks; its literals count and nothing is capped.
+        let big = "[\"" + String(repeating: "x", count: Int(ReferenceIndex.maxFileSize)) + "\",\n \"keep_key\"]"
+        let root = try FixtureSupport.tempTree([
+            "en.lproj/Localizable.strings": "\"keep_key\" = \"A\";\n\"gone_key\" = \"B\";\n",
+            "Big.json": big,
+            "Vendor/Locked.json": "[\"x\"]",
+        ])
+        var config = Config()
+        config.noSwift = true
+        config.exclude = ["Vendor/**"]
+        let locked = root.appendingPathComponent("Vendor/Locked.json").path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: locked) }
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        XCTAssertEqual(result.context.refs.skippedSources.map(\.path), ["Vendor/Locked.json"], "only the unreadable file")
+        XCTAssertTrue(result.context.refs.sites("keep_key").contains { result.context.refs.path(of: $0.file) == "Big.json" })
+        XCTAssertEqual(result.findings.first { $0.name == "gone_key" }?.confidence, .high,
+                       "an unreadable file under --exclude does not cap findings")
+        XCTAssertNotEqual(result.findings.first { $0.name == "keep_key" }?.confidence, .high)
+    }
+
+    /// Review #1: an unreadable reference source caps findings at medium (it may hold the only use).
+    func testUnreadableSourceCapsFindingsAtMedium() async throws {
         let root = try FixtureSupport.tempTree([
             "en.lproj/Localizable.strings": "\"maybe_key\" = \"A\";\n",
-            "Big.json": big,
+            "Locked.json": "[\"maybe_key\"]",
         ])
+        let locked = root.appendingPathComponent("Locked.json").path
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: locked) }
         var config = Config()
         config.noSwift = true
         let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
         let finding = try XCTUnwrap(result.findings.first { $0.name == "maybe_key" })
         XCTAssertEqual(finding.confidence, .medium)
-        XCTAssertTrue(finding.reasons.contains { $0.contains("source Big.json skipped") }, "\(finding.reasons)")
-        XCTAssertEqual(result.context.refs.skippedSources.map(\.path), ["Big.json"])
+        XCTAssertTrue(finding.reasons.contains { $0.contains("source Locked.json skipped (unreadable)") }, "\(finding.reasons)")
     }
 
     /// Review #2: keys that start and end with an interpolation match by their middle segments; unmatched

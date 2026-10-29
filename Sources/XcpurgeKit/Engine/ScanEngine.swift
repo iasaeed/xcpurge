@@ -55,9 +55,12 @@ public struct ScanEngine: Sendable {
 
     /// A reference source that could not be read may hold the only use of anything, so no unused-style
     /// finding stays high when one was skipped. Duplicates do not depend on references.
+    /// Files under `--exclude` do not count: the user chose not to vouch for them.
     func capForSkippedSources(_ findings: [Finding], refs: ReferenceIndex) -> [Finding] {
-        guard let first = refs.skippedSources.first else { return findings }
-        let more = refs.skippedSources.count > 1 ? " and \(refs.skippedSources.count - 1) more" : ""
+        let excludes = config.exclude.map(Glob.init)
+        let skipped = refs.skippedSources.filter { s in !excludes.contains { $0.matches(s.path) } }
+        guard let first = skipped.first else { return findings }
+        let more = skipped.count > 1 ? " and \(skipped.count - 1) more" : ""
         let reason = "source \(first.path) skipped (\(first.reason))\(more); capped at medium"
         return findings.map { f in
             guard f.confidence == .high, f.category != .duplicates else { return f }
