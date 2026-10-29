@@ -182,4 +182,55 @@ final class FilesDetectorTests: XCTestCase {
         ], targetArgs: ", resources: [.copy(\"Web\")]")
         XCTAssertEqual(byPath(f, .unusedResource)["Sources/Kit/Web/page.html"]?.confidence, .low)
     }
+
+    /// Review #3: folder-like units named inside a path literal, generated Reality Composer types, and
+    /// Core Data models (loaded without a name) are never high.
+    func testFolderLikeResourcesAndGeneratedTypes() async throws {
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import SceneKit
+            let s = SCNScene(named: "art.scnassets/ship.scn")
+            let b = try! Experience.loadBox()
+            let m = NSManagedObjectModel.mergedModel(from: nil)
+            """,
+            "Sources/Kit/art.scnassets/ship.scn": "x",
+            "Sources/Kit/Experience.rcproject/Library/x": "x",
+            "Sources/Kit/Model.xcdatamodeld/Model.xcdatamodel/contents": "<model/>",
+            "Sources/Kit/Unused.rcproject/Library/x": "x",
+        ])
+        let unused = byPath(f, .unusedResource)
+        XCTAssertNil(unused["Sources/Kit/art.scnassets"], "named as a path component")
+        XCTAssertNil(unused["Sources/Kit/Experience.rcproject"], "generated Experience type")
+        XCTAssertEqual(unused["Sources/Kit/Model.xcdatamodeld"]?.confidence, .medium)
+        XCTAssertEqual(unused["Sources/Kit/Unused.rcproject"]?.confidence, .high)
+    }
+
+    /// Review #4: UIKit's default nib lookup loads `MyView.xib` for `MyViewController()`.
+    func testDefaultNibLookupByControllerName() async throws {
+        let xib = "<document><objects><view id=\"1\"/></objects></document>\n"
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import UIKit
+            final class MyViewController: UIViewController {}
+            final class SettingsViewController: UIViewController {}
+            let vc = MyViewController()
+            let settings = SettingsViewController()
+            """,
+            "Sources/Kit/MyView.xib": xib,
+            "Sources/Kit/Settings.xib": xib,
+            "Sources/Kit/Lonely.xib": xib,
+        ])
+        let unused = byPath(f, .unusedInterfaceFile)
+        XCTAssertNil(unused["Sources/Kit/MyView.xib"])
+        XCTAssertNil(unused["Sources/Kit/Settings.xib"])
+        XCTAssertEqual(unused["Sources/Kit/Lonely.xib"]?.confidence, .high)
+    }
+
+    /// Review #10: files inside a synchronized folder copied whole (`explicitFolders`) are low, not high.
+    func testSyncedExplicitFolderResourcesAreLow() async throws {
+        let f = try await findings(FixtureSupport.fixtureURL("SyncedApp"))
+        let page = try XCTUnwrap(byPath(f, .unusedResource)["SyncedApp/Web/index.html"])
+        XCTAssertEqual(page.confidence, .low)
+        XCTAssertTrue(page.reasons.contains { $0.contains("copied as a whole") }, "\(page.reasons)")
+    }
 }

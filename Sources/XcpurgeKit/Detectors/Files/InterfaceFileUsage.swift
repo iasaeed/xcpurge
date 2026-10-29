@@ -3,7 +3,9 @@
 /// (`UIMainStoryboardFile`, `UILaunchStoryboardName`, scene storyboards), another IB file references it
 /// (`storyboardName=`), a loading API names it (`UIStoryboard(name:)`, `UINib(nibName:)`, `loadNibNamed`,
 /// `NSNib`, `initWithNibName:`), a generated accessor names it, or a type shares its name (nib-by-class-name
-/// loading, `String(describing: Cell.self)`). A bare string literal elsewhere leaves it reported at medium.
+/// loading, `String(describing: Cell.self)`), or a `<stem>Controller` / `<stem>ViewController` type is used
+/// (UIKit's default nib lookup: `MyViewController()` loads `MyView.xib`). A bare string literal elsewhere leaves
+/// it reported at medium.
 enum InterfaceFileUsage {
     static let loaderCallees: Set<String> = ["UIStoryboard", "NSStoryboard", "UINib", "NSNib", "loadNibNamed"]
     static let loaderLabels: Set<String> = [
@@ -22,7 +24,8 @@ enum InterfaceFileUsage {
             let visible = FilesDetector.visibility(of: file, in: ctx)
             let canSee = { (source: Int32) in source != Int32(i) && isUser(source) && ctx.refs.isVisible(source, visible) }
             let ext = file.kind == .storyboard ? "storyboard" : "xib"
-            let sites = [stem, "\(stem).\(ext)", "\(stem).storyboardc", "\(stem).nib"].flatMap { ctx.refs.sites($0) }
+            let controllers = ["\(stem)Controller", "\(stem)ViewController"].flatMap { ctx.refs.sites($0, kinds: .symbols) }
+            let sites = ([stem, "\(stem).\(ext)", "\(stem).storyboardc", "\(stem).nib"].flatMap { ctx.refs.sites($0) } + controllers)
                 .filter { !ResourceFileUsage.isUserText($0) && canSee($0.file) }
             if sites.contains(where: isLoad) { continue }
 

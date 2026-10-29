@@ -2,8 +2,11 @@
 import Foundation
 
 /// Loose bundle resources (plist, json, media, Core ML, Core Data, scenes, documents, databases) that no visible
-/// file names by stem, `stem.ext` or a path ending in either. Folder loads (`urls(forResourcesWithExtension:)`,
-/// blue folder references, `Package.swift` `.copy`) and dynamic name patterns downgrade to low instead of clearing.
+/// file names by stem, `stem.ext` or a path containing either as a component (`"art.scnassets/ship.scn"`).
+/// Folder loads (`urls(forResourcesWithExtension:)`, blue folder references, synchronized folders copied whole,
+/// `Package.swift` `.copy`) and dynamic name patterns downgrade to low instead of clearing. Core ML models and
+/// Reality Composer projects also count by their generated class; Core Data models are never high, since
+/// `NSManagedObjectModel.mergedModel(from: nil)` loads them without a name.
 enum ResourceFileUsage {
     static let kinds: Set<FileKind> = [.plist, .json, .html, .css, .js, .audio, .video, .dataModel, .sceneAssets]
     static let extensions: Set<String> = [
@@ -18,8 +21,7 @@ enum ResourceFileUsage {
 
     static func find(_ ctx: ScanContext, skipping orphans: Set<String>) -> [Finding] {
         let consumed = OrphanFinder.consumedFiles(ctx)
-        let folderRefs = ctx.projects.flatMap(\.fileRefs).filter(\.isFolder).map(\.path)
-        let copied = ctx.projects.flatMap(\.targets).flatMap(\.resources).filter { $0.rule == .copy }.map(\.path)
+        let roots = AssetsDetector.folderLoadRoots(ctx)
         let tails = pathTails(ctx.refs)
         let isUser = FilesDetector.userFilter(ctx, orphans: orphans)
         var out: [Finding] = []
@@ -30,7 +32,7 @@ enum ResourceFileUsage {
             if file.kind == .plist, conventionalPlists.contains(stem) || stem.hasSuffix("-Info") { continue }
             let visible = FilesDetector.visibility(of: file, in: ctx)
             let canSee = { (source: Int32) in source != Int32(i) && isUser(source) && ctx.refs.isVisible(source, visible) }
-            let kinds: RefKindMask = file.fileName.hasSuffix(".mlmodel") ? [.names, .symbols] : .names   // model class
+            let kinds: RefKindMask = generatesClass(file) ? [.names, .symbols] : .names
             let names = [stem, file.fileName]
             if names.contains(where: { name in
                 ctx.refs.sites(name, kinds: kinds, caseInsensitive: true).contains { !isUserText($0) && canSee($0.file) }
@@ -39,10 +41,8 @@ enum ResourceFileUsage {
 
             let ext = (file.fileName as NSString).pathExtension.lowercased()
             let low: String?
-            if let folder = folderRefs.first(where: { RelPath.isUnder(file.path, $0) }) {
-                low = "inside folder reference \(folder); copied as a whole"
-            } else if let copy = copied.first(where: { RelPath.isUnder(file.path, $0) }) {
-                low = "copied by Package.swift .copy(\"\(RelPath.lastComponent(copy))\")"
+            if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0) }) {
+                low = root.1
             } else if let site = folderLoad(ext, ctx, canSee: canSee) {
                 low = "every .\(ext) resource is loaded at \(site)"
             } else {
@@ -57,6 +57,9 @@ enum ResourceFileUsage {
             } else if file.kind == .plist {
                 confidence = .medium
                 reasons.append("plists are sometimes read by SDKs by convention")
+            } else if file.kind == .dataModel {
+                confidence = .medium
+                reasons.append("Core Data models load without a name (NSManagedObjectModel.mergedModel(from:))")
             }
             out.append(Finding(kind: .unusedResource, category: .files, path: file.path,
                                module: ctx.moduleName(for: file.path), confidence: confidence, reasons: reasons,
@@ -65,18 +68,26 @@ enum ResourceFileUsage {
         return out
     }
 
+    /// Core ML models and Reality Composer projects are used through a generated type named after the file.
+    static func generatesClass(_ file: SourceFile) -> Bool {
+        ["mlmodel", "mlpackage", "rcproject", "reality"].contains((file.fileName as NSString).pathExtension.lowercased())
+    }
+
     static func isCandidate(_ file: SourceFile) -> Bool {
         kinds.contains(file.kind) || extensions.contains((file.fileName as NSString).pathExtension.lowercased())
     }
 
-    /// Literals that look like paths (`"Tables/rates.csv"`), keyed by lowercased last component and its stem.
+    /// Literals that look like paths (`"art.scnassets/ship.scn"`), keyed by every lowercased component and its
+    /// stem, so a folder-like unit named inside the path counts as well as the file at its end.
     static func pathTails(_ refs: ReferenceIndex) -> [String: [Reference]] {
         var out: [String: [Reference]] = [:]
         for r in refs.references where r.kind == .stringLiteral && r.value.contains("/") && r.value.count < 512 {
-            let last = RelPath.lastComponent(r.value).lowercased()
-            out[last, default: []].append(r)
-            let stem = RelPath.stem(last)
-            if stem != last { out[stem, default: []].append(r) }
+            var keys = Set<String>()
+            for component in r.value.lowercased().split(separator: "/") where !component.isEmpty {
+                keys.insert(String(component))
+                keys.insert(RelPath.stem(String(component)))
+            }
+            for key in keys { out[key, default: []].append(r) }
         }
         return out
     }

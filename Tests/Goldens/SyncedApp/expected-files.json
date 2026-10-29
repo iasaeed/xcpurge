@@ -6,7 +6,7 @@
     "name" : "SyncedApp/Excluded/Legacy.swift"
   },
   {
-    "confidence" : "high",
+    "confidence" : "low",
     "kind" : "unusedResource",
     "module" : "SyncedApp",
     "name" : "SyncedApp/Web/index.html"
