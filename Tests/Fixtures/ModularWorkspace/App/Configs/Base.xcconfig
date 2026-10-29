@@ -1,0 +1,3 @@
+// Project-wide settings shared by every target.
+#include "Shared.xcconfig"
+OTHER_SWIFT_FLAGS = $(inherited) -DMODULAR
