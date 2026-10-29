@@ -1,0 +1,30 @@
+import ArgumentParser
+import Foundation
+import XcpurgeKit
+
+/// `xcpurge assets`: unused and duplicate assets; `--delete` moves unused ones to the trash.
+struct AssetsCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "assets", abstract: "Report unused and duplicate assets; optionally move them to the trash.")
+
+    @OptionGroup var options: CommonOptions
+    @Flag(help: "Move reported unused assets to .xcpurge-trash (undo with `xcpurge restore`).") var delete = false
+    @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
+
+    func run() async throws {
+        let result = try await ScanRunner.scan(options, categories: [.assets, .duplicates])
+        ScanRunner.report(result)
+        if delete {
+            let deletable = result.findings.filter { $0.category == .assets && !$0.kind.isInformational }
+            guard !deletable.isEmpty else { return }
+            let bytes = deletable.compactMap(\.sizeBytes).reduce(0, +)
+            guard ConfirmPrompt.confirm("Move \(deletable.count) asset(s) (\(bytes) bytes) to \(TrashStore.directoryName)?", assumeYes: yes)
+            else { return }
+            let store = try TrashStore.begin(root: result.context.root)
+            let report = try Trash(store: store).apply(deletable, context: result.context)
+            ScanRunner.printAction(report, verb: "trashed", session: store.sessionID)
+            return
+        }
+        try ScanRunner.exitIfFailOn(result)
+    }
+}

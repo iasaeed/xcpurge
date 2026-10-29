@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+DerivedData/
+.xcpurge-trash/
+*.xcodeproj/xcuserdata/
+.DS_Store

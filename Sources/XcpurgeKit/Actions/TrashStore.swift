@@ -1,0 +1,103 @@
+import Foundation
+
+/// Reversible deletion store. Each session lives in `<root>/.xcpurge-trash/<id>/` with one `manifest.json`;
+/// moved files keep their root-relative layout under `files/`, pre-rewrite copies under `originals/`.
+/// Never writes `.bak` files next to sources (they would ship in synced folders and `.lproj`s).
+public final class TrashStore: @unchecked Sendable {
+    public static let directoryName = ".xcpurge-trash"
+    public static let manifestName = "manifest.json"
+
+    public let root: URL
+    public let sessionURL: URL
+    private let lock = NSLock()
+    private var manifest: TrashManifest
+
+    private init(root: URL, sessionURL: URL, manifest: TrashManifest) {
+        self.root = root
+        self.sessionURL = sessionURL
+        self.manifest = manifest
+    }
+
+    public var sessionID: String { lock.withLock { manifest.id } }
+    public var entries: [TrashEntry] { lock.withLock { manifest.entries } }
+
+    /// Creates a new session directory and an empty manifest.
+    public static func begin(root: URL, now: Date = Date()) throws -> TrashStore {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let base = formatter.string(from: now)
+        let trash = root.appendingPathComponent(directoryName)
+        var id = base, n = 1
+        while FileManager.default.fileExists(atPath: trash.appendingPathComponent(id).path) { n += 1; id = "\(base)-\(n)" }
+        let url = trash.appendingPathComponent(id)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let store = TrashStore(root: root, sessionURL: url, manifest: TrashManifest(id: id, createdAt: now))
+        try store.flush()
+        return store
+    }
+
+    /// Moves a root-relative file or folder into the session and records a `moved` entry.
+    public func move(_ path: String) throws {
+        let source = root.appendingPathComponent(path)
+        let stored = "files/" + path
+        let destination = sessionURL.appendingPathComponent(stored)
+        let size = Self.size(of: source)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: source, to: destination)
+        try record(TrashEntry(action: .moved, path: path, stored: stored, sizeBytes: size))
+    }
+
+    /// Copies a root-relative file into the session before it is rewritten and records a `rewritten` entry.
+    /// Backing up the same path twice in one session keeps the first (original) copy.
+    public func backup(_ path: String) throws {
+        if entries.contains(where: { $0.path == path && $0.action == .rewritten }) { return }
+        let source = root.appendingPathComponent(path)
+        let stored = "originals/" + path
+        let destination = sessionURL.appendingPathComponent(stored)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: source, to: destination)
+        try record(TrashEntry(action: .rewritten, path: path, stored: stored, sizeBytes: Self.size(of: source)))
+    }
+
+    /// Absolute URL of an entry's stored copy.
+    public func storedURL(_ entry: TrashEntry) -> URL { sessionURL.appendingPathComponent(entry.stored) }
+
+    /// All sessions under `root`, newest first.
+    public static func sessions(root: URL) throws -> [TrashManifest] {
+        let trash = root.appendingPathComponent(directoryName)
+        guard FileManager.default.fileExists(atPath: trash.path) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try FileManager.default.contentsOfDirectory(atPath: trash.path).compactMap { name in
+            let url = trash.appendingPathComponent(name).appendingPathComponent(manifestName)
+            guard let data = FileManager.default.contents(atPath: url.path) else { return nil }
+            return try decoder.decode(TrashManifest.self, from: data)
+        }.sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
+    }
+
+    /// Directory of a session by ID.
+    public static func sessionURL(root: URL, id: String) -> URL {
+        root.appendingPathComponent(directoryName).appendingPathComponent(id)
+    }
+
+    private func record(_ entry: TrashEntry) throws {
+        lock.withLock { manifest.entries.append(entry) }
+        try flush()
+    }
+
+    private func flush() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        let data = try lock.withLock { try encoder.encode(manifest) }
+        try data.write(to: sessionURL.appendingPathComponent(Self.manifestName), options: .atomic)
+    }
+
+    static func size(of url: URL) -> Int64 {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return 0 }
+        if isDir.boolValue { return FileWalker.treeSize(url.path) }
+        return ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
+    }
+}
