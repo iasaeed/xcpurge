@@ -101,7 +101,7 @@ final class FileWalkerTests: XCTestCase {
         let root = try FixtureSupport.tempTree([
             "Sources/App/build/Builder.swift": "",
             "Sources/App/main.swift": "",
-            "build/Release-iphoneos/x.swift": "",
+            "Out/build/Release-iphoneos/x.swift": "",
             "Packages/Kit/Package.swift": "",
             "Packages/Kit/build/x.swift": "",
             "Tools/build/Debug-iphonesimulator/y.swift": "",
@@ -109,13 +109,28 @@ final class FileWalkerTests: XCTestCase {
             "android/app/build/intermediates/a.json": "",
             "android/app/build.gradle": "",
             "web/build/outputs/b.js": "",
+            "Lib/build/ReleaseNotesView.swift": "",
+            "Lib/build/DebugMenu.swift": "",
+            "Mono/flutter_app/pubspec.yaml": "name: x",
+            "Mono/flutter_app/build/web/main.dart.js": "",
+            "Pkg/Makefile": "all:",
+            "Pkg/build/Package.swift": "",
+            "Pkg/build/Sources/B/B.swift": "",
+            "build/Package.swift": "",
+            "build/Sources/Top/Top.swift": "",
         ])
         let paths = Set(FileWalker().walk(root: root).files.map(\.path))
         XCTAssertTrue(paths.contains("Sources/App/build/Builder.swift"))
-        XCTAssertFalse(paths.contains("build/Release-iphoneos/x.swift"), "scan root")
+        XCTAssertFalse(paths.contains("Out/build/Release-iphoneos/x.swift"), "configuration folder")
         XCTAssertFalse(paths.contains("Packages/Kit/build/x.swift"), "beside Package.swift")
         XCTAssertFalse(paths.contains { $0.hasPrefix("Tools/build/") }, "configuration and *.build folders")
         XCTAssertFalse(paths.contains { $0.hasPrefix("android/app/build/") }, "Gradle output")
         XCTAssertFalse(paths.contains { $0.hasPrefix("web/build/") }, "outputs folder")
+        // Review 2 #4: files named like build folders, Flutter output, and build/ folders holding a package.
+        XCTAssertTrue(paths.contains("Lib/build/ReleaseNotesView.swift"))
+        XCTAssertTrue(paths.contains("Lib/build/DebugMenu.swift"))
+        XCTAssertFalse(paths.contains("Mono/flutter_app/build/web/main.dart.js"), "beside pubspec.yaml")
+        XCTAssertTrue(paths.contains("Pkg/build/Sources/B/B.swift"), "contains Package.swift despite the Makefile")
+        XCTAssertTrue(paths.contains("build/Sources/Top/Top.swift"), "top-level build/ holding a package")
     }
 }

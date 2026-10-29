@@ -116,8 +116,9 @@ Modules (5)
 `Pods/` is skipped unless `--include-pods`. `DerivedData`, `node_modules`, `.build`, hidden folders and folders
 containing `XCBuildData` / `workspace-state.json` are never walked. A `build/` folder is skipped when it is build
 output: at the scan root, beside a project, `Package.swift` or build script (`build.gradle`, `package.json`,
-`Makefile`, ...), or holding `Debug*`/`Release*`/`intermediates`/`outputs`/`*.build` folders;
-a source folder that happens to be called `build` is scanned.
+`pubspec.yaml`, `Makefile`, ...), or holding a `Debug`/`Release`/`Debug-*`/`Release-*`/`intermediates`/`outputs`/
+`*.build` folder. A `build/` folder that holds a `Package.swift` or `.xcodeproj`, or any other source folder that
+happens to be called `build`, is scanned.
 
 Every file is scanned whatever its size. Generic text (JSON, HTML, CSS, JS, xcconfig) over 5 MB is streamed in
 1 MB chunks and scanned line by line; a literal on a single line longer than a chunk can be cut at a chunk

@@ -75,25 +75,29 @@ public struct FileWalker: Sendable {
     /// Files whose presence next to a `build/` folder marks it as that build system's output.
     static let buildSystemFiles: Set<String> = [
         "Package.swift", "build.gradle", "build.gradle.kts", "settings.gradle", "gradlew", "CMakeLists.txt",
-        "package.json", "Makefile",
+        "package.json", "Makefile", "pubspec.yaml",
     ]
 
-    /// `build/` is Xcode's legacy SYMROOT, the conventional `-derivedDataPath` and Gradle's output, but also a
-    /// plausible source folder name: it is build output at the scan root, beside a project, package or build
-    /// script, or when it holds configuration (`Debug-iphoneos`, `release`), `*.build`, `intermediates` or
-    /// `outputs` folders.
+    /// `build/` is Xcode's legacy SYMROOT, the conventional `-derivedDataPath` and Gradle's/Flutter's output, but
+    /// also a plausible source folder name. It is source when it holds a package or project; otherwise it is build
+    /// output at the scan root, beside a project, package or build script, or when it holds a build folder
+    /// (`Debug`, `Release-iphoneos`, `intermediates`, `outputs`, `*.build`; directories only, exact names).
     static func isBuildOutput(rel: String, absolute: String) -> Bool {
         let fm = FileManager.default
+        let children = (try? fm.contentsOfDirectory(atPath: absolute)) ?? []
+        if children.contains(where: { $0 == "Package.swift" || $0.hasSuffix(".xcodeproj") }) { return false }
         if !rel.contains("/") { return true }
         let parent = (absolute as NSString).deletingLastPathComponent
         let siblings = (try? fm.contentsOfDirectory(atPath: parent)) ?? []
         if siblings.contains(where: { buildSystemFiles.contains($0) || $0.hasSuffix(".xcodeproj") || $0.hasSuffix(".xcworkspace") }) {
             return true
         }
-        let children = (try? fm.contentsOfDirectory(atPath: absolute)) ?? []
         return children.contains { child in
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: absolute + "/" + child, isDirectory: &isDir), isDir.boolValue else { return false }
             let name = child.lowercased()
-            return name.hasSuffix(".build") || ["debug", "release", "intermediates", "outputs"].contains { name.hasPrefix($0) }
+            return name.hasSuffix(".build") || ["debug", "release", "intermediates", "outputs"].contains(name)
+                || name.hasPrefix("debug-") || name.hasPrefix("release-")
         }
     }
 
