@@ -1,0 +1,62 @@
+[
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "App",
+    "name" : "error_*"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "DesignSystem",
+    "name" : "Packages/DesignSystem/Sources/DesignSystem/DSButton.swift"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "staleString",
+    "module" : "App",
+    "name" : "old_banner"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "App",
+    "name" : "RandomKey"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedString",
+    "module" : "App",
+    "name" : "error_404"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedString",
+    "module" : "App",
+    "name" : "error_500"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "App",
+    "name" : "legacy_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "App",
+    "name" : "manual_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "DesignSystem",
+    "name" : "ds_no_bundle"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "DesignSystem",
+    "name" : "shared_key"
+  }
+]

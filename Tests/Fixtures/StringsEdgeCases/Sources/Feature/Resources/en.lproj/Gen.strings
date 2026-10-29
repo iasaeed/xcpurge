@@ -1,0 +1,8 @@
+/* Accessed through SwiftGen's L10n */
+"swiftgen_used" = "SwiftGen";
+
+/* Accessed through R.string.gen */
+"rswift_used" = "R.swift";
+
+/* Generated accessor exists, but nothing calls it */
+"gen_unused" = "Unused";

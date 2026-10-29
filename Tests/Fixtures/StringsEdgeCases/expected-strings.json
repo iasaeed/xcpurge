@@ -1,0 +1,140 @@
+[
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "Feature",
+    "name" : "Sources/Feature/FeatureView.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "Feature",
+    "name" : "status_*"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "staleString",
+    "module" : "Feature",
+    "name" : "stale_found"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "staleString",
+    "module" : "Feature",
+    "name" : "stale_key"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "Bogus_Key"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "Hidden"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "bare_key"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "device_key"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "ewv_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "feature_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "gen_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "legacy_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "loose_key"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "manual_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "no_bundle_key"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "no_translate"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "plural_unused"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "status_fail"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "status_ok"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "trailing_key"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "unquoted_key"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "zzz-99-zzz.normalTitle"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "Feature",
+    "name" : "Über_key"
+  }
+]

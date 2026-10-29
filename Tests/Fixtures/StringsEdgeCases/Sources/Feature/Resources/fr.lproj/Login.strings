@@ -1,0 +1,6 @@
+
+/* Class = "UILabel"; text = "Sign in"; ObjectID = "abc-12-def"; */
+"abc-12-def.text" = "Se connecter";
+
+/* Class = "UIButton"; normalTitle = "Removed"; ObjectID = "zzz-99-zzz"; */
+"zzz-99-zzz.normalTitle" = "Supprimé";
