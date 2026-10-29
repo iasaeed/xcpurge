@@ -44,7 +44,7 @@ enum ResourceFileUsage {
 
             let ext = (file.fileName as NSString).pathExtension.lowercased()
             let low: String?
-            if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0) }) {
+            if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0, foldingCase: ctx.inventory.isCaseInsensitive) }) {
                 low = root.1
             } else if let site = folderLoad(ext, ctx, canSee: canSee) {
                 low = "every .\(ext) resource is loaded at \(site)"

@@ -10,4 +10,6 @@ public struct PBXProjEdit: Sendable {
     public let referenceCount: Int
     /// The edited file contents.
     let output: Data
+    /// The file contents the edit was planned from (written back by `PBXProjEditor.revert`).
+    let original: Data
 }

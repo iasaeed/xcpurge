@@ -49,6 +49,11 @@ public enum RelPath {
         dir.isEmpty || path == dir || path.hasPrefix(dir.hasSuffix("/") ? dir : dir + "/")
     }
 
+    /// `isUnder`, ignoring case when `foldingCase` (paths on a case-insensitive volume).
+    public static func isUnder(_ path: String, _ dir: String, foldingCase: Bool) -> Bool {
+        foldingCase ? isUnder(path.lowercased(), dir.lowercased()) : isUnder(path, dir)
+    }
+
     public static func lastComponent(_ path: String) -> String {
         path.split(separator: "/").last.map(String.init) ?? path
     }

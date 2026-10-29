@@ -241,7 +241,10 @@ public struct AssetsDetector: Detector {
     /// Why a loose file may be loaded without its name appearing anywhere, or nil.
     static func folderLoad(_ file: SourceFile, ctx: ScanContext, resolver: AssetReferenceResolver,
                            visible: Set<ModuleID>, roots: [(String, String)]) -> String? {
-        if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0) && file.path != $0.0 }) { return root.1 }
+        let folding = ctx.inventory.isCaseInsensitive
+        if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0, foldingCase: folding) && file.path != $0.0 }) {
+            return root.1
+        }
         let ext = (file.fileName as NSString).pathExtension
         guard !ext.isEmpty else { return nil }
         let loads = ctx.refs.sites(ext, kinds: .stringLiteral, caseInsensitive: true).first {

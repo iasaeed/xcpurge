@@ -8,7 +8,10 @@ public enum PBXProjEditor {
     /// Dry run: the edit removing every reference to `paths`, nil when the project references none of them.
     /// Throws when the references cannot be removed safely (unusual formatting, unreadable result).
     /// `.xcdatamodeld` version groups go with their `.xcdatamodel` children.
-    public static func plan(removing paths: Set<String>, in project: ProjectModel, root: URL) throws -> PBXProjEdit? {
+    /// - Parameter foldingCase: match project paths to `paths` ignoring case (case-insensitive volume);
+    ///   `PBXProjEdit.paths` keeps the spelling of `paths`.
+    public static func plan(removing paths: Set<String>, in project: ProjectModel, root: URL,
+                            foldingCase: Bool = false) throws -> PBXProjEdit? {
         guard project.format == .pbxproj, !paths.isEmpty else { return nil }
         let rel = RelPath.join(project.container, "project.pbxproj")
         let data = try Data(contentsOf: root.appendingPathComponent(rel))
@@ -21,11 +24,12 @@ public enum PBXProjEditor {
         let projPath = RelPath.join(rootPath, project.container)
         let projectDir = RelPath.join(RelPath.parent(projPath), projectObj["projectDirPath"] as? String ?? "")
         var graph = PBXObjectGraph(objects: objects, rootID: rootID, projectDir: projectDir)
+        let fold = { (p: String) in foldingCase ? p.lowercased() : p }
+        let requested = Dictionary(paths.map { (fold($0), $0) }, uniquingKeysWith: { a, _ in a })
         var refIDs = Set<String>(), matched = Set<String>()
         for id in objects.keys.sorted() where graph.isa(id) == "PBXFileReference" || graph.isa(id) == "XCVersionGroup" {
             guard let abs = graph.path(of: id) else { continue }
-            let path = RelPath.relative(abs, to: rootPath)
-            guard paths.contains(path) else { continue }
+            guard let path = requested[fold(RelPath.relative(abs, to: rootPath))] else { continue }
             refIDs.insert(id)
             matched.insert(path)
             if graph.isa(id) == "XCVersionGroup" { refIDs.formUnion(graph.ids(id, "children")) }
@@ -42,7 +46,7 @@ public enum PBXProjEditor {
         guard (try? PropertyListSerialization.propertyList(from: output, format: nil)) != nil else {
             throw XcpurgeError.invalidProject(project.container, "edit would produce an unreadable project")
         }
-        return PBXProjEdit(projectFile: rel, paths: matched, referenceCount: refIDs.count, output: output)
+        return PBXProjEdit(projectFile: rel, paths: matched, referenceCount: refIDs.count, output: output, original: data)
     }
 
     /// Backs the project file up into `store`, then writes the planned edit.
@@ -51,18 +55,24 @@ public enum PBXProjEditor {
         try edit.output.write(to: root.appendingPathComponent(edit.projectFile), options: .atomic)
     }
 
+    /// Writes back the contents `edit` was planned from.
+    public static func revert(_ edit: PBXProjEdit, root: URL) throws {
+        try edit.original.write(to: root.appendingPathComponent(edit.projectFile), options: .atomic)
+    }
+
     /// The paths of `paths` whose references can be removed in one edit: all of them, or else every path that
     /// can be removed alone (re-checked together). Failures carry the reason, per path.
-    public static func removable(_ paths: Set<String>, in project: ProjectModel, root: URL)
+    public static func removable(_ paths: Set<String>, in project: ProjectModel, root: URL, foldingCase: Bool = false)
         -> (paths: Set<String>, failures: [String: String]) {
-        if (try? plan(removing: paths, in: project, root: root)) != nil { return (paths, [:]) }
+        let check = { (set: Set<String>) in try plan(removing: set, in: project, root: root, foldingCase: foldingCase) }
+        if (try? check(paths)) != nil { return (paths, [:]) }
         var ok = Set<String>(), failures: [String: String] = [:]
         for path in paths.sorted() {
-            do { _ = try plan(removing: [path], in: project, root: root); ok.insert(path) } catch {
+            do { _ = try check([path]); ok.insert(path) } catch {
                 failures[path] = "\(error)"
             }
         }
-        if !ok.isEmpty, (try? plan(removing: ok, in: project, root: root)) == nil {
+        if !ok.isEmpty, (try? check(ok)) == nil {
             for path in ok { failures[path] = "references cannot be removed together with the others" }
             ok = []
         }

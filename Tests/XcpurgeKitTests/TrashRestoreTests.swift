@@ -246,4 +246,44 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertEqual(PBXProjEditor.removeObjects([], from: text), text)
         XCTAssertEqual(PBXProjEditor.removeObjects(["X"], from: "a\r\n\t\tX /* x */,\r\nb\r\n"), "a\r\nb\r\n")
     }
+
+    // MARK: - Review 2
+
+    /// #1: on a case-insensitive volume a file whose disk spelling differs from the project's is trashed
+    /// together with its reference.
+    func testCaseMismatchedReferenceIsRemovedWithTheFile() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        guard !FileInventory.isCaseSensitiveVolume(root) else { throw XCTSkip("temporary volume is case-sensitive") }
+        let fm = FileManager.default
+        let dir = root.appendingPathComponent("ClassicApp")
+        try fm.moveItem(at: dir.appendingPathComponent("unused_loose.png"), to: dir.appendingPathComponent("tmp.png"))
+        try fm.moveItem(at: dir.appendingPathComponent("tmp.png"), to: dir.appendingPathComponent("Unused_Loose.png"))
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.assets])
+        let high = result.findings.filter { $0.confidence == .high && $0.path.hasSuffix("Unused_Loose.png") }
+        XCTAssertEqual(high.map(\.path), ["ClassicApp/Unused_Loose.png"])
+        let report = try Trash(store: try TrashStore.begin(root: result.context.root)).apply(high, context: result.context)
+        XCTAssertEqual(report.moved, ["ClassicApp/Unused_Loose.png"])
+        XCTAssertEqual(report.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        let pbx = try String(contentsOf: root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj"), encoding: .utf8)
+        XCTAssertFalse(pbx.contains("unused_loose.png"))
+        XCTAssertTrue(RelPath.isUnder("App/Web/a.html", "app/web", foldingCase: true))
+        XCTAssertFalse(RelPath.isUnder("App/Web/a.html", "app/web", foldingCase: false))
+    }
+
+    /// #6: the project edit is written first; a file that then fails to move gets its reference back.
+    func testFailedMoveRestoresItsReference() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let original = try Data(contentsOf: pbxproj)
+        let context = try await ScanEngine(root: root, config: Config()).makeContext()
+        let dir = root.appendingPathComponent("ClassicApp").path
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir) }
+        let report = try Trash(store: try TrashStore.begin(root: context.root)).apply([finding("ClassicApp/Unused.plist")],
+                                                                                   context: context)
+        XCTAssertTrue(report.moved.isEmpty)
+        XCTAssertTrue(report.rewritten.isEmpty)
+        XCTAssertTrue(report.skipped.contains { $0.path == "ClassicApp/Unused.plist" && $0.reason.hasPrefix("cannot move") })
+        XCTAssertEqual(try Data(contentsOf: pbxproj), original, "reference restored")
+    }
 }
