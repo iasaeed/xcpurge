@@ -37,6 +37,10 @@ public struct DuplicatesDetector: Detector {
                               size: file.size))
         }
 
+        // `--exclude`d files are never findable, so they cannot make another file a duplicate either.
+        let excludes = ctx.config.exclude.map(Glob.init)
+        items.removeAll { item in excludes.contains { $0.matches(item.path) } }
+
         var findings: [Finding] = []
         let bySize = Dictionary(grouping: items.filter { $0.size > 0 }, by: \.size)
         for size in bySize.keys.sorted() {

@@ -19,7 +19,7 @@ struct CommonOptions: ParsableArguments {
     @Option(parsing: .upToNextOption, help: "Exit 1 when findings match: any, assets, strings, files, duplicates, unused-<category>, or a kind (dead-source).")
     var failOn: [String] = []
     @Option(help: "Hide findings below this confidence: low, medium, high.") var minConfidence: Confidence?
-    @Option(parsing: .singleValue, help: "Glob of paths to skip (repeatable).") var exclude: [String] = []
+    @Option(parsing: .singleValue, help: "Glob of paths never reported (still read as references; repeatable).") var exclude: [String] = []
     @Option(help: "Config file (default: <path>/xcpurge.json).") var config: String?
     @Option(help: "DerivedData folder to read generated asset symbols from.") var derivedData: String?
     @Option(parsing: .singleValue, help: "Extra localization function name (repeatable).") var localizationMacro: [String] = []

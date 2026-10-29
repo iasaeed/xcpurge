@@ -54,11 +54,15 @@ final class FileWalkerTests: XCTestCase {
 
     func testIncludePodsAndExcludes() throws {
         let root = try tree()
-        let withPods = FileWalker(includePods: true, excludes: [Glob("Vendor/**"), Glob("*.strings")]).walk(root: root)
+        let withPods = FileWalker(includePods: true, excludes: [Glob("Vendor/**"), Glob("*.strings"), Glob("Packages/**")])
+            .walk(root: root)
         let paths = Set(withPods.files.map(\.path))
         XCTAssertTrue(paths.contains("Pods/Alamofire/a.swift"))
-        XCTAssertFalse(paths.contains("Vendor/Lib/lib.swift"))
-        XCTAssertFalse(paths.contains("App/en.lproj/Localizable.strings"))
+        // Review #7: excluded files stay in the inventory as reference sources; only containers are not discovered.
+        XCTAssertTrue(paths.contains("Vendor/Lib/lib.swift"))
+        XCTAssertTrue(paths.contains("App/en.lproj/Localizable.strings"))
+        XCTAssertFalse(withPods.packages.contains("Packages/Kit"))
+        XCTAssertTrue(withPods.packages.contains(""))
     }
 
     func testGlob() {

@@ -85,7 +85,10 @@ final class ScanEngineTests: XCTestCase {
         XCTAssertEqual(c.targets, ["App"])
         XCTAssertTrue(c.includePods)
         XCTAssertEqual(try Config.load(from: dir.appendingPathComponent("missing.json")), Config())
-        let template = try JSONDecoder().decode(Config.self, from: Data(Config.template.utf8))
+        let json5 = JSONDecoder()
+        json5.allowsJSON5 = true
+        let template = try json5.decode(Config.self, from: Data(Config.template.utf8))
+        XCTAssertEqual(template.exclude, ["Vendor/**"], "generated code is never excluded by default")
         XCTAssertEqual(template.minConfidence, .medium)
     }
 }

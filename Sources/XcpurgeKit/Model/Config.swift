@@ -62,7 +62,9 @@ public struct Config: Codable, Sendable, Equatable {
     public static let template = """
     {
       "targets": [],
-      "exclude": ["Vendor/**", "**/Generated/**"],
+      // Globs whose files are never reported. They are still read as references, so excluding
+      // generated code (SwiftGen, R.swift) is safe but not needed: generated accessors are detected.
+      "exclude": ["Vendor/**"],
       "minConfidence": "medium",
       "failOn": [],
       "ignoreTestReferences": false,

@@ -3,6 +3,8 @@ import Foundation
 /// Enumerates the scan root, skipping build output and VCS folders and treating bundle-like folders as units.
 public struct FileWalker: Sendable {
     public var includePods: Bool
+    /// `--exclude` globs: files there are still inventoried (they stay reference sources; the engine drops
+    /// findings about them), but no project, workspace or package is discovered inside them.
     public var excludes: [Glob]
 
     public init(includePods: Bool = false, excludes: [Glob] = []) {
@@ -32,20 +34,20 @@ public struct FileWalker: Sendable {
                 if isDir { enumerator.skipDescendants() }
                 continue
             }
-            if excludes.contains(where: { $0.matches(rel) }) {
-                if isDir { enumerator.skipDescendants() }
-                continue
-            }
+            let excluded = excludes.contains { $0.matches(rel) }
             guard isDir else {
                 guard type == .typeRegular else { continue }
-                if name == "Package.swift" { result.packages.append(RelPath.parent(rel)) }
+                if name == "Package.swift", !excluded { result.packages.append(RelPath.parent(rel)) }
                 let size = (enumerator.fileAttributes?[.size] as? NSNumber)?.int64Value ?? 0
                 result.files.append(SourceFile(path: rel, kind: FileKind(path: rel), size: size))
                 continue
             }
             let ext = (name as NSString).pathExtension
-            if ext == "xcodeproj" { result.xcodeprojs.append(rel); enumerator.skipDescendants(); continue }
-            if ext == "xcworkspace" { result.workspaces.append(rel); enumerator.skipDescendants(); continue }
+            if ext == "xcodeproj" || ext == "xcworkspace" {
+                if !excluded { ext == "xcodeproj" ? result.xcodeprojs.append(rel) : result.workspaces.append(rel) }
+                enumerator.skipDescendants()
+                continue
+            }
             if shouldSkip(dir: rel, name: name, ext: ext, absolute: rootPath + "/" + rel) {
                 enumerator.skipDescendants()
                 continue

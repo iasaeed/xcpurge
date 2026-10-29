@@ -139,6 +139,32 @@ final class StringsDetectorTests: XCTestCase {
         XCTAssertNotNil(IBStringsResolver.split("UIa-b2-C3d.normalTitle"))
     }
 
+    /// Review #7: `--exclude` hides findings in excluded files but they still count as references.
+    func testExcludedGeneratedCodeStillReferencesKeys() async throws {
+        let generated = """
+        // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+        internal enum L10n {
+          internal static let welcomeTitle = L10n.tr("Localizable", "welcome_title", fallback: "Welcome")
+          internal static let unusedTitle = L10n.tr("Localizable", "unused_title", fallback: "Unused")
+        }
+        """
+        let root = try FixtureSupport.tempTree([
+            "en.lproj/Localizable.strings": "\"welcome_title\" = \"Welcome\";\n\"unused_title\" = \"U\";\n",
+            "Sources/Generated/Strings.swift": generated,
+            "Sources/V.swift": "let t = L10n.welcomeTitle\n",
+            "Sources/Generated/en.lproj/Extra.strings": "\"extra_unused\" = \"E\";\n",
+        ])
+        for exclude in [[String](), ["**/Generated/**"]] {
+            var config = Config()
+            config.noSwift = true
+            config.exclude = exclude
+            let names = try await ScanEngine(root: root, config: config).run(categories: [.strings]).findings.compactMap(\.name)
+            XCTAssertFalse(names.contains("welcome_title"), "\(exclude)")
+            XCTAssertTrue(names.contains("unused_title"), "\(exclude)")
+            XCTAssertEqual(names.contains("extra_unused"), exclude.isEmpty, "findings inside excluded paths are hidden")
+        }
+    }
+
     func testDynamicLookupInfoFindings() async throws {
         let ctx = try await FixtureSupport.context("StringsEdgeCases", config: Self.config)
         let lookups = StringsDetector().run(ctx).filter { $0.kind == .dynamicLookup }
