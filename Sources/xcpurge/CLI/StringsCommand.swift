@@ -7,14 +7,15 @@ struct StringsCommand: AsyncParsableCommand {
         commandName: "strings", abstract: "Report unused localized strings; optionally prune them.")
 
     @OptionGroup var options: CommonOptions
-    @Flag(help: "Remove reported keys from string catalogs and .strings files (backups in .xcpurge-trash).") var prune = false
+    @Flag(help: "Remove reported keys (high confidence unless --min-confidence is given) from string catalogs and .strings files (backups in .xcpurge-trash).")
+    var prune = false
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.strings])
         ScanRunner.report(result)
         if prune {
-            let prunable = result.findings.filter { $0.category == .strings && !$0.kind.isInformational }
+            let prunable = ScanRunner.actionable(result, category: .strings, options: options)
             guard !prunable.isEmpty,
                   ConfirmPrompt.confirm("Remove \(prunable.count) string key(s)?", assumeYes: yes) else { return }
             let store = try TrashStore.begin(root: result.context.root)

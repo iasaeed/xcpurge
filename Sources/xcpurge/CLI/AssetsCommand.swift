@@ -8,14 +8,15 @@ struct AssetsCommand: AsyncParsableCommand {
         commandName: "assets", abstract: "Report unused and duplicate assets; optionally move them to the trash.")
 
     @OptionGroup var options: CommonOptions
-    @Flag(help: "Move reported unused assets to .xcpurge-trash (undo with `xcpurge restore`).") var delete = false
+    @Flag(help: "Move reported unused assets (high confidence unless --min-confidence is given) to .xcpurge-trash (undo with `xcpurge restore`).")
+    var delete = false
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.assets, .duplicates])
         ScanRunner.report(result)
         if delete {
-            let deletable = result.findings.filter { $0.category == .assets && !$0.kind.isInformational }
+            let deletable = ScanRunner.actionable(result, category: .assets, options: options)
             guard !deletable.isEmpty else { return }
             let bytes = deletable.compactMap(\.sizeBytes).reduce(0, +)
             guard ConfirmPrompt.confirm("Move \(deletable.count) asset(s) (\(bytes) bytes) to \(TrashStore.directoryName)?", assumeYes: yes)

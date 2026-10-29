@@ -7,14 +7,15 @@ struct FilesCommand: AsyncParsableCommand {
         commandName: "files", abstract: "Report orphan, ghost and dead files; optionally move them to the trash.")
 
     @OptionGroup var options: CommonOptions
-    @Flag(help: "Move reported files to .xcpurge-trash and drop their project references.") var delete = false
+    @Flag(help: "Move reported files (high confidence unless --min-confidence is given) to .xcpurge-trash and drop their project references.")
+    var delete = false
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.files])
         ScanRunner.report(result)
         if delete {
-            let deletable = result.findings.filter { !$0.kind.isInformational }
+            let deletable = ScanRunner.actionable(result, category: .files, options: options)
             guard !deletable.isEmpty,
                   ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", assumeYes: yes) else { return }
             let store = try TrashStore.begin(root: result.context.root)
