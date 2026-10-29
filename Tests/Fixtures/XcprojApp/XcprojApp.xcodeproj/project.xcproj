@@ -25,6 +25,16 @@
       path: "Explicit",
       children: [
         { path: "Tool.swift", "target-membership": ["App/compile-sources"] },
+        // Variant group: membership is on the group, its localized children inherit it.
+        {
+          kind: "variant-group",
+          name: "Tool.strings",
+          "target-membership": ["App/resources"],
+          children: [
+            { path: "en.lproj/Tool.strings" },
+            { path: "fr.lproj/Tool.strings" },
+          ],
+        },
       ],
     },
     {

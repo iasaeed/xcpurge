@@ -52,6 +52,8 @@ final class XcprojFixtureTests: XCTestCase {
         XCTAssertEqual(modules("App/Info.plist"), ["App"], "excluded from the folder, but it is App's INFOPLIST_FILE")
         XCTAssertEqual(modules("Explicit/Tool.swift"), ["App"], "\"App/compile-sources\" file membership")
         XCTAssertEqual(modules("AppTests/AppTests.swift"), ["AppTests"])
+        XCTAssertEqual(modules("Explicit/en.lproj/Tool.strings"), ["App"], "variant-group membership reaches its children")
+        XCTAssertEqual(modules("Explicit/fr.lproj/Tool.strings"), ["App"])
         XCTAssertEqual(ctx.projects.first?.groupPaths, ["AppTests", "Explicit"])
     }
 }

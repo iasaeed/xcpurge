@@ -229,23 +229,26 @@ public enum XcprojParser {
             return RelPath.join(base, path.replacingOccurrences(of: "\\<", with: "<"))
         }
 
-        mutating func visit(_ node: JSONValue, base: String) {
+        /// - Parameter inherited: membership of an enclosing variant group, which its localized children share.
+        mutating func visit(_ node: JSONValue, base: String, inherited: [(String, String)] = []) {
             let rawPath = node["path"]?.stringValue ?? ""
             guard let abs = resolve(rawPath, base: base) else {
                 // Build products and SDK files: keep only their membership (embed / link phases).
                 if (node["kind"]?.stringValue ?? "file-reference") == "file-reference" {
-                    files.append(FileNode(path: rawPath, membership: membership(node), isProductsGroup: inProducts, resolved: false))
+                    files.append(FileNode(path: rawPath, membership: membership(node) + inherited, isProductsGroup: inProducts,
+                                          resolved: false))
                 }
                 return
             }
             let rel = RelPath.relative(abs, to: rootPath)
             switch node["kind"]?.stringValue ?? "file-reference" {
-            case "group", "variant-group":
+            case let kind where kind == "group" || kind == "variant-group":
                 let name = node["name"]?.stringValue ?? RelPath.lastComponent(rawPath)
                 if !rawPath.isEmpty { groupPaths.insert(rel) }
                 let wasProducts = inProducts
                 if name == "Products" { inProducts = true }
-                for child in node["children"]?.arrayValue ?? [] { visit(child, base: abs) }
+                let passed = kind == "variant-group" ? inherited + membership(node) : inherited
+                for child in node["children"]?.arrayValue ?? [] { visit(child, base: abs, inherited: passed) }
                 inProducts = wasProducts
             case "folder":
                 var exceptions: [SyncedException] = []
@@ -271,7 +274,8 @@ public enum XcprojParser {
                     explicitFolders: (node["opaque-folders"]?.arrayValue ?? []).compactMap(\.stringValue),
                     explicitFileTypes: fileTypes))
             default:
-                files.append(FileNode(path: rel, membership: membership(node), isProductsGroup: inProducts, resolved: true))
+                files.append(FileNode(path: rel, membership: membership(node) + inherited, isProductsGroup: inProducts,
+                                      resolved: true))
             }
         }
 
