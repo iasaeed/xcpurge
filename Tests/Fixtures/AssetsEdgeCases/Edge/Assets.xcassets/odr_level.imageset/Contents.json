@@ -1,0 +1,17 @@
+{
+  "images" : [
+    {
+      "filename" : "odr_level.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  },
+  "properties" : {
+    "on-demand-resource-tags" : [
+      "level1"
+    ]
+  }
+}

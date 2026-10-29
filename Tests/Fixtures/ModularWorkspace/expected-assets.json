@@ -1,0 +1,56 @@
+[
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "App",
+    "name" : "icon_*"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedAsset",
+    "module" : "App",
+    "name" : "LegacyIcon"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedAsset",
+    "module" : "App",
+    "name" : "icon_1"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedAsset",
+    "module" : "App",
+    "name" : "icon_2"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "App",
+    "name" : "unused_app_image"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "Core",
+    "name" : "core_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "DesignSystem",
+    "name" : "ds_isolated"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "DesignSystem",
+    "name" : "ds_unused"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedFont",
+    "module" : "App",
+    "name" : "Unused-Bold.otf"
+  }
+]
