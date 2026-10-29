@@ -8,7 +8,7 @@ enum ReportTemplate {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 <title>{{TOOL}} report · {{ROOT}}</title>
 <style>
 :root {
@@ -19,24 +19,6 @@ enum ReportTemplate {
   --k-app: #2f6fe4; --k-ext: #0f8f80; --k-lib: #8150e0; --k-test: #8a93a2; --k-other: #a86a00;
   --edge: #b3bac6; --on-fill: #ffffff;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0d1015; --panel: #151a21; --panel-2: #1c222b; --text: #e5e9ef; --muted: #9ba5b4; --faint: #6c7686;
-    --border: #283039; --accent: #7aa7ff; --accent-soft: #1b2944; --sel: #1d2a42; --shadow: none;
-    --high: #ff7a70; --high-bg: #3a1d1c; --medium: #f2b649; --medium-bg: #36290f; --low: #9fb0c4; --low-bg: #222a35;
-    --c-assets: #6aa1ff; --c-strings: #ad8cff; --c-files: #38c9b4; --c-duplicates: #f47bb5;
-    --k-app: #6aa1ff; --k-ext: #38c9b4; --k-lib: #ad8cff; --k-test: #6c7686; --k-other: #f2b649;
-    --edge: #4a5462; --on-fill: #0d1015;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #0d1015; --panel: #151a21; --panel-2: #1c222b; --text: #e5e9ef; --muted: #9ba5b4; --faint: #6c7686;
-  --border: #283039; --accent: #7aa7ff; --accent-soft: #1b2944; --sel: #1d2a42; --shadow: none;
-  --high: #ff7a70; --high-bg: #3a1d1c; --medium: #f2b649; --medium-bg: #36290f; --low: #9fb0c4; --low-bg: #222a35;
-  --c-assets: #6aa1ff; --c-strings: #ad8cff; --c-files: #38c9b4; --c-duplicates: #f47bb5;
-  --k-app: #6aa1ff; --k-ext: #38c9b4; --k-lib: #ad8cff; --k-test: #6c7686; --k-other: #f2b649;
-  --edge: #4a5462; --on-fill: #0d1015;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -112,8 +94,19 @@ figcaption small { color: var(--faint); font-weight: 400; }
 .bg-k-app { background: var(--k-app); } .bg-k-ext { background: var(--k-ext); } .bg-k-lib { background: var(--k-lib); } .bg-k-test { background: var(--k-test); } .bg-k-other { background: var(--k-other); }
 
 /* graph */
-.graph { overflow-x: auto; position: relative; }
-.graph svg { display: block; }
+.graph { overflow: hidden; position: relative; border-radius: 8px; }
+.graph svg { display: block; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
+.graph.panning svg { cursor: grabbing; }
+.graph:focus-visible { outline-offset: -2px; }
+.g-right { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.g-right .legend-row { margin-bottom: 0; }
+.gctl { display: flex; align-items: center; gap: 6px; }
+.gctl[hidden], .opt[hidden] { display: none; }
+.gctl button { padding: 2px 9px; min-width: 30px; font-variant-numeric: tabular-nums; }
+.gctl button:disabled { opacity: .45; cursor: default; }
+.gctl .pct { color: var(--muted); font-size: 12px; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.gctl .opt { font-size: 12px; color: var(--muted); padding: 2px 6px; }
+.opt.pods { margin-bottom: 4px; }
 .graph .edge { fill: none; stroke: var(--edge); stroke-width: 1.3; }
 .graph .edge.embed { stroke-dasharray: 5 4; }
 .graph .edge.hl { stroke: var(--accent); stroke-width: 2.2; }
@@ -257,7 +250,6 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
       <button id="btn-json" type="button">Export filtered JSON</button>
       <button id="btn-csv" type="button">Export CSV</button>
       <button id="btn-ignore" type="button" title="Copy .xcpurgeignore entries for the findings currently shown">Copy .xcpurgeignore entries</button>
-      <button id="btn-theme" type="button" aria-label="Color theme: automatic. Activate to change.">Theme: auto</button>
     </div>
   </div>
   <dl class="wrap stats">
@@ -293,13 +285,22 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
 
   <section class="card" aria-labelledby="h-graph">
     <div class="sec-head">
-      <h2 id="h-graph">Module graph</h2>
-      <div class="legend-row" aria-label="Graph legend">
-        <span><i class="sw bg-k-app"></i>app</span><span><i class="sw bg-k-ext"></i>extension</span><span><i class="sw bg-k-lib"></i>library / package</span><span><i class="sw bg-k-test"></i>test</span>
-        <span>── depends on</span><span>- - embeds</span><span>size = findings</span>
+      <h2 id="h-graph">Module graph <span class="hint">· scroll to zoom, drag to pan</span></h2>
+      <div class="g-right">
+        <div class="legend-row" aria-label="Graph legend">
+          <span><i class="sw bg-k-app"></i>app</span><span><i class="sw bg-k-ext"></i>extension</span><span><i class="sw bg-k-lib"></i>library / package</span><span><i class="sw bg-k-test"></i>test</span>
+          <span>── depends on</span><span>- - embeds</span><span>size = findings</span>
+        </div>
+        <label class="opt" id="pods-graph-opt" hidden><input type="checkbox" id="pods-graph" data-pods>Show Pods</label>
+        <div class="gctl" id="gctl" role="group" aria-label="Graph zoom">
+          <button id="z-in" type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>
+          <button id="z-out" type="button" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button id="z-reset" type="button" aria-label="Reset zoom to fit" title="Fit (0)">1:1</button>
+          <span id="z-pct" class="pct" aria-live="polite">100%</span>
+        </div>
       </div>
     </div>
-    <div id="graph" class="graph"></div>
+    <div id="graph" class="graph" tabindex="0" aria-label="Module graph. Plus and minus zoom, 0 resets."></div>
   </section>
 
   <section aria-labelledby="h-findings">
@@ -418,6 +419,29 @@ for (const fc of FACETS) {
   fc.sel = new Set();
 }
 for (const k of FACETS[1].values) KEBAB_TO_KIND[kebab(k)] = k;
+// CocoaPods: a module from the Pods project (or an aggregate `Pods-App` target, or an external kind), and every finding
+// in such a module or under a Pods/ folder. Hidden unless "Show Pods" is checked (`pods=1` in the hash).
+const isPodModule = m => {
+  const id = (m && m.id) || {}, c = '/' + String(id.container || '') + '/', n = String(id.name || '');
+  return c.includes('/Pods/') || c.includes('Pods.xcodeproj') || n.startsWith('Pods-') || /extern|pod/i.test(String(m && m.kind || ''));
+};
+const POD_MOD = new Set(MODULES.filter(isPodModule).map(m => m.id.name));
+const PODF = new Uint8Array(N);
+let podCount = 0;
+for (let i = 0; i < N; i++) {
+  const f = F[i], m = String(f.module);
+  if (POD_MOD.has(m) || m.startsWith('Pods-') || ('/' + (f.path || '')).includes('/Pods/')) { PODF[i] = 1; podCount++; }
+}
+const HAS_PODS = POD_MOD.size > 0 || podCount > 0;
+// Per-facet counts over the findings the Pods toggle lets through (charts and graph sizes).
+let totalsKey = -1, totalsVal = null;
+function totals() {
+  if (totalsKey !== +state.pods) {
+    totalsKey = +state.pods;
+    totalsVal = FACETS.map(fc => { const m = new Map(); for (let i = 0; i < N; i++) if (state.pods || !PODF[i]) { const v = fc.values[fc.codes[i]]; m.set(v, (m.get(v) || 0) + 1); } return m; });
+  }
+  return totalsVal;
+}
 const ignoreEntry = f => {
   if (f.name && f.category === 'assets' && f.kind === 'unusedAsset') return 'asset:' + f.name;
   if (f.name && f.category === 'strings' && f.kind !== 'dynamicLookup') return 'string:' + f.name;
@@ -491,7 +515,7 @@ function parseQuery(q) {
 }
 
 // ---- state ----
-const state = { q: '', sort: 'default', dir: 1 };
+const state = { q: '', sort: 'default', dir: 1, pods: false };
 let pred = null, view = new Int32Array(0), facetCounts = null, active = -1, drawerIndex = -1, selVersion = 0;
 
 function compute() {
@@ -502,6 +526,7 @@ function compute() {
   const mask = new Uint8Array(N);
   let total = 0, bytes = 0;
   for (let i = 0; i < N; i++) {
+    if (!state.pods && PODF[i]) continue;
     if (pred && !pred(i)) continue;
     let miss = -1, nmiss = 0;
     for (const k of anyIdx) { if (!selArr[k][FACETS[k].codes[i]]) { miss = k; if (++nmiss > 1) break; } }
@@ -612,7 +637,9 @@ document.querySelector('thead').addEventListener('click', e => {
 
 // ---- facets ----
 const facetsEl = $('#facets');
-facetsEl.innerHTML = FACETS.map((fc, k) => '<fieldset class="facet' + (fc.key === 'mod' ? ' mods' : '') + '"><h3>' + esc(fc.label) + '</h3><div class="opts">'
+facetsEl.innerHTML = FACETS.map((fc, k) => '<fieldset class="facet' + (fc.key === 'mod' ? ' mods' : '') + '"><h3>' + esc(fc.label) + '</h3>'
+  + (fc.key === 'mod' && HAS_PODS ? '<label class="opt pods"><input type="checkbox" data-pods><span class="lbl">Show Pods</span><span class="num">' + fmt(podCount) + '</span></label>' : '')
+  + '<div class="opts">'
   + fc.values.map((v, j) => '<label class="opt" data-k="' + k + '" data-j="' + j + '"><input type="checkbox" data-k="' + k + '" data-j="' + j + '">'
     + (fc.key === 'conf' ? '<span class="badge b-' + esc(v) + '">' + esc(v) + '</span><span class="lbl"></span>'
       : fc.key === 'cat' ? '<i class="sw bg-' + esc(v) + '" aria-hidden="true"></i><span class="lbl">' + esc(v) + '</span>'
@@ -620,7 +647,9 @@ facetsEl.innerHTML = FACETS.map((fc, k) => '<fieldset class="facet' + (fc.key ==
       : '<span class="lbl" title="' + esc(v) + '">' + esc(v) + '</span>')
     + '<span class="num"></span></label>').join('') + '</div></fieldset>').join('');
 facetsEl.addEventListener('change', e => {
-  const cb = e.target; if (!cb.dataset || cb.dataset.k == null) return;
+  const cb = e.target; if (!cb.dataset) return;
+  if (cb.dataset.pods != null) { setPods(cb.checked); return; }
+  if (cb.dataset.k == null) return;
   const fc = FACETS[+cb.dataset.k], v = fc.values[+cb.dataset.j];
   if (cb.checked) fc.sel.add(v); else fc.sel.delete(v);
   apply();
@@ -632,9 +661,14 @@ function updateFacets() {
       lab.querySelector('.num').textContent = fmt(c);
       lab.classList.toggle('zero', c === 0 && !fc.sel.has(v));
       lab.querySelector('input').checked = fc.sel.has(v);
+      if (fc.key === 'mod') lab.hidden = !state.pods && POD_MOD.has(v);
     }
   });
+  for (const cb of document.querySelectorAll('input[data-pods]')) cb.checked = state.pods;
 }
+function setPods(on) { state.pods = !!on; apply({ resetScroll: true }); }
+$('#pods-graph').addEventListener('change', e => setPods(e.target.checked));
+$('#pods-graph-opt').hidden = !HAS_PODS;
 function renderChips() {
   const chips = [];
   FACETS.forEach(fc => { for (const v of fc.sel) chips.push('<button type="button" class="chip" data-chip="' + fc.key + '" data-v="' + esc(v) + '" aria-label="Remove filter ' + esc(fc.label) + ' ' + esc(fc.show ? fc.show(v) : v) + '"><b>' + esc(fc.label.toLowerCase()) + '</b>' + esc(fc.show ? fc.show(v) : v) + ' ✕</button>'); });
@@ -685,13 +719,14 @@ function arc(cx, cy, R, r, a0, a1) {
   return 'M' + p(R, a0) + ' A' + R + ' ' + R + ' 0 ' + large + ' 1 ' + p(R, a1) + ' L' + p(r, a1) + ' A' + r + ' ' + r + ' 0 ' + large + ' 0 ' + p(r, a0) + ' Z';
 }
 function renderCharts() {
+  const T = totals(), shown = i => state.pods || !PODF[i];
   const kinds = FACETS[1];
-  hbars($('#ch-kind'), kinds.values.map(k => ({ label: kebab(k), value: kinds.total.get(k), text: fmt(kinds.total.get(k)), cls: 'f-' + kindCat[k], set: [['kind', k]], on: isOn('kind', k), dim: isDim('kind', k) })), 'Findings by kind');
+  hbars($('#ch-kind'), kinds.values.filter(k => T[1].get(k)).map(k => ({ label: kebab(k), value: T[1].get(k), text: fmt(T[1].get(k)), cls: 'f-' + kindCat[k], set: [['kind', k]], on: isOn('kind', k), dim: isDim('kind', k) })), 'Findings by kind');
 
   // donut
-  const conf = FACETS[2], el = $('#ch-conf');
+  const conf = { total: T[2] }, el = $('#ch-conf');
   const vals = CONFS.filter(c => conf.total.get(c));
-  const tot = vals.reduce((a, c) => a + conf.total.get(c), 0) || 1;
+  const shownN = vals.reduce((a, c) => a + conf.total.get(c), 0), tot = shownN || 1;
   const R = 70, r = 44, cx = 76, cy = 76;
   let a = -Math.PI / 2, s = '<div class="donut-wrap"><svg width="152" height="152" role="group" aria-label="Findings by confidence">';
   for (const c of vals) {
@@ -699,7 +734,7 @@ function renderCharts() {
     s += '<g class="hit' + (isDim('conf', c) ? ' dim' : '') + '" tabindex="0" role="button" aria-pressed="' + isOn('conf', c) + '" data-set="' + esc(JSON.stringify([['conf', c]])) + '" aria-label="' + c + ': ' + fmt(n) + '"><title>' + c + ': ' + fmt(n) + '</title><path class="fill f-' + c + '" d="' + arc(cx, cy, R, r, a + gap, a + sweep - gap) + '"/></g>';
     a += sweep;
   }
-  s += '<text class="big" x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle">' + fmt(N) + '</text><text class="sm" x="' + cx + '" y="' + (cy + 16) + '" text-anchor="middle">findings</text></svg><div class="legend">';
+  s += '<text class="big" x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle">' + fmt(shownN) + '</text><text class="sm" x="' + cx + '" y="' + (cy + 16) + '" text-anchor="middle">findings</text></svg><div class="legend">';
   for (const c of CONFS) {
     const n = conf.total.get(c) || 0;
     s += '<button type="button" data-set="' + esc(JSON.stringify([['conf', c]])) + '" aria-pressed="' + isOn('conf', c) + '"' + (isDim('conf', c) ? ' style="opacity:.45"' : '') + '><span class="badge b-' + c + '">' + c + '</span><span class="num">' + fmt(n) + ' · ' + Math.round(n / tot * 100) + '%</span></button>';
@@ -708,18 +743,18 @@ function renderCharts() {
 
   // bytes by module (high + medium)
   const byMod = new Map();
-  for (const f of F) if (f.sizeBytes && f.confidence !== 'low') byMod.set(f.module, (byMod.get(f.module) || 0) + f.sizeBytes);
+  for (let i = 0; i < N; i++) { const f = F[i]; if (shown(i) && f.sizeBytes && f.confidence !== 'low') byMod.set(f.module, (byMod.get(f.module) || 0) + f.sizeBytes); }
   const bm = [...byMod].sort((x, y) => y[1] - x[1]).slice(0, 12);
   hbars($('#ch-bytes'), bm.map(([m, b]) => ({ label: m, value: b, text: human(b), cls: 'f-accent', set: [['mod', m]], on: isOn('mod', m), dim: isDim('mod', m) })), 'Reclaimable bytes by module');
 
   // stacked module x category
-  const st = $('#ch-stack'), mods = FACETS[3].values.slice(0, 14);
+  const modsAll = FACETS[3].values.filter(m => T[3].get(m)), st = $('#ch-stack'), mods = modsAll.slice(0, 14);
   const cats = FACETS[0].values;
   const grid = new Map(mods.map(m => [m, new Map()]));
-  for (const f of F) { const g = grid.get(f.module); if (g) g.set(f.category, (g.get(f.category) || 0) + 1); }
+  for (let i = 0; i < N; i++) { if (!shown(i)) continue; const f = F[i], g = grid.get(f.module); if (g) g.set(f.category, (g.get(f.category) || 0) + 1); }
   const w = chartWidth(st), labelW = Math.min(200, Math.round(w * 0.22)), valW = 64, barMax = Math.max(60, w - labelW - valW), rowH = 26;
-  const maxT = Math.max(1, ...mods.map(m => FACETS[3].total.get(m)));
-  let ss = '<div class="legend-row">' + cats.map(c => '<span><i class="sw bg-' + esc(c) + '"></i>' + esc(c) + '</span>').join('') + (FACETS[3].values.length > mods.length ? '<span>top ' + mods.length + ' of ' + FACETS[3].values.length + ' modules</span>' : '') + '</div>';
+  const maxT = Math.max(1, ...mods.map(m => T[3].get(m)));
+  let ss = '<div class="legend-row">' + cats.map(c => '<span><i class="sw bg-' + esc(c) + '"></i>' + esc(c) + '</span>').join('') + (modsAll.length > mods.length ? '<span>top ' + mods.length + ' of ' + modsAll.length + ' modules</span>' : '') + '</div>';
   ss += '<svg width="' + w + '" height="' + (mods.length * rowH) + '" role="group" aria-label="Findings by module and category">';
   mods.forEach((m, i) => {
     const y = i * rowH; let x = labelW;
@@ -730,7 +765,7 @@ function renderCharts() {
       ss += '<g class="hit' + (dim ? ' dim' : '') + '" tabindex="0" role="button" data-set="' + esc(JSON.stringify([['mod', m], ['cat', c]])) + '" aria-label="' + esc(m + ' · ' + c + ': ' + fmt(n)) + '"><title>' + esc(m + ' · ' + c + ': ' + fmt(n)) + '</title><rect class="fill f-' + esc(c) + '" x="' + x.toFixed(1) + '" y="' + (y + 5) + '" width="' + Math.max(1, bw - 1).toFixed(1) + '" height="' + (rowH - 10) + '" rx="2"/></g>';
       x += bw;
     }
-    ss += '<text class="val" x="' + (x + 6).toFixed(1) + '" y="' + (y + rowH / 2) + '" dominant-baseline="central">' + fmt(FACETS[3].total.get(m)) + '</text>';
+    ss += '<text class="val" x="' + (x + 6).toFixed(1) + '" y="' + (y + rowH / 2) + '" dominant-baseline="central">' + fmt(T[3].get(m)) + '</text>';
   });
   st.innerHTML = ss + '</svg>';
 }
@@ -744,9 +779,9 @@ function onSetActivate(e) {
 for (const id of ['ch-kind', 'ch-conf', 'ch-bytes', 'ch-stack']) { $('#' + id).addEventListener('click', onSetActivate); $('#' + id).addEventListener('keydown', onSetActivate); }
 
 // ---- module graph ----
-const G = (() => {
+function buildGraph(mods) {
   const key = id => (id && (id.container || '')) + '\u0000' + (id && id.name);
-  const nodes = MODULES.map((m, i) => ({ i, key: key(m.id), name: m.id.name, container: m.id.container, kind: m.kind, out: [], inn: [], deps: m.dependsOn || [], embeds: m.embeds || [] }));
+  const nodes = mods.map((m, i) => ({ i, key: key(m.id), name: m.id.name, container: m.id.container, kind: m.kind, out: [], inn: [], deps: m.dependsOn || [], embeds: m.embeds || [] }));
   const byKey = new Map(nodes.map(n => [n.key, n]));
   const edges = [];
   for (const n of nodes) {
@@ -778,16 +813,23 @@ const G = (() => {
     }
   }
   return { nodes, edges, layers };
-})();
+}
+const graphs = [];
+const graphFor = pods => graphs[+pods] || (graphs[+pods] = buildGraph(pods ? MODULES : MODULES.filter(m => !isPodModule(m))));
+let G = graphFor(false);
+const Z_MIN = 0.25, Z_MAX = 4, Z_STEP = 1.25, MAX_VH = 640;
+const zoom = { k: 1, x: 0, y: 0, vw: 0, vh: 0, fit: null, key: '' };
 const tip = $('#tip');
 function renderGraph() {
   const el = $('#graph');
-  if (!G.nodes.length) { el.innerHTML = '<p class="muted">No modules in this report.</p>'; return; }
-  const counts = FACETS[3].total;
+  G = graphFor(state.pods);
+  $('#gctl').hidden = !G.nodes.length;
+  if (!G.nodes.length) { el.innerHTML = '<p class="muted">' + (MODULES.length ? 'Only Pods modules; check Show Pods to see them.' : 'No modules in this report.') + '</p>'; zoom.key = ''; return; }
+  const counts = totals()[3];
   const cnt = n => counts.get(n.name) || 0;
   const maxC = Math.max(1, ...G.nodes.map(cnt));
   const nL = G.layers.length, maxRows = Math.max(...G.layers.map(L => L.length));
-  const W = Math.max(chartWidth(el), nL * 170), pad = 30;
+  const vw = chartWidth(el), W = Math.max(vw, nL * 170), pad = 30;
   const colW = (W - pad * 2) / nL, rowH = 76, H = maxRows * rowH + 16;
   const modSel = FACETS[3].sel;
   for (const n of G.nodes) {
@@ -796,7 +838,13 @@ function renderGraph() {
     n.y = 8 + (maxRows - L.length) * rowH / 2 + L.indexOf(n) * rowH + rowH / 2 - 8;
     n.r = 7 + 15 * Math.sqrt(cnt(n) / maxC);
   }
-  let s = '<svg width="' + W + '" height="' + H + '" role="group" aria-label="Module dependency graph"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>';
+  // Fit-to-content: shrink (never enlarge) so the whole graph shows; 1:1 returns here. Zoom survives re-renders.
+  const k0 = Math.max(Z_MIN, Math.min(1, vw / W, MAX_VH / H)), vh = Math.min(MAX_VH, Math.max(160, Math.ceil(H * k0)));
+  const zkey = vw + 'x' + vh + ':' + W + 'x' + H + ':' + state.pods;
+  zoom.vw = vw; zoom.vh = vh; zoom.fit = { k: k0, x: (vw - W * k0) / 2, y: (vh - H * k0) / 2 };
+  if (zkey !== zoom.key) { zoom.key = zkey; Object.assign(zoom, zoom.fit); }
+  let s = '<svg width="' + vw + '" height="' + vh + '" role="group" aria-label="Module dependency graph"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker></defs>'
+    + '<rect width="100%" height="100%" fill="transparent"/><g class="vp" transform="' + zoomTransform() + '">';
   G.edges.forEach((e, k) => {
     const a = G.nodes[e.s], b = G.nodes[e.t];
     const x1 = a.x - a.r, x2 = b.x + b.r + 3, dx = Math.max(30, (x1 - x2) / 2);
@@ -809,14 +857,28 @@ function renderGraph() {
       + (n.r >= 12 ? '<text class="cnt" x="' + n.x.toFixed(1) + '" y="' + n.y.toFixed(1) + '" text-anchor="middle" dominant-baseline="central">' + esc(c > 999 ? Math.round(c / 100) / 10 + 'k' : c) + '</text>' : '')
       + '<text x="' + n.x.toFixed(1) + '" y="' + (n.y + n.r + 14).toFixed(1) + '" text-anchor="middle">' + esc(trunc(n.name, (colW - 12) / 6.6)) + '</text></g>';
   }
-  el.innerHTML = s + '</svg>';
+  el.innerHTML = s + '</g></svg>';
+  applyZoom();
 }
+function zoomTransform() { return 'translate(' + zoom.x.toFixed(1) + ',' + zoom.y.toFixed(1) + ') scale(' + zoom.k.toFixed(4) + ')'; }
+function applyZoom() {
+  const vp = $('#graph .vp'); if (vp) vp.setAttribute('transform', zoomTransform());
+  $('#z-pct').textContent = Math.round(zoom.k * 100) + '%';
+  $('#z-in').disabled = zoom.k >= Z_MAX - 1e-6; $('#z-out').disabled = zoom.k <= Z_MIN + 1e-6;
+}
+function zoomTo(k, cx = zoom.vw / 2, cy = zoom.vh / 2) {
+  if (!G.nodes.length) return;
+  k = Math.min(Z_MAX, Math.max(Z_MIN, k));
+  zoom.x = cx - (cx - zoom.x) * k / zoom.k; zoom.y = cy - (cy - zoom.y) * k / zoom.k; zoom.k = k;
+  applyZoom();
+}
+function resetZoom() { if (zoom.fit) { Object.assign(zoom, zoom.fit); applyZoom(); } }
 function nodeTip(n, x, y) {
   const names = arr => arr.length ? arr.map(i => esc(G.nodes[i].name)).join(', ') : '—';
   const deps = G.edges.filter(e => e.s === n.i && e.type === 'dep').map(e => e.t), emb = G.edges.filter(e => e.s === n.i && e.type === 'embed').map(e => e.t);
   tip.innerHTML = '<b>' + esc(n.name) + '</b><div class="row">kind <span>' + esc(n.kind) + '</span></div>'
     + (n.container ? '<div class="row">container <span class="mono">' + esc(n.container) + '</span></div>' : '')
-    + '<div class="row">findings <span>' + fmt(FACETS[3].total.get(n.name) || 0) + '</span></div>'
+    + '<div class="row">findings <span>' + fmt(totals()[3].get(n.name) || 0) + '</span></div>'
     + '<div class="row">depends on <span>' + names(deps) + '</span></div>'
     + (emb.length ? '<div class="row">embeds <span>' + names(emb) + '</span></div>' : '')
     + '<div class="row">consumers <span>' + names(n.inn) + '</span></div>';
@@ -827,13 +889,50 @@ function nodeTip(n, x, y) {
 }
 const graphEl = $('#graph');
 const hl = (n, on) => { for (const p of graphEl.querySelectorAll('.edge')) if (+p.dataset.s === n.i || +p.dataset.t === n.i) p.classList.toggle('hl', on); };
-graphEl.addEventListener('mousemove', e => { const g = e.target.closest('.node'); if (g) { const n = G.nodes[+g.dataset.n]; nodeTip(n, e.clientX, e.clientY); hl(n, true); } });
+graphEl.addEventListener('mousemove', e => { if (drag && drag.moved) return; const g = e.target.closest('.node'); if (g) { const n = G.nodes[+g.dataset.n]; nodeTip(n, e.clientX, e.clientY); hl(n, true); } });
 graphEl.addEventListener('mouseout', e => { const g = e.target.closest('.node'); if (g && !g.contains(e.relatedTarget)) { tip.hidden = true; hl(G.nodes[+g.dataset.n], false); } });
 graphEl.addEventListener('focusin', e => { const g = e.target.closest('.node'); if (g) { const r = g.getBoundingClientRect(); nodeTip(G.nodes[+g.dataset.n], r.right, r.top); } });
 graphEl.addEventListener('focusout', () => { tip.hidden = true; });
 const toggleNode = g => { const n = G.nodes[+g.dataset.n], sel = FACETS[3].sel; if (sel.has(n.name)) sel.delete(n.name); else sel.add(n.name); tip.hidden = true; apply(); const again = graphEl.querySelector('[data-n="' + n.i + '"]'); if (again) again.focus(); };
 graphEl.addEventListener('click', e => { const g = e.target.closest('.node'); if (g) toggleNode(g); });
 graphEl.addEventListener('keydown', e => { const g = e.target.closest('.node'); if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleNode(g); } });
+// zoom and pan: buttons, wheel (centered on the cursor), click-drag, and + / - / 0 while the graph has focus
+$('#z-in').addEventListener('click', () => zoomTo(zoom.k * Z_STEP));
+$('#z-out').addEventListener('click', () => zoomTo(zoom.k / Z_STEP));
+$('#z-reset').addEventListener('click', resetZoom);
+graphEl.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomTo(zoom.k * Z_STEP); }
+  else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomTo(zoom.k / Z_STEP); }
+  else if (e.key === '0') { e.preventDefault(); resetZoom(); }
+});
+graphEl.addEventListener('wheel', e => {
+  const svg = graphEl.querySelector('svg'); if (!svg || !G.nodes.length) return;
+  e.preventDefault();
+  const r = svg.getBoundingClientRect(), dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+  zoomTo(zoom.k * Math.exp(-dy * 0.0015), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+let drag = null, dragged = false;
+graphEl.addEventListener('pointerdown', e => {
+  dragged = false;
+  if (e.button !== 0 || !graphEl.querySelector('svg')) return;
+  drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: zoom.x, y: zoom.y, moved: false };
+});
+graphEl.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+  if (!drag.moved) {
+    if (Math.abs(dx) + Math.abs(dy) < 4) return;
+    drag.moved = true; graphEl.classList.add('panning'); tip.hidden = true;
+    try { graphEl.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+  }
+  zoom.x = drag.x + dx; zoom.y = drag.y + dy; applyZoom();
+});
+const endDrag = e => { if (!drag || e.pointerId !== drag.id) return; dragged = drag.moved; drag = null; graphEl.classList.remove('panning'); };
+graphEl.addEventListener('pointerup', endDrag);
+graphEl.addEventListener('pointercancel', endDrag);
+// A drag that ends on a node must not toggle it.
+graphEl.addEventListener('click', e => { if (dragged) { dragged = false; e.stopImmediatePropagation(); } }, true);
 
 // ---- drawer ----
 const drawer = $('#drawer');
@@ -907,25 +1006,13 @@ $('#btn-ignore').addEventListener('click', () => {
   copy([...set].join('\n') + '\n', set.size + ' ignore entries');
 });
 
-// ---- theme ----
-const THEMES = ['auto', 'light', 'dark'];
-let theme = 'auto';
-try { theme = localStorage.getItem('xcpurge-theme') || 'auto'; } catch (e) { /* storage blocked */ }
-function setTheme(t) {
-  theme = THEMES.includes(t) ? t : 'auto';
-  if (theme === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', theme);
-  const b = $('#btn-theme'); b.textContent = 'Theme: ' + theme; b.setAttribute('aria-label', 'Color theme: ' + theme + '. Activate to change.');
-  try { localStorage.setItem('xcpurge-theme', theme); } catch (e) { /* storage blocked */ }
-}
-$('#btn-theme').addEventListener('click', () => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % 3]));
-setTheme(theme);
-
 // ---- URL hash ----
 let lastHash = '';
 function writeHash() {
   const p = [];
   if (state.q) p.push('q=' + encodeURIComponent(state.q));
   for (const fc of FACETS) if (fc.sel.size) p.push(fc.key + '=' + [...fc.sel].map(v => encodeURIComponent(fc.hash ? fc.hash(v) : v)).join(','));
+  if (state.pods) p.push('pods=1');
   if (state.sort !== 'default') p.push('sort=' + state.sort + '&dir=' + (state.dir >= 0 ? 'asc' : 'desc'));
   const h = p.join('&');
   if (h !== lastHash) { lastHash = h; history.replaceState(null, '', h ? '#' + h : location.pathname + location.search); }
@@ -942,6 +1029,7 @@ function readHash() {
     const raw = params[fc.key] != null ? params[fc.key] : fc.key === 'mod' ? params.module : fc.key === 'conf' ? params.confidence : undefined;
     if (raw) for (let v of raw.split(',').map(dec)) { if (fc.key === 'kind') v = KEBAB_TO_KIND[v] || v; fc.sel.add(v); }
   }
+  state.pods = params.pods === '1';
   state.sort = SORTS[params.sort] ? params.sort : 'default';
   state.dir = params.dir === 'desc' ? -1 : 1;
 }
