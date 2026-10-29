@@ -32,6 +32,15 @@
 - Nested types used unqualified inside their outer type keep their file alive.
 - An unterminated string no longer shifts later line numbers; a source folder named `build` is scanned.
 - After `--delete` / `--prune` the printed report lists only what is left.
+- Large JSON/HTML/CSS/JS/xcconfig files are streamed in chunks instead of skipped; only unreadable files (not
+  under `--exclude`) cap findings at medium.
+- `--delete` writes the backed-up project edit before moving files, restores a reference whose file failed to
+  move, and matches project paths case-insensitively on case-insensitive volumes.
+- The HTML report renders module graphs that contain a cycle.
+- `build/` holding a package or project is scanned; `pubspec.yaml` marks Flutter output; only directories
+  with exact build-folder names count.
+- The undo command is printed before the report is written; a failing `--open` is a warning; actions that
+  change nothing leave no empty trash session.
 
 ## 0.1.0 - 2026-10-29
 
