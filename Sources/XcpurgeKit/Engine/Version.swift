@@ -1,5 +1,5 @@
 /// Tool name and version reported by `--version` and JSON output.
 public enum XcpurgeVersion {
     public static let name = "xcpurge"
-    public static let current = "0.1.0"
+    public static let current = "0.2.0"
 }

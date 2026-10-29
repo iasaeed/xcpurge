@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-29
+
 ### Added
 
 - `--format html`: a self-contained interactive report written to `--output` or
@@ -25,6 +27,9 @@
 - `assets|files --delete` and `strings --prune` store `size-before.json` / `size-after.json` in the trash
   session and print a before → after table of the categories that changed; `restore` prints it reversed.
 - The HTML report has a Size card (resources, source, whole tree, reclaimable high and high + medium).
+- The HTML module graph zooms and pans, and a Show Pods toggle reveals or hides dependency modules; the report
+  uses a light-only theme.
+- README rewritten as a guided tour with real examples.
 
 ### Changed
 
