@@ -1,0 +1,26 @@
+[
+  {
+    "confidence" : "high",
+    "kind" : "deadSource",
+    "module" : "ClassicApp",
+    "name" : "ClassicApp/DeadObjC.m"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "ghostReference",
+    "module" : "ClassicApp",
+    "name" : "ClassicApp/Ghost.swift"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "orphanFile",
+    "module" : "unknown",
+    "name" : "ClassicApp/Orphan.swift"
+  },
+  {
+    "confidence" : "medium",
+    "kind" : "unusedResource",
+    "module" : "ClassicApp",
+    "name" : "ClassicApp/Unused.plist"
+  }
+]

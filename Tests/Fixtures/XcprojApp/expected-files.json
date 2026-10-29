@@ -1,0 +1,8 @@
+[
+  {
+    "confidence" : "medium",
+    "kind" : "orphanFile",
+    "module" : "App",
+    "name" : "App/Old/Legacy.swift"
+  }
+]
