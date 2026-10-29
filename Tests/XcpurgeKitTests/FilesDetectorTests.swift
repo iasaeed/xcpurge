@@ -237,4 +237,23 @@ final class FilesDetectorTests: XCTestCase {
         XCTAssertEqual(page.confidence, .low)
         XCTAssertTrue(page.reasons.contains { $0.contains("copied as a whole") }, "\(page.reasons)")
     }
+
+    /// Review #11: on a case-insensitive volume a project path differing only in case still attributes the file.
+    func testCaseInsensitiveVolumeAttributesByFoldedPath() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        guard !FileInventory.isCaseSensitiveVolume(root) else { throw XCTSkip("temporary volume is case-sensitive") }
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let text = try String(contentsOf: pbxproj, encoding: .utf8)
+        XCTAssertTrue(text.contains("path = config.json;"))
+        try Data(text.replacingOccurrences(of: "path = config.json;", with: "path = Config.JSON;").utf8).write(to: pbxproj)
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.files])
+        XCTAssertTrue(result.context.inventory.isCaseInsensitive)
+        XCTAssertEqual(result.context.inventory.file(at: "ClassicApp/config.json")?.modules.map(\.name), ["ClassicApp"])
+        XCTAssertFalse(result.findings.contains { $0.path.lowercased() == "classicapp/config.json" && $0.kind != .unusedResource },
+                       "\(result.findings.filter { $0.path.lowercased().contains("config") })")
+        let folded = FileInventory(files: [SourceFile(path: "A/Images/logo.png", kind: .image, size: 1)], caseInsensitive: true)
+        XCTAssertEqual(folded.indices(under: "a/images"), [0])
+        XCTAssertNotNil(folded.file(at: "a/IMAGES/Logo.png"))
+        XCTAssertNil(FileInventory(files: folded.files).file(at: "a/IMAGES/Logo.png"), "case-sensitive by default")
+    }
 }

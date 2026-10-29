@@ -25,7 +25,7 @@ public struct ScanEngine: Sendable {
         if projects.isEmpty { diagnostics.info("no Xcode project or Swift package found; all files are unattributed") }
         let graph = ModuleGraph.build(projects: projects, rootPath: rootPath,
                                       ignoreTestReferences: config.ignoreTestReferences, diagnostics: diagnostics)
-        var inventory = FileInventory(files: walk.files)
+        var inventory = FileInventory(files: walk.files, caseInsensitive: !FileInventory.isCaseSensitiveVolume(root))
         Attribution.apply(to: &inventory, projects: projects, graph: graph)
         let refs = await ReferenceIndex.build(inventory: inventory, graph: graph, rootPath: rootPath,
                                               localizationMacros: config.localizationMacros, diagnostics: diagnostics)
