@@ -115,7 +115,8 @@ Modules (5)
 
 `Pods/` is skipped unless `--include-pods`. `DerivedData`, `node_modules`, `.build`, hidden folders and folders
 containing `XCBuildData` / `workspace-state.json` are never walked. A `build/` folder is skipped when it is build
-output: at the scan root, beside a project or `Package.swift`, or holding `Debug*`/`Release*`/`*.build` folders;
+output: at the scan root, beside a project, `Package.swift` or build script (`build.gradle`, `package.json`,
+`Makefile`, ...), or holding `Debug*`/`Release*`/`intermediates`/`outputs`/`*.build` folders;
 a source folder that happens to be called `build` is scanned.
 
 Every Swift, Objective-C, storyboard, xib and plist file is read whatever its size. Generic text (JSON, HTML,
