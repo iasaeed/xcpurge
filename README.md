@@ -30,11 +30,18 @@ Confidence:
 ## Install
 
 ```sh
-git clone <this repo> && cd xcpurge
-make install          # swift build -c release, then copies to /usr/local/bin (or ~/.local/bin)
+brew install iasaeed/tap/xcpurge
 ```
 
-Requires macOS 14+ and Swift 6 (Xcode 26 or newer). Homebrew and Mint packages are planned.
+Or build from source:
+
+```sh
+git clone https://github.com/iasaeed/xcpurge.git && cd xcpurge
+make install          # swift build -c release, then copies to /usr/local/bin (or ~/.local/bin)
+# or just: swift build -c release   (binary at .build/release/xcpurge)
+```
+
+Requires macOS 14+ and Swift 6 (Xcode 26 or newer). A Mint package is planned.
 
 ## Quick start
 
@@ -286,7 +293,7 @@ skipped. After the action the report lists only what is left.
 
 - **Precise mode**: optional IndexStoreDB / SwiftSyntax pass over a built project, and Xcode's `.stringsdata`
   for exact string usage.
-- SARIF output, Homebrew/Mint packages, delete support for `.xcproj` projects.
+- SARIF output, a Mint package, delete support for `.xcproj` projects.
 
 ## Comparison
 
