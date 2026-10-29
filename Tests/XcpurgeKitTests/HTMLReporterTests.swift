@@ -56,6 +56,23 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertFalse(HTMLReporter.render(json: "{}", scannedFiles: nil, date: Self.date).contains("{{"))
     }
 
+    /// The drawer offers a ready-to-paste `xcpurge remove <root> <path>` command for file-backed findings, with
+    /// shell quoting and per-copy commands for duplicates, wired through a delegated `data-cmd` handler.
+    func testTemplateHasRemoveCommandSection() {
+        let html = HTMLReporter(date: Self.date).render(SyntheticResult.make(count: 50))
+        XCTAssertTrue(html.contains("Remove from terminal"))
+        XCTAssertTrue(html.contains("'xcpurge remove ' + shArg(D.root || '.') + ' ' + shArg(f.path)"))
+        XCTAssertTrue(html.contains("const shq = s => /^[A-Za-z0-9_.\\/@%+=:,-]+$/.test(s) ? s : \"'\" + s.replace(/'/g, \"'\\\\''\") + \"'\";"))
+        XCTAssertTrue(html.contains("Each command moves that copy\\'s asset set to .xcpurge-trash"))
+        XCTAssertTrue(html.contains("e.target.closest('[data-cmd]')"))
+        XCTAssertTrue(html.contains("const shArg = s => shq(s.startsWith('-') ? './' + s : s);"), "a leading dash is not an option")
+        XCTAssertFalse(html.contains("Copy all"), "no button that removes every copy of a duplicate")
+        for kind in ["unusedAsset", "unusedFont", "orphanFile", "unusedResource", "unusedInterfaceFile", "duplicate", "deadSource", "ghostReference"] {
+            XCTAssertTrue(html.contains("'\(kind)'"), "\(kind) is removable")
+        }
+        XCTAssertFalse(html.contains("'unusedString', 'staleString'"), "string findings have no file to remove")
+    }
+
     /// The module graph has zoom controls and a Pods toggle; the report is light-only (no theme switch).
     func testTemplateHasGraphControlsAndLightThemeOnly() {
         let html = HTMLReporter.template

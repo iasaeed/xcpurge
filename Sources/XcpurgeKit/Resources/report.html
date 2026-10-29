@@ -377,6 +377,13 @@ const trunc = (s, n) => { s = String(s); n = Math.max(3, Math.floor(n)); return 
 const base = p => { const i = p.lastIndexOf('/'); return i < 0 ? p : p.slice(i + 1); };
 const dirOf = p => { const i = p.lastIndexOf('/'); return i < 0 ? '' : p.slice(0, i + 1); };
 const loc = f => f.path + (f.line != null ? ':' + f.line : '');
+// Findings backed by a file or asset set on disk (or a ghost project reference): `xcpurge remove` can act on them.
+const REMOVABLE = new Set(['unusedAsset', 'unusedFont', 'orphanFile', 'unusedResource', 'unusedInterfaceFile', 'duplicate', 'deadSource', 'ghostReference']);
+// Shell-quotes for a POSIX shell: plain words stay bare, anything else goes in single quotes.
+const shq = s => /^[A-Za-z0-9_.\/@%+=:,-]+$/.test(s) ? s : "'" + s.replace(/'/g, "'\\''") + "'";
+// A leading dash would read as an option: `./-x` names the same file.
+const shArg = s => shq(s.startsWith('-') ? './' + s : s);
+const removeCmd = f => 'xcpurge remove ' + shArg(D.root || '.') + ' ' + shArg(f.path);
 const kindClass = k => ({ app: 'k-app', appClip: 'k-app', watchApp: 'k-app', appExtension: 'k-ext', unitTest: 'k-test', uiTest: 'k-test',
   framework: 'k-lib', staticLib: 'k-lib', packageLibrary: 'k-lib', packageExecutable: 'k-lib', macro: 'k-lib', plugin: 'k-lib' })[k] || 'k-other';
 const DYN_RE = /dynamically at (\S+?):(\d+)/g;
@@ -941,6 +948,17 @@ function openDrawer(i) {
   }).join('');
   const group = f.groupID ? F.map((g, j) => j).filter(j => j !== i && F[j].groupID === f.groupID) : [];
   const entry = ignoreEntry(f);
+  const cmdBtn = (cmd, label, what) => '<button type="button" data-cmd="' + esc(cmd).replace(/\n/g, '&#10;') + '" data-what="' + esc(what) + '">' + label + '</button>';
+  let removeHTML = '';
+  if (REMOVABLE.has(f.kind) && f.kind === 'duplicate' && group.length) {
+    const members = [i].concat(group.slice(0, 50)), cmds = members.map(j => removeCmd(F[j]));
+    removeHTML = '<div><h4>Remove from terminal</h4><p class="muted">Each command moves that copy\'s asset set to .xcpurge-trash and drops its project reference. Keep one copy; <code>xcpurge restore</code> undoes it.</p><ul class="list">'
+      + members.map((j, k) => '<li><span class="grow"><pre>' + esc(cmds[k]) + '</pre></span><span class="muted">' + esc(F[j].module) + '</span>' + cmdBtn(cmds[k], 'Copy', 'command') + '</li>').join('')
+      + '</ul></div>';
+  } else if (REMOVABLE.has(f.kind)) {
+    const cmd = removeCmd(f);
+    removeHTML = '<div><h4>Remove from terminal</h4><pre>' + esc(cmd) + '</pre><div class="btns">' + cmdBtn(cmd, 'Copy command', 'command') + '</div></div>';
+  }
   $('#d-body').innerHTML =
     '<div class="badges"><span class="badge b-' + esc(f.confidence) + '">' + esc(f.confidence) + '</span><span class="badge b-plain"><i class="dot bg-' + esc(f.category) + '"></i> ' + esc(kebab(f.kind)) + '</span><span class="badge b-plain">' + esc(f.category) + '</span><span class="badge b-plain">' + esc(f.module) + '</span></div>'
     + '<dl><dt>Path</dt><dd><code>' + esc(f.path) + '</code></dd>'
@@ -952,6 +970,7 @@ function openDrawer(i) {
     + '<div><h4>Reasons</h4>' + (f.reasons.length ? '<ol>' + f.reasons.map(r => '<li>' + esc(r) + '</li>').join('') + '</ol>' : '<p class="muted">None given.</p>') + '</div>'
     + (sites.length ? '<div><h4>Dynamic lookup sites</h4><ul class="sites">' + siteHTML + '</ul></div>' : '')
     + (group.length ? '<div><h4>Same duplicate group</h4><ul class="list">' + group.slice(0, 50).map(j => '<li><button type="button" class="link" data-open="' + j + '">' + esc(loc(F[j])) + '</button><span class="muted">' + esc(F[j].module) + '</span></li>').join('') + '</ul></div>' : '')
+    + removeHTML
     + '<div><h4>.xcpurgeignore entry</h4><pre>' + esc(entry) + '</pre></div>'
     + '<div class="btns"><button type="button" id="d-copy-path">Copy path</button><button type="button" id="d-copy-ignore">Copy ignore entry</button></div>';
   $('#d-copy-path').onclick = () => copy(loc(f), 'path');
@@ -961,7 +980,10 @@ function openDrawer(i) {
 }
 function closeDrawer() { if (drawer.hidden) return; drawer.hidden = true; drawerIndex = -1; focusRow(true); }
 $('#d-close').addEventListener('click', closeDrawer);
-drawer.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openDrawer(+b.dataset.open); });
+drawer.addEventListener('click', e => {
+  const b = e.target.closest('[data-open]'); if (b) { openDrawer(+b.dataset.open); return; }
+  const c = e.target.closest('[data-cmd]'); if (c) copy(c.dataset.cmd, c.dataset.what || 'command');
+});
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { if (!drawer.hidden) { e.preventDefault(); closeDrawer(); } else if (document.activeElement === qInput && qInput.value) { qInput.value = ''; qInput.dispatchEvent(new Event('input')); } }
   else if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); qInput.focus(); qInput.select(); }

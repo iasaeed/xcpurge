@@ -666,8 +666,9 @@ xcpurge assets --format html --open                            # one category on
 The report is one self-contained page: inline CSS and JS, no network requests. It has summary cards, charts by
 kind, confidence and module, the module dependency graph, and a searchable, sortable table of every finding with
 filters by category, confidence and module. Search accepts tokens like `kind:unused-asset conf:high module:App`
-and regex with `/.../`. A detail drawer shows every reason. You can export the filtered view as JSON or CSV, or
-copy `.xcpurgeignore` entries for it.
+and regex with `/.../`. A detail drawer shows every reason and, for file-backed findings, a ready-to-paste
+[`xcpurge remove` command](#remove-a-single-finding-from-the-report) (one per copy for duplicates). You can
+export the filtered view as JSON or CSV, or copy `.xcpurgeignore` entries for it.
 
 The module graph zooms and pans: use the + / − / 1:1 buttons, the mouse wheel, drag to pan, or the keys `+`,
 `-` and `0`. A **Show Pods** checkbox (off by default) controls CocoaPods modules: while it is off, they and
@@ -702,6 +703,7 @@ The template lives in `Sources/XcpurgeKit/Resources/report.html` and is compiled
 xcpurge assets --delete            # move unused assets to .xcpurge-trash, edit classic pbxproj references
 xcpurge strings --prune            # remove unused keys from .xcstrings/.strings/.stringsdict
 xcpurge files --delete             # move orphans, unused resources and xibs/storyboards to the trash
+xcpurge remove <root> <path> ...   # move exactly these files or asset sets to the trash (see below)
 xcpurge restore --list             # sessions
 xcpurge restore [--session ID]     # undo (newest by default), byte-identical
 ```
@@ -721,6 +723,36 @@ Why it is safe:
 - After the action, the report lists only what is left.
 
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
+
+### Remove a single finding from the report
+
+The HTML report's detail drawer has a **Remove from terminal** section for every finding backed by a file:
+a ready-to-paste command that moves that one file or asset set to `.xcpurge-trash` and drops its
+`project.pbxproj` reference, with the root and path shell-quoted.
+
+```sh
+xcpurge remove /path/to/YourApp App/Assets.xcassets/old_hero.imageset      # one asset set
+xcpurge remove /path/to/YourApp App/Legacy/Helper.swift --yes               # skip the prompt
+xcpurge remove . App/Ghost.swift                                            # a ghost reference: drops the pbxproj lines
+xcpurge restore                                                             # undo the newest session
+```
+
+- The first argument is the project root; the rest are paths, absolute (inside the root) or relative to it.
+  A path inside an asset set (`…/hero.imageset/hero@2x.png`) removes that set (the innermost one, so an image
+  set inside a sprite atlas never takes its siblings along), as Xcode would. A symlink is moved itself, never
+  its target, and a path that leads outside the root through a symlinked folder is refused.
+- Plain folders are refused (`App/Legacy is a folder; pass the files inside it`), because only exact project
+  references are edited. Asset sets, catalogs, bundle-like folders (`.xcdatamodeld`, `.bundle`, `.scnassets`)
+  and folder references are moved whole.
+- Unlike `--delete`, `remove` does not filter by kind or confidence: you asked for exactly these paths, so a
+  `dead-source` file or a `duplicate` copy goes too. It still dry-runs the project edit first and never
+  edits a `project.xcproj`.
+- For a `duplicate` finding the drawer lists one command per copy in the group, each with its own Copy
+  button. Run the ones you do not want and keep one copy.
+- A `ghost-reference` path is missing on disk, so `remove` only drops its `project.pbxproj` references. A path
+  that is missing and referenced nowhere is skipped.
+- Everything goes through the same trash session as `--delete`, so `xcpurge restore` undoes it byte for byte.
+  `remove` does not record the size before/after table.
 
 ## Measuring size
 

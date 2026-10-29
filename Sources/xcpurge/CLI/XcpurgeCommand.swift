@@ -10,7 +10,7 @@ struct XcpurgeCommand: AsyncParsableCommand {
         abstract: "Find unused assets, localized strings and files in Xcode projects and Swift packages.",
         version: XcpurgeVersion.current,
         subcommands: [ScanCommand.self, AssetsCommand.self, StringsCommand.self, FilesCommand.self,
-                      RestoreCommand.self, SizeCommand.self, ModulesCommand.self, InitCommand.self, DoctorCommand.self],
+                      RemoveCommand.self, RestoreCommand.self, SizeCommand.self, ModulesCommand.self, InitCommand.self, DoctorCommand.self],
         defaultSubcommand: ScanCommand.self)
 
     static func main() async {

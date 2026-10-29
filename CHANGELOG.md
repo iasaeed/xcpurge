@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-29
+
+### Added
+
+- `xcpurge remove <root> <path> ...`: moves exactly the given files or asset sets to `.xcpurge-trash` and drops
+  their `project.pbxproj` references, without filtering by finding kind or confidence. A path inside an asset
+  set removes that (innermost) set; a path missing on disk (a `ghost-reference`) loses only its project
+  references; plain folders are refused (asset sets, catalogs, bundle-like folders and folder references move
+  whole); a path outside the root, also through a symlinked folder, or inside the trash is refused before
+  anything is touched (exit 2); a symlink is moved itself, never its target. Confirms unless `--yes`;
+  `--quiet` hides progress. Runs discovery only (no reference index), so it is fast; it does not record the
+  size before/after table. `xcpurge restore` undoes it. `ScanEngine.discover()`, `Trash.targets(for:context:)`
+  and `Trash.remove(paths:context:)` are the library entry points.
+- The HTML report's drawer has a **Remove from terminal** section for file-backed findings: the shell-quoted
+  `xcpurge remove` command with a Copy button, and for duplicates one command per copy in the group (keep one).
+
+### Fixed
+
+- `--delete`: a file that one project cannot drop (a `project.xcproj`, or a pbxproj line the editor cannot
+  change) is no longer edited out of the other projects referencing it; it stays untouched everywhere.
+- `--delete` / `remove`: an asset catalog given as a whole (`App/Assets.xcassets`) now loses its pbxproj
+  reference too.
+
 ## 0.2.0 - 2026-10-29
 
 ### Added

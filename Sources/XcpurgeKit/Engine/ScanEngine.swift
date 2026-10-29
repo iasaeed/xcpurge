@@ -16,6 +16,16 @@ public struct ScanEngine: Sendable {
 
     /// Runs discovery and indexing without detectors.
     public func makeContext() async throws -> ScanContext {
+        try await buildContext(indexingReferences: true)
+    }
+
+    /// Discovery only: inventory, projects and module graph, with an empty reference index. Enough for actions
+    /// that edit projects and move files (`xcpurge remove`) without reading every source file.
+    public func discover() async throws -> ScanContext {
+        try await buildContext(indexingReferences: false)
+    }
+
+    private func buildContext(indexingReferences: Bool) async throws -> ScanContext {
         let diagnostics = Diagnostics()
         let rootPath = root.path
         var isDir: ObjCBool = false
@@ -37,9 +47,12 @@ public struct ScanEngine: Sendable {
         progress.report(.attributing(modules: graph.modules.count))
         var inventory = FileInventory(files: walk.files, caseInsensitive: !FileInventory.isCaseSensitiveVolume(root))
         Attribution.apply(to: &inventory, projects: projects, graph: graph)
-        let refs = await ReferenceIndex.build(inventory: inventory, graph: graph, rootPath: rootPath,
-                                              localizationMacros: config.localizationMacros, diagnostics: diagnostics,
-                                              progress: { progress.report(.indexing(done: $0, total: $1)) })
+        let refs = indexingReferences
+            ? await ReferenceIndex.build(inventory: inventory, graph: graph, rootPath: rootPath,
+                                         localizationMacros: config.localizationMacros, diagnostics: diagnostics,
+                                         progress: { progress.report(.indexing(done: $0, total: $1)) })
+            : ReferenceIndex(references: [], dynamicPatterns: [], ignoredLines: [], accessors: [:], generatedFiles: [],
+                             sourcePaths: [], sourceModules: [])
         let names = (located.workspaces + located.xcodeprojs).map(RelPath.stem)
         let derivedData = DerivedDataLocator.locate(names: names, override: config.derivedData)
         let ignore: Ignore
