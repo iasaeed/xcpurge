@@ -3,9 +3,9 @@ import Foundation
 /// Extracts references from Swift source: literals with call context, member symbols, identifiers,
 /// dynamic name patterns and `xcpurge:ignore` markers.
 public enum SwiftScanner {
-    public static func scan(_ data: Data, file: Int32, localizationMacros: [String] = []) -> ScanOutput {
+    public static func scan(_ data: Data, file: Int32, fileName: String? = nil, localizationMacros: [String] = []) -> ScanOutput {
         let tokenized = SwiftTokenizer.tokenize(data, dialect: .swift)
-        if GeneratedAccessorScanner.isGenerated(head: data.prefix(2048)) {
+        if GeneratedAccessorScanner.isGenerated(head: data.prefix(2048), fileName: fileName) {
             var out = ScanOutput()
             out.isGenerated = true
             out.accessors = GeneratedAccessorScanner.accessors(in: tokenized.tokens)

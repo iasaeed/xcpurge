@@ -159,7 +159,7 @@ public struct ReferenceIndex: Sendable {
             return nil
         }
         switch file.kind {
-        case .swift: return SwiftScanner.scan(data, file: index, localizationMacros: macros)
+        case .swift: return SwiftScanner.scan(data, file: index, fileName: file.fileName, localizationMacros: macros)
         case .objc, .header, .c, .cpp, .metal: return ObjCScanner.scan(data, file: index, localizationMacros: macros)
         case .storyboard, .xib: return IBScanner.scan(data, file: index)
         case .plist, .entitlements, .intentDefinition: return PlistScanner.scan(data, file: index)
