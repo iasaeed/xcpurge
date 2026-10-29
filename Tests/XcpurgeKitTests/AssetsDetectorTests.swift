@@ -8,6 +8,11 @@ final class AssetsDetectorTests: XCTestCase {
         try await assertFindings(fixture: "ModularWorkspace", category: .assets)
     }
 
+    /// Classic group, synchronized folder and blue folder reference in one project.
+    func testMixedAppGolden() async throws {
+        try await assertFindings(fixture: "MixedApp", category: .assets)
+    }
+
     func testSyncedAppGolden() async throws {
         try await assertFindings(fixture: "SyncedApp", category: .assets)
     }

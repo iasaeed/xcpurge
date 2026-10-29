@@ -9,6 +9,11 @@ final class FilesDetectorTests: XCTestCase {
         try await assertFindings(fixture: "ModularWorkspace", category: .files)
     }
 
+    /// Classic group, synchronized folder and blue folder reference in one project.
+    func testMixedAppGolden() async throws {
+        try await assertFindings(fixture: "MixedApp", category: .files)
+    }
+
     func testSyncedAppGolden() async throws {
         try await assertFindings(fixture: "SyncedApp", category: .files)
     }

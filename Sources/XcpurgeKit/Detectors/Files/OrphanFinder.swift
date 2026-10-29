@@ -11,6 +11,15 @@ enum OrphanFinder {
         .intentDefinition, .iconComposer,
     ]
 
+    /// Source kinds reported when they sit outside every group (resources there are usually docs or tooling).
+    static let strayKinds: Set<FileKind> = [.swift, .objc, .c, .cpp, .metal]
+
+    /// Top-level folders of a project directory that hold tooling, never app sources.
+    static let toolingFolders: Set<String> = [
+        "Scripts", "scripts", "Tools", "tools", "bin", "fastlane", "Fastlane", "ci", "CI", "Danger", "Templates",
+        "Vendor", "vendor", "External", "ThirdParty", "Carthage", "Pods", "docs", "Docs",
+    ]
+
     /// Path-valued build settings whose files are consumed by the build, not by a build phase.
     static let pathSettings = [
         "INFOPLIST_FILE", "CODE_SIGN_ENTITLEMENTS", "SWIFT_OBJC_BRIDGING_HEADER", "GCC_PREFIX_HEADER",
@@ -42,6 +51,29 @@ enum OrphanFinder {
             }
             out.append(Finding(kind: .orphanFile, category: .files, path: file.path, module: module, confidence: .medium,
                                reasons: [reason, "Xcode may exclude it on purpose"], sizeBytes: file.size))
+        }
+
+        // Compilable sources in a project's folder but outside every group and synchronized folder (a folder left
+        // behind when only some groups were converted). Low: it may be a script or a tool.
+        let packageDirs = ctx.projects.filter { $0.format == .package }.map(\.directory)
+        let reported = Set(out.map(\.path))
+        for project in ctx.projects where project.format != .package && !project.membershipUnknown {
+            for file in ctx.inventory.files(under: project.directory)
+            where file.modules.isEmpty && !file.inSourceRoot && file.projectRefs.isEmpty && strayKinds.contains(file.kind) {
+                let inside = RelPath.relative(RelPath.join(ctx.root.path, file.path),
+                                              to: RelPath.join(ctx.root.path, project.directory))
+                guard !reported.contains(file.path), !consumed.contains(file.path),
+                      !toolingFolders.contains(String(inside.split(separator: "/").first ?? "")),
+                      inside.contains("/"),
+                      !packageDirs.contains(where: { RelPath.isUnder(file.path, $0) }),
+                      !skippedDirs.contains(where: { RelPath.isUnder(file.path, $0) }),
+                      !FilesDetector.isInsideOpaqueFolder(file.path) else { continue }
+                out.append(Finding(kind: .orphanFile, category: .files, path: file.path, module: ModuleID.unknown.name,
+                                   confidence: .low,
+                                   reasons: ["in the folder of \(project.container) but outside every group and synchronized folder",
+                                             "may be a script or tool"],
+                                   sizeBytes: file.size))
+            }
         }
 
         // SwiftPM: everything under a target directory builds, except `exclude:` entries.

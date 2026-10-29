@@ -1,0 +1,366 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		CC0000000000000000000041 /* Legacy.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000021 /* Legacy.swift */; };
+		CC0000000000000000000042 /* LegacyAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000022 /* LegacyAssets.xcassets */; };
+		CC0000000000000000000043 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000023 /* Localizable.strings */; };
+		CC0000000000000000000044 /* Content in Resources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000030 /* Content */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CC0000000000000000000011 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CC0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC0000000000000000000010;
+			remoteInfo = MixedApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		CC0000000000000000000002 /* MixedApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MixedApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0000000000000000000003 /* MixedAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MixedAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0000000000000000000021 /* Legacy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Legacy.swift; sourceTree = "<group>"; };
+		CC0000000000000000000022 /* LegacyAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = LegacyAssets.xcassets; sourceTree = "<group>"; };
+		CC0000000000000000000024 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		CC0000000000000000000025 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		CC0000000000000000000030 /* Content */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Content; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CC0000000000000000000005 /* Exceptions for "Modern" folder in "MixedApp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Excluded.swift,
+			);
+			target = CC0000000000000000000010 /* MixedApp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		CC0000000000000000000007 /* Modern */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC0000000000000000000005 /* Exceptions for "Modern" folder in "MixedApp" target */,
+			);
+			path = Modern;
+			sourceTree = "<group>";
+		};
+		CC0000000000000000000008 /* MixedAppTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MixedAppTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CC000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000017 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		CC0000000000000000000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CC0000000000000000000002 /* MixedApp.app */,
+				CC0000000000000000000003 /* MixedAppTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CC0000000000000000000009 = {
+			isa = PBXGroup;
+			children = (
+				CC0000000000000000000020 /* Legacy */,
+				CC0000000000000000000007 /* Modern */,
+				CC0000000000000000000030 /* Content */,
+				CC0000000000000000000008 /* MixedAppTests */,
+				CC0000000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CC0000000000000000000020 /* Legacy */ = {
+			isa = PBXGroup;
+			children = (
+				CC0000000000000000000021 /* Legacy.swift */,
+				CC0000000000000000000022 /* LegacyAssets.xcassets */,
+				CC0000000000000000000023 /* Localizable.strings */,
+			);
+			path = Legacy;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CC0000000000000000000010 /* MixedApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC000000000000000000000C /* Build configuration list for PBXNativeTarget "MixedApp" */;
+			buildPhases = (
+				CC000000000000000000000D /* Sources */,
+				CC000000000000000000000E /* Frameworks */,
+				CC000000000000000000000F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CC0000000000000000000007 /* Modern */,
+			);
+			name = MixedApp;
+			packageProductDependencies = (
+			);
+			productName = MixedApp;
+			productReference = CC0000000000000000000002 /* MixedApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CC0000000000000000000019 /* MixedAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC0000000000000000000015 /* Build configuration list for PBXNativeTarget "MixedAppTests" */;
+			buildPhases = (
+				CC0000000000000000000016 /* Sources */,
+				CC0000000000000000000017 /* Frameworks */,
+				CC0000000000000000000018 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC0000000000000000000012 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CC0000000000000000000008 /* MixedAppTests */,
+			);
+			name = MixedAppTests;
+			packageProductDependencies = (
+			);
+			productName = MixedAppTests;
+			productReference = CC0000000000000000000003 /* MixedAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CC0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					CC0000000000000000000010 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					CC0000000000000000000019 = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = CC0000000000000000000010;
+					};
+				};
+			};
+			buildConfigurationList = CC000000000000000000001C /* Build configuration list for PBXProject "MixedApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				fr,
+				Base,
+			);
+			mainGroup = CC0000000000000000000009;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CC0000000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CC0000000000000000000010 /* MixedApp */,
+				CC0000000000000000000019 /* MixedAppTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CC000000000000000000000F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC0000000000000000000042 /* LegacyAssets.xcassets in Resources */,
+				CC0000000000000000000043 /* Localizable.strings in Resources */,
+				CC0000000000000000000044 /* Content in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000018 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CC000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC0000000000000000000041 /* Legacy.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC0000000000000000000016 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CC0000000000000000000012 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC0000000000000000000010 /* MixedApp */;
+			targetProxy = CC0000000000000000000011 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		CC0000000000000000000023 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				CC0000000000000000000024 /* en */,
+				CC0000000000000000000025 /* fr */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		CC000000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mixedapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		CC000000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mixedapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		CC0000000000000000000013 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mixedapp.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MixedApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MixedApp";
+			};
+			name = Debug;
+		};
+		CC0000000000000000000014 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.mixedapp.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MixedApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MixedApp";
+			};
+			name = Release;
+		};
+		CC000000000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ONLY_ACTIVE_ARCH = YES;
+			};
+			name = Debug;
+		};
+		CC000000000000000000001B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CC000000000000000000000C /* Build configuration list for PBXNativeTarget "MixedApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC000000000000000000000A /* Debug */,
+				CC000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC0000000000000000000015 /* Build configuration list for PBXNativeTarget "MixedAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC0000000000000000000013 /* Debug */,
+				CC0000000000000000000014 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CC000000000000000000001C /* Build configuration list for PBXProject "MixedApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC000000000000000000001A /* Debug */,
+				CC000000000000000000001B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CC0000000000000000000001 /* Project object */;
+}

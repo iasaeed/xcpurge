@@ -1,0 +1,14 @@
+[
+  {
+    "confidence" : "low",
+    "kind" : "dynamicLookup",
+    "module" : "MixedApp",
+    "name" : "Modern/MixedAppApp.swift"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedString",
+    "module" : "MixedApp",
+    "name" : "farewell_unused"
+  }
+]

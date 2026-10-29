@@ -1,0 +1,14 @@
+[
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "MixedApp",
+    "name" : "legacy_unused"
+  },
+  {
+    "confidence" : "high",
+    "kind" : "unusedAsset",
+    "module" : "MixedApp",
+    "name" : "modern_unused"
+  }
+]

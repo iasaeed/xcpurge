@@ -116,4 +116,31 @@ final class PBXProjParserTests: XCTestCase {
         XCTAssertThrowsError(try PBXProjParser.parse(data: Data("nope".utf8), xcodeproj: URL(fileURLWithPath: "/x/A.xcodeproj"),
                                                      root: URL(fileURLWithPath: "/x"), diagnostics: Diagnostics()))
     }
+
+    /// MixedApp mixes the four kinds of membership in one pbxproj: a classic group file (explicit PBXBuildFile),
+    /// a synchronized-folder file, a file excluded by the folder's exception set, and the children of a blue
+    /// folder reference (copied as a whole). A file in no group at all stays unattributed.
+    func testMixedProjectAttributesEveryMembershipKind() async throws {
+        let ctx = try await FixtureSupport.context("MixedApp")
+        let project = try XCTUnwrap(ctx.projects.first)
+        XCTAssertEqual(project.objectVersion, 77)
+        XCTAssertEqual(project.targets.map(\.name), ["MixedApp", "MixedAppTests"])
+        XCTAssertEqual(project.syncedGroups.map(\.path).sorted(), ["MixedAppTests", "Modern"])
+        XCTAssertTrue(project.fileRefs.contains { $0.path == "Content" && $0.isFolder })
+
+        func modules(_ path: String) -> Set<String>? { ctx.inventory.file(at: path).map { Set($0.modules.map(\.name)) } }
+        XCTAssertEqual(modules("Legacy/Legacy.swift"), ["MixedApp"], "group file via PBXBuildFile")
+        XCTAssertEqual(modules("Legacy/LegacyAssets.xcassets"), ["MixedApp"])
+        XCTAssertEqual(modules("Legacy/en.lproj/Localizable.strings"), ["MixedApp"], "PBXVariantGroup child")
+        XCTAssertEqual(modules("Legacy/fr.lproj/Localizable.strings"), ["MixedApp"])
+        XCTAssertEqual(modules("Modern/MixedAppApp.swift"), ["MixedApp"], "synchronized folder file")
+        XCTAssertEqual(modules("Modern/ModernAssets.xcassets"), ["MixedApp"])
+        XCTAssertEqual(modules("Modern/Excluded.swift"), [], "excluded by the exception set")
+        XCTAssertEqual(ctx.inventory.file(at: "Modern/Excluded.swift")?.inSourceRoot, true)
+        XCTAssertEqual(modules("Content/a.json"), ["MixedApp"], "blue folder reference child")
+        XCTAssertEqual(modules("Content/b.json"), ["MixedApp"])
+        XCTAssertEqual(modules("MixedAppTests/MixedAppTests.swift"), ["MixedAppTests"])
+        XCTAssertEqual(modules("Stray/Stray.swift"), [], "in no group and no synchronized folder")
+        XCTAssertEqual(ctx.inventory.file(at: "Stray/Stray.swift")?.inSourceRoot, false)
+    }
 }

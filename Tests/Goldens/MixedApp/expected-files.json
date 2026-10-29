@@ -1,0 +1,26 @@
+[
+  {
+    "confidence" : "medium",
+    "kind" : "orphanFile",
+    "module" : "MixedApp",
+    "name" : "Modern/Excluded.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "orphanFile",
+    "module" : "unknown",
+    "name" : "Stray/Stray.swift"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedResource",
+    "module" : "MixedApp",
+    "name" : "Content/a.json"
+  },
+  {
+    "confidence" : "low",
+    "kind" : "unusedResource",
+    "module" : "MixedApp",
+    "name" : "Content/b.json"
+  }
+]

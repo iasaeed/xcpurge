@@ -8,6 +8,11 @@ final class StringsDetectorTests: XCTestCase {
         try await assertFindings(fixture: "ModularWorkspace", category: .strings, config: Self.config)
     }
 
+    /// Classic group, synchronized folder and blue folder reference in one project.
+    func testMixedAppGolden() async throws {
+        try await assertFindings(fixture: "MixedApp", category: .strings, config: Self.config)
+    }
+
     func testSyncedAppGolden() async throws {
         try await assertFindings(fixture: "SyncedApp", category: .strings, config: Self.config)
     }

@@ -1,0 +1,3 @@
+/* Classic PBXVariantGroup */
+"greeting" = "Hello";
+"farewell_unused" = "Goodbye";

@@ -6,6 +6,11 @@ final class DuplicatesDetectorTests: XCTestCase {
         try await assertFindings(fixture: "ModularWorkspace", category: .duplicates)
     }
 
+    /// Classic group, synchronized folder and blue folder reference in one project.
+    func testMixedAppGolden() async throws {
+        try await assertFindings(fixture: "MixedApp", category: .duplicates)
+    }
+
     func testSyncedAppGolden() async throws {
         try await assertFindings(fixture: "SyncedApp", category: .duplicates)
     }

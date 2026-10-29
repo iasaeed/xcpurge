@@ -6,7 +6,7 @@ final class ScanEngineTests: XCTestCase {
         Finding(kind: .unusedAsset, category: .assets, path: path, name: name, module: module, confidence: confidence)
     }
 
-    static let allFixtures = ["ModularWorkspace", "SyncedApp", "ClassicApp", "XcprojApp", "AssetsEdgeCases", "StringsEdgeCases"]
+    static let allFixtures = ["ModularWorkspace", "SyncedApp", "ClassicApp", "XcprojApp", "AssetsEdgeCases", "StringsEdgeCases", "MixedApp"]
 
     /// Every fixture runs end-to-end with the real detectors: findings and modules exist, two runs render
     /// byte-identical JSON, and no diagnostic is an error.
