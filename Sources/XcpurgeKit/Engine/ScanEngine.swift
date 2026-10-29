@@ -50,7 +50,22 @@ public struct ScanEngine: Sendable {
             for await part in group { all += part }
             return all
         }
-        return ScanResult(context: context, findings: filter(raw, context: context))
+        return ScanResult(context: context, findings: filter(capForSkippedSources(raw, refs: context.refs), context: context))
+    }
+
+    /// A reference source that could not be read may hold the only use of anything, so no unused-style
+    /// finding stays high when one was skipped. Duplicates do not depend on references.
+    func capForSkippedSources(_ findings: [Finding], refs: ReferenceIndex) -> [Finding] {
+        guard let first = refs.skippedSources.first else { return findings }
+        let more = refs.skippedSources.count > 1 ? " and \(refs.skippedSources.count - 1) more" : ""
+        let reason = "source \(first.path) skipped (\(first.reason))\(more); capped at medium"
+        return findings.map { f in
+            guard f.confidence == .high, f.category != .duplicates else { return f }
+            var capped = f
+            capped.confidence = .medium
+            capped.reasons.append(reason)
+            return capped
+        }
     }
 
     /// Applies confidence threshold, `.xcpurgeignore` rules and inline `xcpurge:ignore` markers (for every

@@ -131,7 +131,7 @@ struct TokenReferenceExtractor {
     private mutating func emitString(_ t: Int, _ tok: SwiftToken) {
         let ctx = frames.last.flatMap { $0.isBarrier ? nil : context(for: $0) }
         if tok.interpolated {
-            addPattern(prefix: tok.text, suffix: tok.suffix, line: tok.line, context: ctx)
+            addPattern(prefix: tok.text, suffix: tok.suffix, line: tok.line, context: ctx, segments: tok.segments)
             return
         }
         addRef(.stringLiteral, tok.text, tok.line, ctx)
@@ -211,10 +211,11 @@ struct TokenReferenceExtractor {
         refFrame.append(frames.last.map { $0.isBarrier ? 0 : $0.id } ?? 0)
     }
 
-    private mutating func addPattern(prefix: String, suffix: String, line: Int32, context: CallContext?) {
+    private mutating func addPattern(prefix: String, suffix: String, line: Int32, context: CallContext?,
+                                     segments: [String]? = nil) {
         out.patterns.append(DynamicPattern(prefix: prefix, suffix: suffix, file: file, line: line,
                                            domain: DynamicPattern.domain(for: context, extraMacros: localizationMacros),
-                                           context: context))
+                                           context: context, segments: segments))
         patternFrame.append(frames.last.map { $0.isBarrier ? 0 : $0.id } ?? 0)
     }
 }

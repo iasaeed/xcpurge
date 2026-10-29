@@ -136,4 +136,23 @@ final class SwiftTokenizerTests: XCTestCase {
         XCTAssertFalse(out.tokens.contains { $0.text == "UIKit" })
         XCTAssertEqual(out.tokens.filter { $0.kind == .string }.map(\.text), ["key"])
     }
+
+    /// Review #2: every literal segment of an interpolation is kept, not just prefix and suffix.
+    func testInterpolationKeepsAllSegments() {
+        let t = tokens("Text(\"\\(a) of \\(b)\")\nText(\"Hi \\(n), \\(m)!\")").filter { $0.kind == .string }
+        XCTAssertEqual(t.map(\.segments), [["", " of ", ""], ["Hi ", ", ", "!"]])
+        XCTAssertEqual(t.map(\.text), ["", "Hi "])
+        XCTAssertEqual(t.map(\.suffix), ["", "!"])
+        XCTAssertEqual(tokens("let s = \"plain\"").first { $0.kind == .string }?.segments, [])
+        let pattern = SwiftScanner.scan(Data("let s = NSLocalizedString(\"\\(a) of \\(b)\", comment: \"\")".utf8), file: 0,
+                                        fileName: "A.swift").patterns.first { $0.hasLiteralText }
+        XCTAssertEqual(pattern?.segments, ["", " of ", ""])
+        XCTAssertEqual(pattern?.couldBuild("3 of 5"), true)
+        XCTAssertEqual(pattern?.couldBuild("3 von 5"), false)
+    }
+
+    /// Review #13: an unterminated single-line string counts its newline once.
+    func testUnterminatedStringCountsNewlineOnce() {
+        XCTAssertEqual(tokens("let s = \"unterminated\nlet z = 1\nlet y = 2").first { $0.text == "y" }?.line, 3)
+    }
 }

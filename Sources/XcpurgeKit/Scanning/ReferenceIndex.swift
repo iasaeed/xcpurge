@@ -15,10 +15,14 @@ public struct ReferenceIndex: Sendable {
     public let generatedFiles: Set<Int32>
     public let sourcePaths: [String]
     public let sourceModules: [Set<ModuleID>]
+    /// Reference sources that could not be scanned (path -> reason), sorted by path. Findings that might
+    /// depend on them are capped at medium by the engine.
+    public let skippedSources: [(path: String, reason: String)]
     private let byValue: [String: [Int32]]
     private let byLowercased: [String: [Int32]]
 
-    /// Max bytes read per file; larger files are skipped with a diagnostic.
+    /// Max bytes read per generic text file (json, html, css, js, xcconfig); larger ones are skipped.
+    /// Source code, Interface Builder files and plists are always read: skipping them would hide real uses.
     public static let maxFileSize: Int64 = 5 * 1024 * 1024
 
     /// Build settings whose values name resources (app icons, accent colors, storyboards).
@@ -30,7 +34,9 @@ public struct ReferenceIndex: Sendable {
     ]
 
     init(references: [Reference], dynamicPatterns: [DynamicPattern], ignoredLines: Set<FileLine>,
-         accessors: [String: String], generatedFiles: Set<Int32>, sourcePaths: [String], sourceModules: [Set<ModuleID>]) {
+         accessors: [String: String], generatedFiles: Set<Int32>, sourcePaths: [String], sourceModules: [Set<ModuleID>],
+         skippedSources: [(path: String, reason: String)] = []) {
+        self.skippedSources = skippedSources
         self.references = references
         self.dynamicPatterns = dynamicPatterns
         self.ignoredLines = ignoredLines
@@ -102,7 +108,12 @@ public struct ReferenceIndex: Sendable {
 
         var references: [Reference] = [], patterns: [DynamicPattern] = [], ignored = Set<FileLine>()
         var accessors: [String: String] = [:], generated = Set<Int32>()
+        var skipped: [(path: String, reason: String)] = []
         for (i, out) in outputs {
+            if let reason = out.skipReason {
+                skipped.append((files[i].path, reason))
+                continue
+            }
             if out.isGenerated {
                 generated.insert(Int32(i))
                 for (k, v) in out.accessors.sorted(by: { $0.key < $1.key }) where accessors[k] == nil { accessors[k] = v }
@@ -144,19 +155,22 @@ public struct ReferenceIndex: Sendable {
         }
         return ReferenceIndex(references: references, dynamicPatterns: patterns, ignoredLines: ignored,
                               accessors: accessors, generatedFiles: generated, sourcePaths: sourcePaths,
-                              sourceModules: sourceModules)
+                              sourceModules: sourceModules, skippedSources: skipped)
     }
 
     static func scanFile(_ file: SourceFile, index: Int32, rootPath: String, macros: [String],
                          diagnostics: Diagnostics) -> ScanOutput? {
-        guard file.size <= maxFileSize else {
-            diagnostics.info("skipped (larger than 5 MB)", path: file.path)
-            return nil
+        var skipped = ScanOutput()
+        if isSizeCapped(file.kind), file.size > maxFileSize {
+            diagnostics.warn("skipped (larger than 5 MB); related findings capped at medium", path: file.path)
+            skipped.skipReason = "larger than 5 MB"
+            return skipped
         }
         let url = URL(fileURLWithPath: RelPath.join(rootPath, file.path))
         guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else {
-            diagnostics.warn("cannot read file", path: file.path)
-            return nil
+            diagnostics.warn("cannot read file; related findings capped at medium", path: file.path)
+            skipped.skipReason = "unreadable"
+            return skipped
         }
         switch file.kind {
         case .swift: return SwiftScanner.scan(data, file: index, fileName: file.fileName, localizationMacros: macros)
@@ -165,6 +179,14 @@ public struct ReferenceIndex: Sendable {
         case .plist, .entitlements, .intentDefinition: return PlistScanner.scan(data, file: index)
         case .json, .html, .css, .js, .xcconfig: return GenericTextScanner.scan(data, file: index, kind: file.kind)
         default: return nil
+        }
+    }
+
+    /// Only generic text is size-capped (large data files); code, IB files and plists are always scanned.
+    static func isSizeCapped(_ kind: FileKind) -> Bool {
+        switch kind {
+        case .json, .html, .css, .js, .xcconfig: true
+        default: false
         }
     }
 }

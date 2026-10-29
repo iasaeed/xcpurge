@@ -100,6 +100,20 @@ public enum StringSymbolMangler {
         return (String(c[..<first.lowerBound]), String(c[last.upperBound...]))
     }
 
+    /// Literal text between specifiers, in order, with `%%` unescaped (`"%lld of %lld"` -> `["", " of ", ""]`):
+    /// the segments a Swift interpolation (`"\(a) of \(b)"`) of the same key has. Nil without specifiers.
+    public static func formatSegments(_ s: String) -> [String]? {
+        let ranges = formatSpecifierRanges(s)
+        guard !ranges.isEmpty else { return nil }
+        let c = Array(s)
+        var segments: [String] = [], last = 0
+        for r in ranges + [c.count..<c.count] {
+            segments.append(String(c[last..<r.lowerBound]).replacingOccurrences(of: "%%", with: "%"))
+            last = r.upperBound
+        }
+        return segments
+    }
+
     // MARK: - Words
 
     private static func splitWords(_ s: String) -> [String] {

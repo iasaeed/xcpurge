@@ -25,13 +25,18 @@ public struct SwiftToken: Sendable, Hashable {
     public var interpolated: Bool
     /// Strings only: literal text after the last interpolation.
     public var suffix: String
+    /// Interpolated strings only: every literal segment around the interpolations, in order
+    /// (`"\(a) of \(b)"` -> `["", " of ", ""]`); the first is `text`, the last `suffix`.
+    public var segments: [String]
 
-    public init(kind: Kind, text: String, line: Int32, interpolated: Bool = false, suffix: String = "") {
+    public init(kind: Kind, text: String, line: Int32, interpolated: Bool = false, suffix: String = "",
+                segments: [String] = []) {
         self.kind = kind
         self.text = text
         self.line = line
         self.interpolated = interpolated
         self.suffix = suffix
+        self.segments = interpolated && segments.isEmpty ? [text, suffix] : segments
     }
 
     public func isPunct(_ c: String) -> Bool { kind == .punct && text == c }

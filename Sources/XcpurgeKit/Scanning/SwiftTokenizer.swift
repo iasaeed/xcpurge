@@ -63,10 +63,11 @@ public struct SwiftTokenizer {
     }
 
     private mutating func emit(_ kind: SwiftToken.Kind, _ text: String, line tokenLine: Int32? = nil,
-                               interpolated: Bool = false, suffix: String = "") {
+                               interpolated: Bool = false, suffix: String = "", segments: [String] = []) {
         let l = tokenLine ?? line
         if pendingIgnore { ignored.append(l); pendingIgnore = false }
-        tokens.append(SwiftToken(kind: kind, text: text, line: l, interpolated: interpolated, suffix: suffix))
+        tokens.append(SwiftToken(kind: kind, text: text, line: l, interpolated: interpolated, suffix: suffix,
+                                 segments: segments))
         lineHasToken = true
     }
 
@@ -278,12 +279,13 @@ public struct SwiftTokenizer {
         let multiline = dialect == .swift && peek(1) == 0x22 && peek(2) == 0x22
         i += multiline ? 3 : 1
         var buf: [UInt8] = []
-        var prefix: String?
+        var segments: [String] = []
         while i < n {
             let c = b[i]
             if c == 0x0A {
-                line += 1
+                // Unterminated single-line string: stop at the newline and let the code scanner count it.
                 if !multiline { break }
+                line += 1
                 buf.append(c); i += 1; continue
             }
             if c == 0x22, let len = closes(at: i, multiline: multiline, hashes: hashes) {
@@ -296,7 +298,7 @@ public struct SwiftTokenizer {
                 if k == hashes {
                     let e = peek(1 + hashes)
                     if e == 0x28 && dialect == .swift {
-                        if prefix == nil { prefix = decode(buf, multiline: multiline, trailing: false) }
+                        segments.append(decode(buf, multiline: multiline, trailing: false))
                         buf.removeAll()
                         i += 2 + hashes
                         scanCode(inInterpolation: true)
@@ -309,8 +311,9 @@ public struct SwiftTokenizer {
             }
             buf.append(c); i += 1
         }
-        if let prefix {
-            emit(.string, prefix, line: startLine, interpolated: true, suffix: decode(buf, multiline: multiline, trailing: true))
+        if let prefix = segments.first {
+            let suffix = decode(buf, multiline: multiline, trailing: true)
+            emit(.string, prefix, line: startLine, interpolated: true, suffix: suffix, segments: segments + [suffix])
         } else {
             emit(.string, decode(buf, multiline: multiline, trailing: true), line: startLine)
         }

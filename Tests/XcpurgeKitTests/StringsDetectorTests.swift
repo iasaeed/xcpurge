@@ -57,6 +57,67 @@ final class StringsDetectorTests: XCTestCase {
         XCTAssertEqual(f["Feature/legacy_unused"]?.path, "Sources/Feature/Resources/en.lproj/Legacy.strings", "en preferred over fr")
     }
 
+    /// Review #1: a storyboard over 5 MB is still scanned, so its object IDs keep `Main.strings` keys alive.
+    func testLargeStoryboardIsScannedNotSkipped() async throws {
+        let pad = String(repeating: "<!-- padding padding padding padding padding padding padding -->\n", count: 90_000)
+        let root = try FixtureSupport.tempTree([
+            "Base.lproj/Main.storyboard": "<?xml version=\"1.0\"?><document><objects><label id=\"abc-12-def\" text=\"Hi\"/>"
+                + "</objects>\(pad)</document>",
+            "fr.lproj/Main.strings": "\"abc-12-def.text\" = \"Salut\";\n\"zzz-99-zzz.text\" = \"Gone\";\n",
+        ])
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        XCTAssertGreaterThan(try FileManager.default.attributesOfItem(atPath: root.appendingPathComponent("Base.lproj/Main.storyboard").path)[.size] as? Int ?? 0,
+                             Int(ReferenceIndex.maxFileSize))
+        XCTAssertFalse(result.findings.contains { $0.name == "abc-12-def.text" }, "object ID exists in the large storyboard")
+        XCTAssertEqual(result.findings.first { $0.name == "zzz-99-zzz.text" }?.confidence, .high)
+        XCTAssertTrue(result.context.refs.skippedSources.isEmpty)
+    }
+
+    /// Review #1: when a reference source is skipped, nothing stays high (it may hold the only use).
+    func testSkippedSourceCapsFindingsAtMedium() async throws {
+        let big = "[\"" + String(repeating: "x", count: Int(ReferenceIndex.maxFileSize)) + "\", \"maybe_key\"]"
+        let root = try FixtureSupport.tempTree([
+            "en.lproj/Localizable.strings": "\"maybe_key\" = \"A\";\n",
+            "Big.json": big,
+        ])
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        let finding = try XCTUnwrap(result.findings.first { $0.name == "maybe_key" })
+        XCTAssertEqual(finding.confidence, .medium)
+        XCTAssertTrue(finding.reasons.contains { $0.contains("source Big.json skipped") }, "\(finding.reasons)")
+        XCTAssertEqual(result.context.refs.skippedSources.map(\.path), ["Big.json"])
+    }
+
+    /// Review #2: keys that start and end with an interpolation match by their middle segments; unmatched
+    /// format keys are never high.
+    func testInterpolationSegmentsMatchFormatKeys() async throws {
+        let catalog = """
+        {"sourceLanguage":"en","version":"1.0","strings":{
+         "%lld of %lld":{"localizations":{"de":{"stringUnit":{"state":"translated","value":"%lld von %lld"}}}},
+         "%1$@ and %2$@":{}, "Hello %@":{}, "%lld items left":{}, "100%% of %@":{}, "plain_unused":{}}}
+        """
+        let root = try FixtureSupport.tempTree([
+            "Localizable.xcstrings": catalog,
+            "V.swift": """
+            import SwiftUI
+            struct V: View { var body: some View { VStack {
+                Text("\\(a) of \\(b)"); Text("\\(x) and \\(y)"); Text("Hello \\(name)"); Text("100% of \\(p)")
+            } } }
+            """,
+        ])
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        let byName = Dictionary(result.findings.map { ($0.name ?? "", $0) }, uniquingKeysWith: { a, _ in a })
+        for used in ["%lld of %lld", "%1$@ and %2$@", "Hello %@", "100%% of %@"] { XCTAssertNil(byName[used], used) }
+        XCTAssertEqual(byName["%lld items left"]?.confidence, .medium, "format key without a match is never high")
+        XCTAssertEqual(byName["plain_unused"]?.confidence, .high)
+        XCTAssertFalse(result.findings.contains { $0.kind == .dynamicLookup }, "matched interpolations are not dynamic lookups")
+    }
+
     func testDynamicLookupInfoFindings() async throws {
         let ctx = try await FixtureSupport.context("StringsEdgeCases", config: Self.config)
         let lookups = StringsDetector().run(ctx).filter { $0.kind == .dynamicLookup }

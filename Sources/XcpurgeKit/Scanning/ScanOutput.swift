@@ -7,6 +7,8 @@ public struct ScanOutput: Sendable {
     public var accessors: [String: String] = [:]
     /// True for generated accessor files; their references are not counted as uses.
     public var isGenerated = false
+    /// Why the file was not scanned (too large, unreadable); its references are unknown.
+    public var skipReason: String?
 
     public init() {}
 }

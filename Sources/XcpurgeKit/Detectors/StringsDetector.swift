@@ -113,7 +113,7 @@ public struct StringsDetector: Detector {
             macros = ctx.config.localizationMacros
             ib = IBStringsResolver(ctx)
             intentStems = Set(ctx.inventory.files(of: .intentDefinition).map { RelPath.stem($0.path) })
-            patterns = ctx.refs.dynamicPatterns.filter { !$0.isKeyless && ($0.domain == .string || $0.domain == .any) }
+            patterns = ctx.refs.dynamicPatterns.filter { $0.hasLiteralText && ($0.domain == .string || $0.domain == .any) }
         }
 
         func site(_ file: Int32, _ line: Int32) -> String { "\(ctx.refs.path(of: file)):\(line)" }
@@ -164,6 +164,9 @@ public struct StringsDetector: Detector {
                 result = finding(.unusedString, .medium, ["not a known Info.plist key and not referenced"])
             } else if entry.state == "extracted_with_value" {
                 result = finding(.unusedString, .medium, ["no reference found; Xcode will mark it stale on the next build"])
+            } else if StringSymbolMangler.hasFormatSpecifiers(key) {
+                // Interpolated uses are matched by their literal segments only; never certain enough to prune.
+                result = finding(.unusedString, .medium, ["no reference found; format keys are matched only by literal text"])
             } else {
                 result = finding(.unusedString, .high, ["no reference found"])
             }
@@ -212,9 +215,10 @@ public struct StringsDetector: Detector {
                     if ev.strong { return ev }
                 }
             }
-            // Interpolated literals: `Text("Hello \(name)")` is the key "Hello %@".
-            if let (prefix, suffix) = StringSymbolMangler.formatAffixes(entry.key), !(prefix + suffix).isEmpty {
-                for p in patterns where p.domain == .string && p.prefix == prefix && p.suffix == suffix
+            // Interpolated literals: `Text("Hello \(name)")` is the key "Hello %@", `Text("\(a) of \(b)")` is
+            // "%lld of %lld": every literal segment must match, in order.
+            if let segments = StringSymbolMangler.formatSegments(entry.key), segments.contains(where: { !$0.isEmpty }) {
+                for p in patterns where p.domain == .string && p.segments == segments
                     && refs.isVisible(p.file, visibleModules) && (p.context?.table ?? table.stem) == table.stem {
                     ev.strong = true
                     return ev
@@ -250,8 +254,8 @@ public struct StringsDetector: Detector {
         func downgrade(_ f: inout Finding, key: String, table: Table, _ visibleModules: Set<ModuleID>) {
             for p in patterns where ctx.refs.isVisible(p.file, visibleModules) {
                 if let t = p.context?.table, t != table.stem { continue }
-                let literal = p.prefix.count + p.suffix.count
-                guard key.count > literal, key.hasPrefix(p.prefix), key.hasSuffix(p.suffix) else { continue }
+                let literal = p.segments.reduce(0) { $0 + $1.count }
+                guard p.couldBuild(key) else { continue }
                 let target: Confidence
                 if p.domain == .string, literal >= 1 { target = .low }
                 else if p.domain == .any, literal >= 3 { target = .medium }
@@ -318,7 +322,7 @@ public struct StringsDetector: Detector {
         var formatKeys = Set<String>()
         for table in tables {
             for key in table.keys.keys {
-                if let (prefix, suffix) = StringSymbolMangler.formatAffixes(key) { formatKeys.insert(prefix + "\u{0}" + suffix) }
+                if let segments = StringSymbolMangler.formatSegments(key) { formatKeys.insert(segments.joined(separator: "\u{0}")) }
             }
         }
         // Unattributed tables are visible everywhere but built by no target: they only count for unattributed sites.
@@ -329,11 +333,8 @@ public struct StringsDetector: Detector {
             }.map { tables[$0] }
         }
         func buildsKey(_ p: DynamicPattern, _ candidates: [Table]) -> Bool {
-            let literal = p.prefix.count + p.suffix.count
             let runtimeAPI = p.context?.callee.map { $0.hasPrefix("NSLocalizedString") || $0.hasPrefix("localizedString") } ?? false
-            return runtimeAPI || candidates.contains { table in
-                table.keys.keys.contains { $0.count > literal && $0.hasPrefix(p.prefix) && $0.hasSuffix(p.suffix) }
-            }
+            return runtimeAPI || candidates.contains { table in table.keys.keys.contains { p.couldBuild($0) } }
         }
         let macros = ctx.config.localizationMacros
         var keyedLines = Set<FileLine>()
@@ -341,19 +342,21 @@ public struct StringsDetector: Detector {
             && LocalizationCallClassifier.isLocalization(r.context, extraMacros: macros) {
             keyedLines.insert(FileLine(file: r.file, line: r.line))
         }
-        for p in refs.dynamicPatterns where p.domain == .string && !p.isKeyless {
+        for p in refs.dynamicPatterns where p.domain == .string && p.hasLiteralText {
             keyedLines.insert(FileLine(file: p.file, line: p.line))
         }
         var findings: [Finding] = []
         for p in refs.dynamicPatterns where p.domain == .string {
-            if refs.isIgnored(file: p.file, line: p.line) || (!p.isKeyless && formatKeys.contains(p.prefix + "\u{0}" + p.suffix)) { continue }
+            let keyless = !p.hasLiteralText
+            if refs.isIgnored(file: p.file, line: p.line)
+                || (!keyless && formatKeys.contains(p.segments.joined(separator: "\u{0}"))) { continue }
             let candidates = relevantTables(p)
-            if candidates.isEmpty || (!p.isKeyless && !buildsKey(p, candidates)) { continue }
+            if candidates.isEmpty || (!keyless && !buildsKey(p, candidates)) { continue }
             let path = refs.path(of: p.file)
-            if p.isKeyless, keyedLines.contains(FileLine(file: p.file, line: p.line)) { continue }
-            let name = p.isKeyless ? nil : "\(p.prefix)*\(p.suffix)"
-            let reason = p.isKeyless ? "localization call with a non-literal key"
-                : "localization key built at runtime (\"\(p.prefix)…\(p.suffix)\")"
+            if keyless, keyedLines.contains(FileLine(file: p.file, line: p.line)) { continue }
+            let name = keyless ? nil : p.segments.joined(separator: "*")
+            let reason = keyless ? "localization call with a non-literal key"
+                : "localization key built at runtime (\"\(p.segments.joined(separator: "…"))\")"
             findings.append(Finding(kind: .dynamicLookup, category: .strings, path: path, line: Int(p.line), name: name,
                                     module: ctx.moduleName(for: path), confidence: .low, reasons: [reason]))
         }
