@@ -17,7 +17,7 @@ public struct StringsDetector: Detector {
         }
         findings += settingsBundleFindings(ctx)
         findings += dynamicLookupFindings(ctx, tables: tables, evaluator: evaluator)
-        return findings.filter { !ctx.ignore.suppresses($0) }
+        return findings
     }
 
     // MARK: - Tables
@@ -344,23 +344,13 @@ public struct StringsDetector: Detector {
         for p in refs.dynamicPatterns where p.domain == .string && !p.isKeyless {
             keyedLines.insert(FileLine(file: p.file, line: p.line))
         }
-        var lineCache: [Int32: [Substring]] = [:]
         var findings: [Finding] = []
         for p in refs.dynamicPatterns where p.domain == .string {
             if refs.isIgnored(file: p.file, line: p.line) || (!p.isKeyless && formatKeys.contains(p.prefix + "\u{0}" + p.suffix)) { continue }
             let candidates = relevantTables(p)
             if candidates.isEmpty || (!p.isKeyless && !buildsKey(p, candidates)) { continue }
             let path = refs.path(of: p.file)
-            if p.isKeyless {
-                if keyedLines.contains(FileLine(file: p.file, line: p.line)) { continue }
-                if lineCache[p.file] == nil {
-                    let text = (try? String(contentsOf: ctx.url(for: path), encoding: .utf8)) ?? ""
-                    lineCache[p.file] = text.split(separator: "\n", omittingEmptySubsequences: false)
-                }
-                let lines = lineCache[p.file] ?? []
-                let index = Int(p.line) - 1
-                if lines.indices.contains(index), !Self.hasVariableArgument(lines[index], callee: p.context?.callee) { continue }
-            }
+            if p.isKeyless, keyedLines.contains(FileLine(file: p.file, line: p.line)) { continue }
             let name = p.isKeyless ? nil : "\(p.prefix)*\(p.suffix)"
             let reason = p.isKeyless ? "localization call with a non-literal key"
                 : "localization key built at runtime (\"\(p.prefix)…\(p.suffix)\")"
@@ -368,19 +358,5 @@ public struct StringsDetector: Detector {
                                     module: ctx.moduleName(for: path), confidence: .low, reasons: [reason]))
         }
         return findings
-    }
-
-    /// True when some `callee(` on the line starts its argument with a lowercase identifier (a variable).
-    /// ponytail: patterns carry no token text, so `Text(Date(), …)` / `Text(L10n.x)` are filtered by re-reading
-    /// the line: arguments starting with a type name are constructors or static constants, not variable keys.
-    static func hasVariableArgument(_ line: Substring, callee: String?) -> Bool {
-        guard let callee, !callee.isEmpty else { return true }
-        var rest = line[...]
-        while let r = rest.range(of: callee + "(") {
-            let after = rest[r.upperBound...].drop { $0 == " " }
-            if let c = after.first, (c.isLetter && c.isLowercase) || c == "_" { return true }
-            rest = rest[r.upperBound...]
-        }
-        return false
     }
 }

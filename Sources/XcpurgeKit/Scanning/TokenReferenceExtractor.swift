@@ -98,8 +98,10 @@ struct TokenReferenceExtractor {
             if f.label == "bundle" { f.bundleTokens.append(tok.text) }
             if f.awaitingArg {
                 f.awaitingArg = false
-                // A localization call whose key is a variable: keyless lookup.
-                if tok.kind == .identifier, context(for: f).isLocalization(extraMacros: localizationMacros) {
+                // A localization call whose key is a variable: keyless lookup. An argument starting with a type
+                // name (`Text(Date(), …)`, `Text(String(localized: …))`, `Text(L10n.x)`) is not a variable key.
+                if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
+                   context(for: f).isLocalization(extraMacros: localizationMacros) {
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
                 }
             }

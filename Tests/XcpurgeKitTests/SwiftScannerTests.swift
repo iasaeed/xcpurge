@@ -79,6 +79,8 @@ final class SwiftScannerTests: XCTestCase {
     func testKeylessOnlyForVariableKeys() {
         let out = SwiftScanner.scan("Text(.welcomeTitle); Text(\"x\"); Button(title) {}")
         XCTAssertEqual(out.patterns.filter(\.isKeyless).count, 1)
+        let typed = SwiftScanner.scan("Text(String(localized: \"k\")); Text(Date(), style: .date); Text(L10n.title)")
+        XCTAssertEqual(typed.patterns.filter(\.isKeyless).count, 0, "arguments starting with a type name are not variable keys")
     }
 
     func testFormatParts() {
