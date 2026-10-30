@@ -4,14 +4,14 @@ public enum OutputFormat: String, Sendable, CaseIterable, Codable {
 
     public func reporter(_ options: ReporterOptions) -> any Reporter {
         switch self {
-        case .text: TextReporter(colors: options.colors, verbose: options.verbose)
+        case .text: TextReporter(colors: options.colors, verbose: options.verbose, quiet: options.quiet)
         case .json: JSONReporter()
         case .xcode: XcodeReporter(maxWarnings: options.maxWarnings)
         case .github: GitHubReporter()
         case .html: HTMLReporter()
         case .agent: AgentReporter(options: options)
         // Only `xcpurge size` renders markdown, from its own snapshot; a scan never reaches this reporter.
-        case .markdown: TextReporter(colors: options.colors, verbose: options.verbose)
+        case .markdown: TextReporter(colors: options.colors, verbose: options.verbose, quiet: options.quiet)
         }
     }
 

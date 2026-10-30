@@ -2,6 +2,19 @@
 
 ## 0.4.0 - unreleased
 
+### Changed
+
+- `assets --delete`, `files --delete`, `strings --prune` and `remove` without `--yes` and without a terminal on
+  stdin: the confirmation cannot be answered, so the three scanning actions still write their report (stdout or
+  `--output`) and then exit 2 with `Not a terminal; pass --yes to confirm.`; `remove` exits 2 after listing what
+  it would do. Before, the run ended 0 having done nothing (and, briefly, exited 2 before writing the report).
+- `--format agent`: `remove:` and `ignore:` are separate lines (the `remove:` text can be piped to a shell as
+  is), and the `ignore:` value is the `.xcpurgeignore` entry verbatim, quoted only for control characters or
+  leading/trailing whitespace, so pasting it never produces a rule that matches nothing.
+- Text output ends with dimmed `note:` lines for info diagnostics (for example the scoped-run stale-ignore
+  note), or `N notes (use --format json to see them)` above three; `--quiet` drops them, `--verbose` still lists
+  them as `info:`.
+
 ### Fixed (review round B/D)
 
 - `--format agent`: project-supplied values (path, name, module, ignore entry) are escaped, so a `.strings` key
@@ -21,8 +34,10 @@
   steps run with `always()` so a failed gate still posts the comment, label changes re-run the job, fork PRs
   (read-only token) are documented and cannot hide the gate's result, and the base-snapshot lookup only considers
   push runs. `docs/ci/xcpurge.yml` uses the default shallow checkout with a commented `fetch-depth: 0` + `--git`
-  variant. `make package` (`Scripts/package-release.sh`) builds the `xcpurge-macos.tar.gz` (universal) and
-  `.sha256` the workflows download.
+  variant. `make package` (`Scripts/package-release.sh`) builds the `xcpurge-macos.tar.gz` (universal; a failed
+  universal build stops it unless `ALLOW_HOST_ONLY=1`) and `.sha256` the workflows download and verify with
+  `shasum -a 256 -c` before extracting; the archive is reproducible (`SOURCE_DATE_EPOCH` / HEAD date, `gzip -n`)
+  and `XCPURGE_PACKAGE_DIR` must stay inside `.build/`.
 - `docs/schema/findings-v2.schema.json` no longer closes objects with `additionalProperties: false`, matching the
   "additive changes keep v2" policy; `SchemaTests` still requires every emitted key to be declared.
 

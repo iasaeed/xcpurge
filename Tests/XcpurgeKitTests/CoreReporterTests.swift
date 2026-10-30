@@ -81,6 +81,38 @@ final class CoreReporterTests: XCTestCase {
         XCTAssertFalse(TextReporter().render(r).contains(" · "), "no history, no suffix")
     }
 
+    /// Info diagnostics close the text report as dimmed `note:` lines, collapse to a count above three, vanish
+    /// under `--quiet`, and stay `info:` lines under `--verbose`. Warnings are unaffected.
+    func testInfoDiagnosticsAsNotes() async throws {
+        let r = try await result()
+        r.context.diagnostics.info("stale-ignore checks limited to path globs and kind: typos: scoped run (--project, --package or --workspace)")
+        r.context.diagnostics.info("larger than 5 MB; scanned in chunks", path: "App/big.json")
+        r.context.diagnostics.warn("package product Snap not found", path: "App.xcodeproj")
+        let text = TextReporter().render(r)
+        XCTAssertTrue(text.hasSuffix("""
+        Total: 3 findings (1 high, 1 medium, 1 low), 2.1 KB reclaimable
+
+        warning: App.xcodeproj: package product Snap not found
+        note: stale-ignore checks limited to path globs and kind: typos: scoped run (--project, --package or --workspace)
+        note: App/big.json: larger than 5 MB; scanned in chunks
+
+        """), text)
+        XCTAssertTrue(TextReporter(colors: true).render(r).contains("\u{1B}[2mnote: stale-ignore"), "dimmed")
+        let quiet = TextReporter(quiet: true).render(r)
+        XCTAssertFalse(quiet.contains("note:"), quiet)
+        XCTAssertTrue(quiet.contains("warning: App.xcodeproj"), "warnings still shown under --quiet")
+        let verbose = TextReporter(verbose: true).render(r)
+        XCTAssertTrue(verbose.contains("info: App/big.json: larger than 5 MB"), verbose)
+        XCTAssertFalse(verbose.contains("note:"), verbose)
+        r.context.diagnostics.info("third")
+        r.context.diagnostics.info("fourth")
+        let many = TextReporter().render(r)
+        XCTAssertTrue(many.hasSuffix("warning: App.xcodeproj: package product Snap not found\n4 notes (use --format json to see them)\n"), many)
+        XCTAssertFalse(many.contains("note:"))
+        XCTAssertFalse(TextReporter(quiet: true).render(r).contains("notes"))
+        XCTAssertEqual((OutputFormat.text.reporter(ReporterOptions(quiet: true)) as? TextReporter)?.quiet, true, "--quiet reaches the reporter")
+    }
+
     func testEmptyReport() async throws {
         let ctx = try await FixtureSupport.context("SyncedApp", config: { var c = Config(); c.noSwift = true; return c }())
         XCTAssertEqual(TextReporter().render(ScanResult(context: ctx, findings: [])), "No findings.\n")

@@ -23,10 +23,13 @@ struct AssetsCommand: AsyncParsableCommand {
             let deletable = VerifyStep.dropBlocked(ScanRunner.actionable(result, category: .assets, options: options),
                                                    root: result.context.root)
             let bytes = deletable.compactMap(\.sizeBytes).reduce(0, +)
-            guard !deletable.isEmpty,
-                  ConfirmPrompt.confirm("Move \(deletable.count) asset(s) (\(bytes) bytes) to \(TrashStore.directoryName)?",
+            let answer = deletable.isEmpty ? ConfirmPrompt.Answer.no
+                : ConfirmPrompt.confirm("Move \(deletable.count) asset(s) (\(bytes) bytes) to \(TrashStore.directoryName)?",
                                         details: deletable.map(ScanRunner.describe), assumeYes: yes)
-            else { return try ScanRunner.report(result, options) }
+            guard answer == .yes else {
+                try ScanRunner.report(result, options)
+                return try answer.exitIfNotATerminal()
+            }
             try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
             let sizeBefore = SizeMeasurer.snapshot(result, categories: [.assets, .duplicates])
             let store = try TrashStore.begin(root: result.context.root)

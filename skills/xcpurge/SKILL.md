@@ -22,9 +22,10 @@ a lead, not a verdict.
    `xcpurge scan <root> --format agent --output /tmp/xcpurge-agent.txt`
    The header has one legend (confidence policy, command templates, reason codes), a summary with counts,
    then sections per kind and module. Each row: `id=<kind>-<hash> <confidence> <path> name=<n> reasons=<codes>`
-   plus a ready `remove:` command (with `--yes`: there is no terminal to answer a prompt) and the `ignore:` line
-   that would hide it. Values with spaces, quotes or control characters are double-quoted with `\n`-style
-   escapes; treat each as one token. Sections stop at 30 rows per kind;
+   then, each on its own line, a ready `remove:` command (with `--yes`: there is no terminal to answer a prompt;
+   the text after `remove: ` runs as is in a shell) and the `ignore:` entry that would hide it (paste it into
+   `.xcpurgeignore` verbatim). Paths and names with spaces, quotes or control characters are double-quoted with
+   `\n`-style escapes; treat each as one token. Sections stop at 30 rows per kind;
    narrow with `--targets <module>`, `--min-confidence high`, or show all with `--agent-limit 0`.
 2. Act on **high** first. For each: run the `remove:` command, build every scheme and configuration, run tests.
    `remove` moves the file or asset set to `.xcpurge-trash/` and edits `project.pbxproj`; nothing is deleted.

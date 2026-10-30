@@ -22,9 +22,12 @@ struct FilesCommand: AsyncParsableCommand {
         if delete {
             let deletable = VerifyStep.dropBlocked(ScanRunner.actionable(result, category: .files, options: options),
                                                    root: result.context.root)
-            guard !deletable.isEmpty,
-                  ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
-            else { return try ScanRunner.report(result, options) }
+            let answer = deletable.isEmpty ? ConfirmPrompt.Answer.no
+                : ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
+            guard answer == .yes else {
+                try ScanRunner.report(result, options)
+                return try answer.exitIfNotATerminal()
+            }
             try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
             let sizeBefore = SizeMeasurer.snapshot(result, categories: [.files])
             let store = try TrashStore.begin(root: result.context.root)

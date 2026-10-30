@@ -15,6 +15,7 @@ template:
 	Scripts/embed-report-template.sh
 
 # Release archive for the GitHub release (what docs/ci/*.yml download): .build/package/xcpurge-macos.tar.gz + .sha256
+# (XCPURGE_PACKAGE_DIR=.build/other for another folder inside .build/; ALLOW_HOST_ONLY=1 accepts a non-universal build)
 package:
 	Scripts/package-release.sh
 

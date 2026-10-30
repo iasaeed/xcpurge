@@ -15,10 +15,13 @@ struct StringsCommand: AsyncParsableCommand {
         let result = try await ScanRunner.scan(options, categories: [.strings])
         if prune {
             let prunable = ScanRunner.actionable(result, category: .strings, options: options)
-            guard !prunable.isEmpty,
-                  ConfirmPrompt.confirm("Remove \(prunable.count) string key(s)?",
+            let answer = prunable.isEmpty ? ConfirmPrompt.Answer.no
+                : ConfirmPrompt.confirm("Remove \(prunable.count) string key(s)?",
                                         details: prunable.map(ScanRunner.describe), assumeYes: yes)
-            else { return try ScanRunner.report(result, options) }
+            guard answer == .yes else {
+                try ScanRunner.report(result, options)
+                return try answer.exitIfNotATerminal()
+            }
             let sizeBefore = SizeMeasurer.snapshot(result, categories: [.strings])
             let store = try TrashStore.begin(root: result.context.root)
             let report = try PruneStrings(store: store).apply(prunable, context: result.context)
