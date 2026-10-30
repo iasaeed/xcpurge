@@ -954,7 +954,157 @@ later state with the tree before that action. A purge's reclaimable estimate cov
 ## Using xcpurge from coding agents
 
 <!-- lane D:agents -->
-_Coming in 0.4.0._
+Coding agents (Claude Code, Codex, Cursor, Copilot) are good at running a scan and bad at telling a proven
+finding from a hint. xcpurge gives them a plain-text report that says which is which, an `explain` command
+that shows the evidence behind one finding, a JSON Schema for the machine-readable report, and a skill that
+encodes the safe workflow. Nothing here is a network service: it is the same findings as every other format.
+
+### `--format agent`
+
+Plain stdout data, no colour or progress, deterministic, relative paths. One legend at the top, a summary with
+counts, then sections per kind and module. Every row has a stable id, the confidence, reason codes, a ready
+`remove` command and the `.xcpurgeignore` line that would hide it:
+
+```
+$ xcpurge scan Tests/Fixtures/MixedApp --format agent
+# xcpurge agent report v1 · xcpurge 0.4.0 · root: /path/to/xcpurge/Tests/Fixtures/MixedApp
+## Legend
+confidence: high = no reference from any module that can see it; remove, then build. medium/low = NOT proven unused: run `xcpurge explain <root> <id>` and check runtime/dynamic use first. This output is a lead, not a verdict.
+commands: remove `xcpurge remove <root> <path>` · undo `xcpurge restore <root>` · explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it
+after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.
+reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bundle, preview-only, public-api, test-only, extension-only, app-icon, odr, numbered-sibling, font-declared, xcode-stale, ib-stale, duplicate, ghost-ref, target-member, excluded, unattributed, folder-ref, convention, stale-ignore, no-ref, generated, other
+## Summary
+8 findings (3 high, 1 medium, 4 low) · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2
+## unused-asset (2)
+### MixedApp
+- id=unused-asset-ab15ed7993 high Legacy/LegacyAssets.xcassets/legacy_unused.imageset name=legacy_unused reasons=no-ref
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset   ignore: asset:legacy_unused
+- id=unused-asset-bdd3de6eeb high Modern/ModernAssets.xcassets/modern_unused.imageset name=modern_unused reasons=no-ref
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/ModernAssets.xcassets/modern_unused.imageset   ignore: asset:modern_unused
+## dynamic-lookup (1)
+### MixedApp
+- id=dynamic-lookup-d5820de9f2 low Modern/MixedAppApp.swift:12 reasons=dyn-pattern
+## unused-string (1)
+### MixedApp
+- id=unused-string-ee045d97e0 high Legacy/en.lproj/Localizable.strings:3 name=farewell_unused reasons=no-ref
+  ignore: string:farewell_unused
+## orphan-file (2)
+### MixedApp
+- id=orphan-file-787d8461b8 medium Modern/Excluded.swift reasons=excluded
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/Excluded.swift   ignore: Modern/Excluded.swift
+### unknown
+- id=orphan-file-449b7ad154 low Stray/Stray.swift reasons=unattributed
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Stray/Stray.swift   ignore: Stray/Stray.swift
+## unused-resource (2)
+### MixedApp
+- id=unused-resource-1ae80990f6 low Content/a.json reasons=no-ref,folder-ref
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Content/a.json   ignore: Content/a.json
+- id=unused-resource-d760612b46 low Content/b.json reasons=no-ref,folder-ref
+  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Content/b.json   ignore: Content/b.json
+```
+
+- Rows are grouped by kind, then module, sorted by confidence (high first) then report order. Each kind shows
+  at most `--agent-limit N` rows (default 30, `0` = all); a cut-off section ends with
+  `… 12 more unused-asset not shown: narrow with --targets <module>, --min-confidence high, or --agent-limit 0`.
+- The `remove:` line appears for kinds `xcpurge remove` acts on (assets, fonts, orphan, resource and interface
+  files, ghost references). The `ignore:` line follows the HTML report's rules: `asset:<name>`, `string:<key>`,
+  otherwise the path. Dynamic lookups and stale ignores get neither.
+- `reasons=` are codes for the free-text reasons (one per distinct code, in order). `no-ref` is the normal high
+  case; `dyn-pattern`, `string-literal`, `main-bundle`, `convention`, `folder-ref` and friends mark the hints
+  that lower a finding to medium or low and need a look. `skipped-source` means a source could not be read and
+  everything was capped at medium. `explain` prints the full text behind each code.
+- The id (`unused-asset-ab15ed7993`) is stable across runs for the same tree: the kind plus a hash of the
+  finding's identity (module and name, or path) and path, never a line number. It is the same `id` the JSON
+  report carries, so an agent can go from either to `explain`.
+- `--output FILE` writes the report and prints the path on stderr; `--quiet` leaves stdout as the only output.
+  With a `--baseline`, the summary ends with `· baseline: 140 hidden, 2 fixed`.
+
+### `xcpurge explain`
+
+`xcpurge explain <root> <subject>` runs discovery, indexing and the detectors unfiltered, then explains every
+finding the subject matches. The subject is a finding id, a root-relative or absolute path (a file inside an
+asset set names the set) or a name (asset, string key, file name). The same options as `scan` apply
+(`--targets`, `--min-confidence`, `--exclude`, `--ignore-test-references`, …), so it answers "why does *this*
+scan report it?".
+
+A reported finding:
+
+```
+$ xcpurge explain Tests/Fixtures/MixedApp legacy_unused
+legacy_unused: 1 match
+
+## unused-asset-ab15ed7993 · reported · high
+kind: unused-asset · path: Legacy/LegacyAssets.xcassets/legacy_unused.imageset · name: legacy_unused · module: MixedApp
+owners: MixedApp.xcodeproj:MixedApp
+modules checked (3): unknown, MixedApp.xcodeproj:MixedApp, MixedApp.xcodeproj:MixedAppTests
+visibility rule: A reference counts when its file belongs to MixedApp.xcodeproj:MixedApp or to a module that depends on or embeds one of them, directly or transitively; files no target builds count everywhere. Test targets count.
+reference sites (0): none
+dynamic patterns (0): none
+confidence: high
+  base: unused-asset starts at high when no visible reference exists; a weak hint lowers it to medium, a runtime-built name, previews-only use or public library API to low
+  no-ref: no reference by name, generated symbol or accessor visible to MixedApp
+to make this safe:
+  - Grep the whole repository (scripts, CI, docs, server payloads) for the name; xcpurge only reads the sources it indexes.
+  - Remove with `xcpurge remove <root> <path>`, build every scheme and configuration, run the tests; `xcpurge restore <root>` undoes it.
+```
+
+A suppressed one (the `.xcpurgeignore` line that hides it, or the `path:line` of an inline marker):
+
+```
+$ xcpurge explain Tests/Fixtures/MixedApp unused-asset-ab15ed7993      # with `asset:legacy_unused` on line 2
+## unused-asset-ab15ed7993 · suppressed · high
+suppressed by: .xcpurgeignore:2 asset:legacy_unused
+…
+```
+
+A used asset is `notReported` and lists where it is referenced, visible or not:
+
+```
+$ xcpurge explain Tests/Fixtures/MixedApp legacy_used
+legacy_used: 1 match
+
+## legacy_used · notReported
+note: Legacy/LegacyAssets.xcassets/legacy_used.imageset is in the tree; 1 visible reference, 1 in total; no detector reports it
+owners: MixedApp.xcodeproj:MixedApp
+modules checked (3): unknown, MixedApp.xcodeproj:MixedApp, MixedApp.xcodeproj:MixedAppTests
+visibility rule: …
+reference sites (1):
+  - Legacy/Legacy.swift:5 MixedApp.xcodeproj:MixedApp visible stringLiteral "legacy_used"
+dynamic patterns (0): none
+to make this safe:
+  - Nothing to do: it is referenced (see the sites) or no detector covers it.
+```
+
+The fourth status, `belowThreshold`, is a finding under `--min-confidence`; a finding hidden by `--targets` or
+`--exclude` is `notReported` with a note saying so. Reference sites are the exact and case-insensitive matches
+of the name and of the symbols Xcode would generate for it (`.legacyUnused`, `ACImageNameLegacyUnused`,
+string catalog symbols), capped at 50. Dynamic patterns are the runtime-built names that could produce it.
+`--format json` prints `{schemaVersion: 1, tool, subject, root, matches: [{status, finding | null,
+suppressedBy | null, note?, owners, modulesChecked, visibilityRule, referenceSites, referenceSitesTruncated,
+dynamicPatterns, confidence?: {value, derivation}, toMakeSafe}]}`. Nothing matching exits 2 and suggests the
+closest names: `nothing matches 'legacy_unusd' … Did you mean: legacy_unused, modern_unused, farewell_unused?`.
+
+### Schema, skill and AGENTS.md
+
+- [`docs/schema/findings-v2.schema.json`](docs/schema/findings-v2.schema.json) is a JSON Schema (draft 2020-12)
+  for the `--format json` document, including `id`, `history` (`--git`) and `baseline`. The
+  [version policy](docs/schema/README.md): optional additions keep `schemaVersion` 2, removals and renames bump it.
+- [`skills/xcpurge/SKILL.md`](skills/xcpurge/SKILL.md) is an agent skill (Claude Code, Codex and compatible
+  tools): copy the `skills/xcpurge` folder into your project's or user's skills directory. It encodes the
+  workflow: clean branch, scan to a file outside the repository, high first, `explain` every medium/low,
+  `remove`, build, rescan, `restore` on failure, and no ignore entry without a reason line.
+- Or paste this into `AGENTS.md` / `CLAUDE.md`:
+
+```markdown
+## Unused resources (xcpurge)
+- Scan with `xcpurge scan . --format agent --output /tmp/xcpurge.txt`; read the legend first.
+- `high` = remove with the printed `remove:` command, then build and run tests. Rescan afterwards.
+- `medium`/`low` are leads, not verdicts: run `xcpurge explain . <id>` and check every reference site
+  and dynamic pattern before removing anything.
+- Undo with `xcpurge restore .`. Keep removals in their own commit on a clean branch.
+- Never add `.xcpurgeignore` entries or `// xcpurge:ignore` markers to make a scan green; an ignore
+  needs a `# reason` comment above it explaining where the thing is used.
+```
 <!-- /lane D -->
 
 ## Configuration reference
