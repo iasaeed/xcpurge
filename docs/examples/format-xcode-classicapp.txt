@@ -4,3 +4,4 @@ $ xcpurge files --format xcode
 /tmp/demo/ClassicApp/Ghost.swift:1: warning: [xcpurge] ghost-reference: 'Ghost.swift' in ClassicApp: file reference in ClassicApp.xcodeproj points at a missing path (high)
 /tmp/demo/ClassicApp/Orphan.swift:1: warning: [xcpurge] orphan-file: 'Orphan.swift': inside a project group folder but not referenced by any project (medium)
 /tmp/demo/ClassicApp/Unused.plist:1: warning: [xcpurge] unused-resource: 'Unused.plist' in ClassicApp: no reference to 'Unused' or 'Unused.plist' from a visible file (medium)
+note: [xcpurge] 4 findings (2 high, 2 medium, 0 low)
