@@ -101,6 +101,9 @@
   clones give `status: shallow` with a note instead of dates; uncommitted paths `untracked`; a non-git root
   `not-git`. `--git-emails` adds author emails (never by default); `--git-dead-since` runs a capped `git log -S`
   heuristic for the commit that removed the last use. Age never changes confidence.
+- `--git` settles paths the index does not know (`git ls-files`: never committed, ignored, deleted) as `untracked`
+  before the walk, so they cannot hold it up. A ghost reference is looked up on its own and shows the commit that
+  deleted the file (`note: "deleted in <sha>"`, that commit as `lastCommit`; at most 50 per repository).
 
 - `--verify "<build command>"` on `assets --delete`, `files --delete` and `remove` (with `--verify-timeout`,
   default 1800 s, and `--verify-max-builds`, default 8): preflight build (red → exit 4, nothing removed), build
@@ -108,6 +111,13 @@
   exit 4 on timeout. Dead source files that reference each other are one removal unit. The report always says
   "build-verified, not runtime-verified". Blocked paths persist in `.xcpurge-trash/verify-blocked.json`
   (`--delete` skips them, `remove` warns); the session manifest gains a `verify` record.
+- `--verify` handles Ctrl-C / SIGTERM: the build's process group is stopped (not just xcpurge), everything is
+  restored and the exit code is 4. A red build that no removed file can be blamed for (only project edits left,
+  "unresolved") restores everything and exits 4 too. Aborts leave a record-only session whose `verify.reason`
+  says `timed out`, `interrupted` or `unresolved`; `restore` skips such sessions by default and `restore --list`
+  marks them "record only". Build commands that leave background children behind end when the shell exits.
+- `assets --delete` / `files --delete`: `size-before.json` is measured on the ungated scan (before `--baseline`
+  hides findings), like `size-after.json`, so the reclaimable figure can no longer appear to grow.
 - `xcpurge restore --path <p>` (repeatable) restores part of a session and re-plans the `project.pbxproj` edit
   for what stays in the trash; a session that still has entries is never deleted.
 

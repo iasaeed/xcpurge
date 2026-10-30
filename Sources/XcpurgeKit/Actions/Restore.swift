@@ -5,7 +5,8 @@ import Foundation
 /// restore (`paths`) puts back only those entries and re-plans the `project.pbxproj` edits for what is still
 /// in the trash; a session that still has entries is never deleted.
 public enum Restore {
-    /// - Parameter sessionID: session to restore; nil means the newest session.
+    /// - Parameter sessionID: session to restore; nil means the newest session that holds entries (a session
+    ///   that only records an aborted `--verify` is skipped; name it to remove it).
     public static func run(root: URL, sessionID: String?) throws -> ActionReport {
         try run(root: root, sessionID: sessionID, paths: nil, context: nil)
     }
@@ -16,10 +17,15 @@ public enum Restore {
     ///     root when nil.
     public static func run(root: URL, sessionID: String?, paths: Set<String>?, context: ScanContext?) throws -> ActionReport {
         let sessions = try TrashStore.sessions(root: root)
-        let match = sessionID.map { id in sessions.first { $0.id == id } } ?? sessions.first
+        let match = sessionID.map { id in sessions.first { $0.id == id } } ?? defaultSession(sessions)
         guard let manifest = match else { throw XcpurgeError.notFound(sessionID ?? TrashStore.directoryName) }
         guard let paths else { return try restoreAll(manifest, root: root) }
         return try restore(paths, from: manifest, root: root, context: context)
+    }
+
+    /// The newest session with entries (sessions are newest first).
+    public static func defaultSession(_ sessions: [TrashManifest]) -> TrashManifest? {
+        sessions.first { !$0.entries.isEmpty }
     }
 
     private static func restoreAll(_ manifest: TrashManifest, root: URL) throws -> ActionReport {

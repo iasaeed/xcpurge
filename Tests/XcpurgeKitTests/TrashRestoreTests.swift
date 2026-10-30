@@ -429,4 +429,60 @@ final class TrashRestoreTests: XCTestCase {
         try FileManager.default.removeItem(at: root.appendingPathComponent(TrashStore.directoryName))
         XCTAssertEqual(try snapshot(root), before)
     }
+
+    // MARK: - Review round 2
+
+    /// A session that only records an aborted `--verify` is never the default restore target.
+    func testRecordOnlySessionIsSkippedByDefault() throws {
+        let root = try FixtureSupport.tempTree(["a.png": "a"])
+        let real = try TrashStore.begin(root: root, now: Date(timeIntervalSince1970: 1_800_000_000))
+        try real.move("a.png")
+        let record = try TrashStore.begin(root: root, now: Date(timeIntervalSince1970: 1_800_000_060))
+        try record.setVerify(VerifyRecord(command: "true", startedAt: Date(), builds: 2, outcome: .restoredAll, reason: "interrupted"))
+        let sessions = try TrashStore.sessions(root: root)
+        XCTAssertEqual(sessions.map(\.id), [record.sessionID, real.sessionID], "the record is newest")
+        XCTAssertEqual(Restore.defaultSession(sessions)?.id, real.sessionID)
+
+        let list = try CLISupport.run(["restore", root.path, "--list"])
+        XCTAssertEqual(list.status, 0, list.stderr)
+        XCTAssertTrue(list.stdout.contains("\(record.sessionID)  0 entries  0 bytes  (record only: --verify restoredAll, interrupted)"), list.stdout)
+
+        let restored = try CLISupport.run(["restore", root.path])
+        XCTAssertEqual(restored.status, 0, restored.stderr)
+        XCTAssertTrue(restored.stderr.contains("  restored a.png\n"), restored.stderr)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("a.png").path))
+        XCTAssertEqual(try TrashStore.sessions(root: root).map(\.id), [record.sessionID], "the record stays until named")
+        let named = try CLISupport.run(["restore", root.path, "--session", record.sessionID])
+        XCTAssertEqual(named.status, 0, named.stderr)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
+
+    /// `size-before.json` counts every finding even when `--baseline` hides some, like `size-after.json` does.
+    func testSizeBeforeIsMeasuredUngated() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let baseline = root.appendingPathComponent("base.json")
+        let made = try CLISupport.run(["baseline", root.path, "--no-swift", "--quiet", "--output", baseline.path])
+        XCTAssertEqual(made.status, 0, made.stderr)
+        // Keep every entry but the one for the asset we delete, so the gate hides the rest.
+        var doc = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: baseline)) as? [String: Any])
+        let entries = try XCTUnwrap(doc["entries"] as? [[String: Any]])
+        let kept = entries.filter { ($0["path"] as? String) != "ClassicApp/unused_loose.png" }
+        XCTAssertLessThan(kept.count, entries.count)
+        doc["entries"] = kept
+        try JSONSerialization.data(withJSONObject: doc).write(to: baseline)
+
+        let ungated = try await ScanEngine(root: root, config: Config()).run(categories: [.assets, .duplicates])
+        let expected = SizeMeasurer.snapshot(ungated, categories: [.assets, .duplicates])
+        let run = try CLISupport.run(["assets", root.path, "--delete", "--yes", "--no-swift", "--format", "json", "--quiet",
+                                      "--baseline", baseline.path])
+        XCTAssertEqual(run.status, 0, run.stderr)
+        let manifest = try XCTUnwrap(try TrashStore.sessions(root: root).first)
+        XCTAssertEqual(manifest.entries.filter { $0.action == .moved }.map(\.path), ["ClassicApp/unused_loose.png"])
+        let session = TrashStore.sessionURL(root: root, id: manifest.id)
+        let before = try SizeSnapshot.load(from: session.appendingPathComponent(SizeSnapshot.beforeFileName))
+        let after = try SizeSnapshot.load(from: session.appendingPathComponent(SizeSnapshot.afterFileName))
+        XCTAssertEqual(before.reclaimable, expected.reclaimable, "measured on the ungated scan")
+        XCTAssertGreaterThanOrEqual(before.reclaimable.high, after.reclaimable.high)
+        XCTAssertGreaterThanOrEqual(before.reclaimable.highMedium, after.reclaimable.highMedium)
+    }
 }

@@ -410,4 +410,44 @@ final class VerifyTests: XCTestCase {
         }
         XCTAssertEqual(left, "", "the build was not orphaned: \(left)")
     }
+
+    // MARK: - Review round 2
+
+    /// An interrupt that arrives before the new build is registered still stops it.
+    func testInterruptBeforeRegistrationStopsTheBuild() {
+        ShellRunner.interruptAll()
+        defer { ShellRunner.clearInterrupt() }
+        let started = Date()
+        let r = ShellRunner.run("sleep 5.191; echo survived", cwd: FileManager.default.temporaryDirectory, timeout: 30)
+        XCTAssertTrue(r.interrupted)
+        XCTAssertFalse(r.output.contains("survived"))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+    }
+
+    /// The guard puts the previous signal dispositions back, not SIG_DFL.
+    func testInterruptGuardRestoresPreviousDisposition() {
+        func address(_ handler: sig_t?) -> Int { handler.map { unsafeBitCast($0, to: Int.self) } ?? 0 }
+        let before = signal(SIGINT, SIG_IGN)
+        defer { signal(SIGINT, before) }
+        let termBefore = signal(SIGTERM, SIG_DFL)   // whatever the test runner had; put it back below
+        signal(SIGTERM, termBefore)
+        let guardian = VerifyRunner.InterruptGuard()
+        XCTAssertEqual(address(signal(SIGINT, SIG_IGN)), address(SIG_IGN), "ignored while the guard is up")
+        XCTAssertEqual(address(signal(SIGTERM, SIG_IGN)), address(SIG_IGN), "ignored while the guard is up")
+        guardian.dispose()
+        let after = signal(SIGINT, SIG_DFL)
+        XCTAssertEqual(address(after), address(SIG_IGN), "SIGINT was ignored before the guard and must be again after it")
+        let termAfter = signal(SIGTERM, SIG_DFL)
+        signal(SIGTERM, termBefore)
+        XCTAssertEqual(address(termAfter), address(termBefore), "SIGTERM is back to what it was before the guard")
+    }
+
+    /// A leftover child that keeps writing cannot keep the run alive past the grace.
+    func testShellRunnerEndsDespiteChattyBackgroundChild() {
+        let started = Date()
+        let r = ShellRunner.run("(while :; do echo .; sleep .1; done) & exit 0", cwd: FileManager.default.temporaryDirectory, timeout: 30)
+        XCTAssertEqual(r.status, 0)
+        XCTAssertFalse(r.timedOut)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3)
+    }
 }

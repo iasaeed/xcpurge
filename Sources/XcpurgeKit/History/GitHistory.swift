@@ -41,6 +41,8 @@ public enum GitHistory {
     }
 
     public static let shallowNote = "n/a (shallow clone; use fetch-depth: 0)"
+    /// Ghost references looked up individually (`git log -1 -- path`) per repository.
+    static let ghostLimit = 50
     static let logFormat = "--format=%x1e%H%x1f%aI%x1f%aN%x1f%aE%x1f%s"
     static let deadSincePathspecs = ["*.swift", "*.m", "*.h", "*.storyboard", "*.xib", "*.plist"]
 
@@ -127,9 +129,22 @@ public enum GitHistory {
                 diags.append(.init(level: .warning, message: "--git: git log failed in \(repo.label): \(failure)"))
             }
             let added = walk.failure == nil ? recentlyAdded(git, repo: repo, days: settings.recentDays) : []
-            for (path, indices) in repo.paths {
+            var ghostsLookedUp = 0
+            for (path, indices) in repo.paths.sorted(by: { $0.key < $1.key }) {
                 let history: FindingHistory
-                if let c = walk.resolved[path] {
+                let isGhost = indices.allSatisfy { findings[$0].kind == .ghostReference }
+                if isGhost, walk.failure == nil, ghostsLookedUp < ghostLimit, !walk.resolved.keys.contains(path) {
+                    // The file is gone, so the index does not know it; its last commit is the one that deleted it.
+                    ghostsLookedUp += 1
+                    if let c = deletionCommit(git, repo: repo, path: path, settings: settings) {
+                        history = FindingHistory(status: .ok, lastCommit: c, ageDays: ageDays(c.date, now: settings.now),
+                                                 note: "deleted in \(c.sha.prefix(7))")
+                        stats.annotated += indices.count
+                    } else {
+                        history = FindingHistory(status: .untracked, note: "n/a (not tracked: never committed, ignored or deleted)")
+                        stats.untracked += indices.count
+                    }
+                } else if let c = walk.resolved[path] {
                     let commit = FindingHistory.Commit(sha: c.sha, date: c.date, authorName: c.authorName,
                                                        authorEmail: settings.emails ? c.authorEmail : nil, subject: c.subject)
                     let bucket: FindingHistory.Bucket = added.contains(where: { $0 == path || RelPath.isUnder($0, path) })
@@ -218,6 +233,19 @@ public enum GitHistory {
             walk.failure = "\(error)"
         }
         return walk
+    }
+
+    /// The newest commit that touched `path` (for a ghost reference, the commit that deleted it).
+    private static func deletionCommit(_ git: String, repo: Repo, path: String, settings: Settings) -> FindingHistory.Commit? {
+        let args = ["-C", repo.dir.path, "log", "-1", "--format=%H%x1f%aI%x1f%aN%x1f%aE%x1f%s", "--", ":(literal)" + path]
+        guard let (outcome, data) = try? StreamingProcess.capture(git, args, timeout: settings.deadSinceTimeout),
+              outcome.status == 0, !outcome.timedOut else { return nil }
+        let line = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        let f = line.split(separator: "\u{1f}", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+        guard f.count >= 2, !f[0].isEmpty else { return nil }
+        return FindingHistory.Commit(sha: f[0], date: f[1], authorName: f.count > 2 ? f[2] : "",
+                                     authorEmail: settings.emails && f.count > 3 && !f[3].isEmpty ? f[3] : nil,
+                                     subject: f.count > 4 ? f[4] : "")
     }
 
     /// Paths added within the window (`--diff-filter=A`), repo-relative.
