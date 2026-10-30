@@ -20,6 +20,7 @@ public final class TrashStore: @unchecked Sendable {
 
     public var sessionID: String { lock.withLock { manifest.id } }
     public var entries: [TrashEntry] { lock.withLock { manifest.entries } }
+    public var verify: VerifyRecord? { lock.withLock { manifest.verify } }
 
     /// Starts a session. Its directory and manifest are created by the first move or backup, so an action that
     /// ends up changing nothing leaves no empty session behind.
@@ -38,6 +39,42 @@ public final class TrashStore: @unchecked Sendable {
         }
         let url = trash.appendingPathComponent(id)
         return TrashStore(root: root, sessionURL: url, manifest: TrashManifest(id: id, createdAt: now))
+    }
+
+    /// Reopens an existing session (for partial restores and `--verify`).
+    public static func open(root: URL, id: String) throws -> TrashStore {
+        let url = sessionURL(root: root, id: id)
+        guard let data = FileManager.default.contents(atPath: url.appendingPathComponent(manifestName).path) else {
+            throw XcpurgeError.notFound(id)
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return TrashStore(root: root, sessionURL: url, manifest: try decoder.decode(TrashManifest.self, from: data))
+    }
+
+    /// Forgets the entries for `paths` (whatever their action) after their files went back; rewrites the manifest.
+    public func dropEntries(paths: Set<String>) throws {
+        lock.withLock { manifest.entries.removeAll { paths.contains($0.path) } }
+        try flush()
+    }
+
+    /// Re-reads the manifest after another `TrashStore` (a partial `Restore`) changed the session on disk; a
+    /// session that was removed reads as empty.
+    public func reload() throws {
+        guard let data = FileManager.default.contents(atPath: sessionURL.appendingPathComponent(Self.manifestName).path) else {
+            lock.withLock { manifest.entries = [] }
+            return
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let fresh = try decoder.decode(TrashManifest.self, from: data)
+        lock.withLock { manifest = fresh }
+    }
+
+    /// Records what `--verify` did and rewrites the manifest.
+    public func setVerify(_ record: VerifyRecord) throws {
+        lock.withLock { manifest.verify = record }
+        try flush()
     }
 
     /// Moves a root-relative file or folder into the session and records a `moved` entry.
@@ -59,6 +96,8 @@ public final class TrashStore: @unchecked Sendable {
         let stored = "originals/" + path
         let destination = sessionURL.appendingPathComponent(stored)
         try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // A copy left behind by a partial restore (its entry was dropped once the file was back to the original).
+        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
         try FileManager.default.copyItem(at: source, to: destination)
         try record(TrashEntry(action: .rewritten, path: path, stored: stored, sizeBytes: Self.size(of: source)))
     }

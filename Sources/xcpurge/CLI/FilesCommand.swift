@@ -1,4 +1,5 @@
 import ArgumentParser
+import Foundation
 import XcpurgeKit
 
 /// `xcpurge files`: orphan, ghost and dead files; `--delete` moves them to the trash.
@@ -10,17 +11,25 @@ struct FilesCommand: AsyncParsableCommand {
     @Flag(help: "Move reported files (high confidence unless --min-confidence is given) to .xcpurge-trash and drop their project references.")
     var delete = false
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
+    @OptionGroup var verifyOptions: VerifyOptions
+
+    func validate() throws {
+        if verifyOptions.enabled, !delete { throw ValidationError("--verify needs --delete") }
+    }
 
     func run() async throws {
         let result = try await ScanRunner.scan(options, categories: [.files])
         if delete {
-            let deletable = ScanRunner.actionable(result, category: .files, options: options)
+            let deletable = VerifyStep.dropBlocked(ScanRunner.actionable(result, category: .files, options: options),
+                                                   root: result.context.root)
             guard !deletable.isEmpty,
                   ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
+            try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
             let sizeBefore = SizeMeasurer.snapshot(result, categories: [.files])
             let store = try TrashStore.begin(root: result.context.root)
-            let report = try Trash(store: store).apply(deletable, context: result.context)
+            var report = try Trash(store: store).apply(deletable, context: result.context)
+            report = try VerifyStep.verify(verifyOptions, store: store, context: result.context, action: report, quiet: options.quiet)
             // The session ID goes out first: writing or opening the report may still fail.
             ScanRunner.printAction(report, verb: "trashed", session: store.sessionID)
             await ScanRunner.recordSizes(before: sizeBefore, result: result, store: store,

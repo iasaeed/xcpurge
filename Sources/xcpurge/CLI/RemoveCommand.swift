@@ -19,6 +19,7 @@ struct RemoveCommand: AsyncParsableCommand {
     @Argument(parsing: .remaining, help: "Files or asset sets to remove.", completion: .file()) var paths: [String]
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
     @Flag(name: .shortAndLong, help: "No progress or hints on stderr.") var quiet = false
+    @OptionGroup var verifyOptions: VerifyOptions
 
     func validate() throws {
         if paths.isEmpty { throw ValidationError("Give at least one path to remove: xcpurge remove <root> <path> ...") }
@@ -34,7 +35,10 @@ struct RemoveCommand: AsyncParsableCommand {
                                                       width: StderrTerminal.width, printsSummary: false)
         let context: ScanContext
         do {
-            context = try await ScanEngine(root: rootURL, config: config, progress: progress).discover()
+            // --verify groups dead source files by their references and reads compiler diagnostics against
+            // declared names, so it needs the reference index; plain removal only needs discovery.
+            let engine = ScanEngine(root: rootURL, config: config, progress: progress)
+            context = try await verifyOptions.enabled ? engine.makeContext() : engine.discover()
         } catch {
             progress?.stop()
             throw error
@@ -103,8 +107,11 @@ struct RemoveCommand: AsyncParsableCommand {
             guard ConfirmPrompt.confirm(question.joined(separator: " and ") + "?", details: details, assumeYes: yes) else { return }
         }
 
+        VerifyStep.warnBlocked(acting, root: context.root)
+        try VerifyStep.preflight(verifyOptions, root: context.root, quiet: quiet)
         let store = try TrashStore.begin(root: context.root)
-        let report = try Trash(store: store).remove(paths: targets, context: context)
+        var report = try Trash(store: store).remove(paths: targets, context: context)
+        report = try VerifyStep.verify(verifyOptions, store: store, context: context, action: report, quiet: quiet)
         ScanRunner.printAction(report, verb: "removed", session: store.sessionID)
     }
 }
