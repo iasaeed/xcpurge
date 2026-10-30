@@ -62,11 +62,23 @@
 <!-- /lane B -->
 
 <!-- lane C:git -->
-- `--git`, `--git-emails`, `--git-dead-since`, `--git-recent-days` (last commit, age and author per finding): _Coming in 0.4.0._
+- `--git` annotates findings with their last commit (sha, author name, date, subject), age in days and a
+  `recentlyAdded`/`leftover` bucket (`--git-recent-days`, default 30) as an optional `history` object in JSON.
+  One streaming `git log --name-only` per repository with early exit; submodules are walked separately. Shallow
+  clones give `status: shallow` with a note instead of dates; uncommitted paths `untracked`; a non-git root
+  `not-git`. `--git-emails` adds author emails (never by default); `--git-dead-since` runs a capped `git log -S`
+  heuristic for the commit that removed the last use. Age never changes confidence.
 <!-- /lane C -->
 
 <!-- lane C:verify -->
-- `--verify "<build command>"` for `assets|files --delete` and `remove`, partial `restore --path`, exit code 4: _Coming in 0.4.0._
+- `--verify "<build command>"` on `assets --delete`, `files --delete` and `remove` (with `--verify-timeout`,
+  default 1800 s, and `--verify-max-builds`, default 8): preflight build (red → exit 4, nothing removed), build
+  after the removal, restore the units the compiler names, bisect the rest under the cap, full restore and
+  exit 4 on timeout. Dead source files that reference each other are one removal unit. The report always says
+  "build-verified, not runtime-verified". Blocked paths persist in `.xcpurge-trash/verify-blocked.json`
+  (`--delete` skips them, `remove` warns); the session manifest gains a `verify` record.
+- `xcpurge restore --path <p>` (repeatable) restores part of a session and re-plans the `project.pbxproj` edit
+  for what stays in the trash; a session that still has entries is never deleted.
 <!-- /lane C -->
 
 <!-- lane D:agents -->

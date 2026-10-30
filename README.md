@@ -548,7 +548,42 @@ xcpurge does not build your project. It reads files and follows five steps.
    Then ignore rules apply and findings are sorted.
 
 <!-- lane C:git -->
-_Coming in 0.4.0._
+### Who touched it last? (`--git`)
+
+`--git` annotates every finding with its git history: the last commit that changed the file or bundle unit
+(image set, `.lproj`), its author name, date and subject, the age in days, and a `bucket` that says whether the
+path was added within `--git-recent-days` (default 30; a `recentlyAdded` finding may be an unfinished feature,
+anything else is a `leftover`). It is context for deciding, never evidence: **age never changes confidence or
+reasons**, and the findings are identical with and without the flag.
+
+```sh
+xcpurge scan . --git                              # names only
+xcpurge scan . --git --git-emails                 # also author emails
+xcpurge scan . --git --git-dead-since             # guess the commit that removed the last use (heuristic)
+xcpurge scan . --git --git-recent-days 90
+```
+
+How it works: one streaming `git log --name-only` per repository, stopped as soon as every finding has a commit
+(no per-finding process spawns), plus one bounded `git log --since=<days> --diff-filter=A` pass for the bucket.
+Findings inside an initialized submodule are looked up in that submodule. Renames are not followed: a renamed
+file's last commit is the rename.
+
+What you see instead of dates:
+
+- **Shallow clone** (`actions/checkout` defaults to `fetch-depth: 1`): every finding gets `status: shallow` and the
+  note `n/a (shallow clone; use fetch-depth: 0)`. xcpurge never reports the checkout commit as "last changed".
+- **Not committed**: a tracked-nowhere path gets `status: untracked` (`n/a (not committed)`). Ghost references are
+  always untracked: there is no file.
+- **Not a repository** (or no `git`): `status: not-git` and one info diagnostic; nothing else changes.
+
+`--git-dead-since` runs `git log -S<name> -1` over source-like files (`*.swift`, `*.m`, `*.h`, storyboards,
+xibs, plists) for at most 20 findings (largest first), 15 s each, and skips names under four characters. The
+result is the commit that last changed how often the name occurs, which for an unused name is usually the one
+that removed its last use. Common words (`icon`, `title`) make it wrong; it is labelled a heuristic.
+
+Privacy: author **names** only by default (`.mailmap` is honoured). Emails appear in JSON only with
+`--git-emails`, and the HTML report never shows them. The `history` object in JSON is optional and additive
+(`schemaVersion` stays 2).
 <!-- /lane C -->
 
 ### What counts as a reference
@@ -840,7 +875,57 @@ Why it is safe:
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
 
 <!-- lane C:verify -->
-_Coming in 0.4.0._
+### Let the build check the removal (`--verify`)
+
+`--verify "<command>"` on `assets --delete`, `files --delete` and `remove` runs your build before and after the
+action and puts back whatever the build cannot do without:
+
+```sh
+xcpurge files --delete --yes --verify \
+  "xcodebuild -scheme App -destination 'generic/platform=iOS' -derivedDataPath .build/verify -quiet build"
+xcpurge remove . App/Legacy/Helper.swift --verify "swift build"
+```
+
+The command runs through `/bin/sh` in the root with its own process group. xcpurge injects no flags: give it
+the whole command. Recommended: a fixed `-derivedDataPath` (warm incremental builds across the attempts, not
+a temp dir) and `-quiet`. Add `-skipPackagePluginValidation` yourself if you trust your plugins; a trust prompt
+would otherwise hang a headless build.
+
+What happens:
+
+1. **Preflight.** The command runs before anything changes. Red or timed out: the last 40 lines are printed,
+   nothing is removed, exit code **4** (`build fails before any change`).
+2. **Remove, then build.** The usual trash session is created and the build runs once.
+3. **Attribute.** On failure the output is read for `cannot find 'X' in scope`, `cannot find type 'X'`, `type
+   '…' has no member 'x'` (generated asset symbols), `Build input file cannot be found: '/path'` and
+   `/path:1:2: error:`. Each line that names a removed file (or a name it declared) restores that **unit** and
+   blocks it; the build runs again. Dead source files that mention each other form one unit, so `A` is never
+   removed without `B`.
+4. **Bisect** what nothing named: every unit is restored, then halves are trashed again into the same session
+   and built, until each culprit is isolated. `--verify-max-builds` (default 8, after the removal) caps this;
+   at the cap, what was not proven is restored and listed as *restored unverified*. The tree is always left in
+   the last state that built.
+5. **Timeout** (`--verify-timeout`, default 1800 s per build): everything is restored, exit code **4**.
+
+The stderr report lists what was removed and build-verified, what was blocked (with the diagnostic line), what
+was restored unverified, the builds used, and always this line:
+
+```
+build-verified, not runtime-verified (dynamic lookups, other schemes/configurations and tests are not covered)
+```
+
+That is the honest limit. A passing build does not see `UIImage(named:)` with a runtime-built name,
+storyboard references, `NSClassFromString`, Info.plist keys, other schemes, configurations, platforms or test
+targets. Keep the trash session until you have run the app.
+
+Blocked paths persist in `.xcpurge-trash/verify-blocked.json` (path, reason, session, date). The next
+`--delete` skips them (`N skipped: blocked by an earlier --verify`), `remove` warns and proceeds; delete the
+file, or the entry, to try again. `restore` keeps that file, so the trash folder stays while it exists. The
+session manifest records the verification (`verify`: command, builds, outcome, blocked list).
+
+Partial restore: `xcpurge restore --path <p>` (repeatable) puts back only those paths and re-edits the
+`project.pbxproj` for what stays in the trash (byte-identical once everything is back). A session that still
+holds entries is never deleted.
 <!-- /lane C -->
 
 ### Remove a single finding from the report

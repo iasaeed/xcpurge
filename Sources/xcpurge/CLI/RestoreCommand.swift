@@ -9,6 +9,9 @@ struct RestoreCommand: AsyncParsableCommand {
 
     @Argument(help: "Project root.", completion: .directory) var path: String = "."
     @Option(help: "Session ID to restore (default: newest).") var session: String?
+    @Option(name: .customLong("path"), parsing: .singleValue,
+            help: "Restore only this path from the session (repeatable); project edits are re-planned for what stays in the trash.")
+    var paths: [String] = []
     @Flag(help: "List sessions instead of restoring.") var list = false
 
     func run() async throws {
@@ -29,11 +32,24 @@ struct RestoreCommand: AsyncParsableCommand {
         let sessionURL = TrashStore.sessionURL(root: root, id: id)
         let before = try? SizeSnapshot.load(from: sessionURL.appendingPathComponent(SizeSnapshot.beforeFileName))
         let after = try? SizeSnapshot.load(from: sessionURL.appendingPathComponent(SizeSnapshot.afterFileName))
-        let report = try Restore.run(root: root, sessionID: session)
+        let report: ActionReport
+        if paths.isEmpty {
+            report = try Restore.run(root: root, sessionID: session)
+        } else {
+            report = try Restore.run(root: root, sessionID: session, paths: Set(paths.map { relative($0, root: root) }), context: nil)
+        }
         ScanRunner.printAction(report, verb: "restored", session: id)
-        // The reverse of the action's table: what the tree measured after it, back to before.
-        if let before, let after, !report.moved.isEmpty || !report.rewritten.isEmpty {
+        // The reverse of the action's table: what the tree measured after it, back to before (whole sessions only).
+        if paths.isEmpty, let before, let after, !report.moved.isEmpty || !report.rewritten.isEmpty {
             ScanRunner.stderr(SizeText.compact(after, before, colors: StderrTerminal.isTTY && StderrTerminal.colors))
         }
+    }
+
+    /// A `--path` as given (absolute under the root, or root-relative), root-relative and normalized.
+    private func relative(_ raw: String, root: URL) -> String {
+        if raw.hasPrefix("/") || raw.hasPrefix("~") {
+            return RelPath.relative(CommonOptions.absolute(raw).path, to: root.path)
+        }
+        return RelPath.normalize(raw)
     }
 }

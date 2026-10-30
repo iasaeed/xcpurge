@@ -322,4 +322,111 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertEqual(restore.status, 0, restore.stderr)
         XCTAssertTrue(restore.stderr.contains(SizeText.compact(after, before)), restore.stderr)
     }
+
+    // MARK: - Partial restore (`restore --path`)
+
+    /// The project file of a fresh copy after removing exactly `paths`.
+    private func pbxprojAfterRemoving(_ paths: [String], fixture: String = "ClassicApp", project: String = "ClassicApp.xcodeproj") async throws -> Data {
+        let copy = try FixtureSupport.copyToTemp(fixture)
+        let context = try await ScanEngine(root: copy, config: Config()).discover()
+        _ = try Trash(store: try TrashStore.begin(root: context.root)).remove(paths: paths, context: context)
+        return try Data(contentsOf: copy.appendingPathComponent(project).appendingPathComponent("project.pbxproj"))
+    }
+
+    /// ClassicApp: one of two referenced files comes back; the project is re-edited for the other only, then the
+    /// rest restores byte for byte.
+    func testPartialRestoreReplansProjectEdit() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        let report = try Trash(store: store).remove(paths: ["ClassicApp/unused_loose.png", "ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(Set(report.moved), ["ClassicApp/unused_loose.png", "ClassicApp/Unused.plist"])
+
+        let partial = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(partial.moved, ["ClassicApp/Unused.plist"])
+        XCTAssertEqual(partial.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertEqual(partial.skipped, [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/Unused.plist").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/unused_loose.png").path))
+        let expected = try await pbxprojAfterRemoving(["ClassicApp/unused_loose.png"])
+        XCTAssertEqual(try Data(contentsOf: pbxproj), expected)
+        let session = try XCTUnwrap(try TrashStore.sessions(root: root).first, "a session with entries is never deleted")
+        XCTAssertEqual(session.entries.map(\.path).sorted(), ["ClassicApp.xcodeproj/project.pbxproj", "ClassicApp/unused_loose.png"])
+
+        let unknown = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/never.png"], context: nil)
+        XCTAssertEqual(unknown.skipped.map(\.path), ["ClassicApp/never.png"])
+        XCTAssertEqual(unknown.moved, [])
+
+        let rest = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/unused_loose.png"], context: nil)
+        XCTAssertEqual(rest.moved, ["ClassicApp/unused_loose.png"])
+        XCTAssertEqual(rest.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertEqual(try snapshot(root), before)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(TrashStore.directoryName).path))
+    }
+
+    /// A ghost-reference edit in the same session survives a partial restore of another file.
+    func testPartialRestoreKeepsGhostReferenceEdit() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        _ = try Trash(store: store).remove(paths: ["ClassicApp/Ghost.swift", "ClassicApp/unused_loose.png"], context: context)
+        _ = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/unused_loose.png"], context: context)
+        let expected = try await pbxprojAfterRemoving(["ClassicApp/Ghost.swift"])
+        XCTAssertEqual(try Data(contentsOf: pbxproj), expected)
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path), ["ClassicApp.xcodeproj/project.pbxproj"])
+        _ = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
+    /// SyncedApp (synchronized folders, no project edit): files come back one at a time, the rest whole.
+    func testPartialRestoreOnSyncedApp() async throws {
+        let root = try FixtureSupport.copyToTemp("SyncedApp")
+        let before = try snapshot(root)
+        let result = try await ScanEngine(root: root, config: Config()).run(categories: [.files])
+        let store = try TrashStore.begin(root: result.context.root)
+        let report = try Trash(store: store).apply(result.findings, context: result.context)
+        XCTAssertEqual(Set(report.moved), ["SyncedApp/Excluded/Legacy.swift", "SyncedApp/Web/index.html"])
+        XCTAssertTrue(report.rewritten.isEmpty)
+
+        let partial = try Restore.run(root: root, sessionID: nil, paths: ["SyncedApp/Web/index.html"], context: result.context)
+        XCTAssertEqual(partial.moved, ["SyncedApp/Web/index.html"])
+        XCTAssertEqual(partial.rewritten, [])
+        XCTAssertEqual(partial.skipped, [])
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path), ["SyncedApp/Excluded/Legacy.swift"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("SyncedApp/Excluded/Legacy.swift").path))
+        _ = try Restore.run(root: root, sessionID: nil, paths: ["SyncedApp/Excluded/Legacy.swift"], context: nil)
+        XCTAssertEqual(try snapshot(root), before)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
+
+    /// `xcpurge restore --path` (repeatable, relative or absolute) and the trash folder that stays for the block list.
+    func testCLIRestorePath() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let removed = try CLISupport.run(["remove", root.path, "ClassicApp/unused_loose.png", "ClassicApp/Unused.plist", "ClassicApp/Orphan.swift",
+                                          "--yes", "--quiet"])
+        XCTAssertEqual(removed.status, 0, removed.stderr)
+        let one = try CLISupport.run(["restore", root.path, "--path", "ClassicApp/Unused.plist", "--path",
+                                      root.appendingPathComponent("ClassicApp/Orphan.swift").path])
+        XCTAssertEqual(one.status, 0, one.stderr)
+        XCTAssertTrue(one.stderr.contains("  restored ClassicApp/Unused.plist\n"), one.stderr)
+        XCTAssertTrue(one.stderr.contains("  restored ClassicApp/Orphan.swift\n"), one.stderr)
+        XCTAssertTrue(one.stderr.contains("  restored ClassicApp.xcodeproj/project.pbxproj\n"), one.stderr)
+        XCTAssertFalse(one.stderr.contains("Size before"), "no size table for a partial restore: \(one.stderr)")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/unused_loose.png").path))
+        XCTAssertEqual(try TrashStore.sessions(root: root).count, 1)
+
+        try VerifyBlocklist.add([.init(path: "ClassicApp/x.png", reason: "r", session: "s", date: Date())], root: root)
+        let rest = try CLISupport.run(["restore", root.path])
+        XCTAssertEqual(rest.status, 0, rest.stderr)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: VerifyBlocklist.url(root: root).path), "the block list keeps the folder")
+        try FileManager.default.removeItem(at: root.appendingPathComponent(TrashStore.directoryName))
+        XCTAssertEqual(try snapshot(root), before)
+    }
 }

@@ -10,12 +10,15 @@ public struct TrashManifest: Codable, Sendable, Hashable {
     public var createdAt: Date
     public var toolVersion: String
     public var entries: [TrashEntry]
+    /// What `--verify` did in this session (nil when it was not used).
+    public var verify: VerifyRecord?
 
-    public init(id: String, createdAt: Date, entries: [TrashEntry] = []) {
+    public init(id: String, createdAt: Date, entries: [TrashEntry] = [], verify: VerifyRecord? = nil) {
         self.schemaVersion = Self.schemaVersion
         self.id = id
         self.createdAt = createdAt
         self.toolVersion = XcpurgeVersion.current
         self.entries = entries
+        self.verify = verify
     }
 }
