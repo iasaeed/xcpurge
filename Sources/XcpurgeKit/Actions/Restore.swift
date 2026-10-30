@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Restores a trash session: moves `moved` entries back and copies `rewritten` originals over the current

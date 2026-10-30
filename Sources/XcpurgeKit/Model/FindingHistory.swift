@@ -1,4 +1,4 @@
-// LANE: C (optional-field additions only; the fields below are a frozen contract)
+// Optional-field additions only; the fields below are a frozen contract.
 /// Git history of the file or bundle unit a finding is about (`--git`). Never changes confidence or reasons.
 public struct FindingHistory: Codable, Hashable, Sendable {
     public enum Status: String, Codable, Sendable {

@@ -1,4 +1,3 @@
-// LANE: C
 /// Files on disk inside a project's source roots that no target builds (plan §4.1 step 8): synchronized-folder
 /// members excluded from every target, classic-group files missing from every build phase, and files a
 /// `Package.swift` `exclude:` keeps out of a target. Settings files (Info.plist, entitlements, xcconfig, bridging

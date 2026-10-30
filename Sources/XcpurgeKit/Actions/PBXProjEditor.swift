@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// Removes file references (PBXFileReference, PBXBuildFile and their list entries) for deleted paths from a

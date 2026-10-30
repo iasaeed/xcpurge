@@ -1,4 +1,3 @@
-// LANE: C
 import ArgumentParser
 
 /// `--git` history enrichment flags shared by the scanning commands.

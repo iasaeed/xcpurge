@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Maps compiler diagnostics in a failed `--verify` build back to the removal units that caused them, so they

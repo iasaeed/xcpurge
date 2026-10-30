@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// Removes unused keys from `.xcstrings` / `.strings` / `.stringsdict` (plan §4.6 step 6), backing every

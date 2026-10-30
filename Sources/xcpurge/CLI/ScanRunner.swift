@@ -7,7 +7,8 @@ import XcpurgeKit
 enum ScanRunner {
     /// Runs the scan with live progress on stderr (terminal only, not under `--quiet`). The summary line is left
     /// behind when the report goes to stdout; a report written to a file prints it with the file's path instead.
-    static func scan(_ options: CommonOptions, categories: Set<XcpurgeKit.Category>) async throws -> ScanResult {
+    /// - Parameter applyGates: false skips the baseline and `--git` steps (`xcpurge size` measures every finding).
+    static func scan(_ options: CommonOptions, categories: Set<XcpurgeKit.Category>, applyGates: Bool = true) async throws -> ScanResult {
         let config = try options.makeConfig()
         let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
         if !options.quiet { hintIfManyRepositories(options.rootURL) }
@@ -18,6 +19,7 @@ enum ScanRunner {
         do { result = try await ScanEngine(root: options.rootURL, config: config, progress: progress).run(categories: categories) }
         catch { progress.stop(); throw error }
         progress.stop()
+        guard applyGates else { return result }
         var r = try BaselineGate.apply(result, options: options, categories: categories)
         r = await HistoryStep.enrich(r, options: options.gitOptions, quiet: options.quiet)
         return r

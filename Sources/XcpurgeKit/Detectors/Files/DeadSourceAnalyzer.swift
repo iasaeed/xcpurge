@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Whole-file dead-code check (plan §4.5): a `.swift`/`.m`/`.mm` file is dead when none of its declared names is

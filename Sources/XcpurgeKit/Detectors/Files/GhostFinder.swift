@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Project file references (and synchronized folders) whose resolved path no longer exists on disk: Xcode shows

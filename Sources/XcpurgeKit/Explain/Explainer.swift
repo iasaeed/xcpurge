@@ -1,4 +1,3 @@
-// LANE: D
 import Foundation
 
 /// `xcpurge explain <root> <subject>`: runs discovery, indexing and the detectors unfiltered, then explains every
@@ -59,9 +58,12 @@ public enum Explainer {
         return trimmed
     }
 
+    /// A path subject matches the finding at that path, the finding whose unit contains it (a file inside an asset
+    /// set) and every finding under it (a folder or catalog lists what it contains).
     static func matches(_ subject: String, _ normalized: String, _ f: Finding) -> Bool {
         if f.id == subject || f.id == normalized { return true }
         if f.path == normalized || RelPath.isUnder(normalized, f.path) { return true }
+        if !normalized.isEmpty, RelPath.isUnder(f.path, normalized) { return true }
         if let name = f.name, name == subject || name.lowercased() == normalized.lowercased() { return true }
         let last = RelPath.lastComponent(f.path)
         return last == normalized || RelPath.stem(last) == normalized

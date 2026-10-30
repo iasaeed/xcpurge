@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// What `--verify` removes and restores together: one unit per trashed path, except source files that refer to

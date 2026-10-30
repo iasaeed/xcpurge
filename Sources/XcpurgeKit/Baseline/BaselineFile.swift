@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// Why a `--baseline` file could not be used (exit 2 on the command line).

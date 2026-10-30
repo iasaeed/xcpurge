@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// Unused image/color/data/symbol sets, app icons, loose images and fonts (plan §4.3, §4.7, §5).

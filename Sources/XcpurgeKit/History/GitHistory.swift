@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// `--git`: fills `Finding.history` (last commit, age, author, recently-added bucket) from one streaming

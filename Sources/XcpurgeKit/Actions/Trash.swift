@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// Deletes findings safely: moves files / asset sets into the `TrashStore` (whole set folders for catalog

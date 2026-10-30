@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Incremental parser for `git log --format=%x1e%H%x1f%aI%x1f%aN%x1f%aE%x1f%s --name-only -z`: each commit is one

@@ -1,4 +1,3 @@
-// LANE: C
 /// Lexical declaration summary of one source file for dead-file analysis (plan §4.5 step 2): nominal types (top-level
 /// and nested), top-level functions and variables, extension members, ObjC classes and categories, attributes, macros,
 /// inheritance clauses and `public`/`open` use. Token-based, so it never fails on code it does not understand.

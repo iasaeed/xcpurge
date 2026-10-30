@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// GitHub Actions workflow commands: one `::warning file=<rel>,line=<n>,title=xcpurge <kind>::<msg>` per finding

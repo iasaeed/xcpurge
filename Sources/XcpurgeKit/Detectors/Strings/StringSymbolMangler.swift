@@ -1,4 +1,3 @@
-// LANE: B
 /// String catalog key -> Xcode-generated `LocalizedStringResource` symbol name (STRING_CATALOG_GENERATE_SYMBOLS),
 /// plus printf-style format specifier helpers. Rules were derived from `xcrun xcstringstool generate-symbols`
 /// output (Xcode 26), which differ from the asset-symbol rules in a few places:

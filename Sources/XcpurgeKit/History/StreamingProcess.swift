@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Runs a subprocess and hands its stdout to a callback chunk by chunk, so a long `git log` can be stopped as

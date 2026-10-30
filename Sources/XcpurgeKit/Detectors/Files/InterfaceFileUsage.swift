@@ -1,4 +1,3 @@
-// LANE: C
 /// Storyboards and xibs nothing loads. A file is used when an Info.plist key or `INFOPLIST_KEY_*` setting names it
 /// (`UIMainStoryboardFile`, `UILaunchStoryboardName`, scene storyboards), another IB file references it
 /// (`storyboardName=`), a loading API names it (`UIStoryboard(name:)`, `UINib(nibName:)`, `loadNibNamed`,

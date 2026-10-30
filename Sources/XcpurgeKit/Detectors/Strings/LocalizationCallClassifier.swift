@@ -1,4 +1,3 @@
-// LANE: B
 /// Decides whether a reference site is a localization lookup and which bundle and table it targets
 /// (plan §4.6 step 4, §4.2 step 5).
 public enum LocalizationCallClassifier {

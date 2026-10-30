@@ -1,4 +1,3 @@
-// LANE: B
 /// Keys of `InfoPlist.strings` / `InfoPlist.xcstrings` that the system reads, plus tables the system owns.
 /// Such keys are never referenced from code, so they count as used.
 public enum SystemStringKeys {

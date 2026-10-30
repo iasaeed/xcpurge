@@ -1,4 +1,3 @@
-// LANE: C
 /// Orphan and ghost files, dead sources, unused interface files and resources (plan §4.1, §4.5).
 /// Orphans are reported once: the later passes skip them, and an orphan's own references count for nothing.
 public struct FilesDetector: Detector {

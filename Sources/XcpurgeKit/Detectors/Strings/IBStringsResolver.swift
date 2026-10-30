@@ -1,4 +1,3 @@
-// LANE: B
 /// Interface Builder string tables (`fr.lproj/Main.strings`, `Main.xcstrings`) use `ObjectID.property` keys
 /// (`"abc-12-def.text"`). Such a key is used iff the object ID still exists in the storyboard / xib with the
 /// table's stem. Object IDs come from `IBScanner`'s `id` attribute references.

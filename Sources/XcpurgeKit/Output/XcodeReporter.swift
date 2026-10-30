@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// `<abs path>:<line>: warning: [xcpurge] <kind>: <message> (<confidence>)` lines that Xcode shows as

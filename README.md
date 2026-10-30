@@ -84,6 +84,18 @@ make install          # swift build -c release, then copies to /usr/local/bin (o
 
 Requires macOS 14+ and Swift 6 (Xcode 26 or newer). A Mint package is planned.
 
+### Release binary
+
+Each GitHub release carries `xcpurge-macos.tar.gz` (a universal arm64 + x86_64 `xcpurge` at the archive root) and
+its `.sha256`. The sample CI workflows download it pinned to a version instead of brewing:
+
+```sh
+curl -fsSL https://github.com/iasaeed/xcpurge/releases/download/v0.4.0/xcpurge-macos.tar.gz | tar -xz -C ~/.local/bin
+```
+
+`make package` (`Scripts/package-release.sh`) builds that archive and checksum into `.build/package/`; it falls
+back to the host architecture when a universal build is not possible and says so.
+
 The everyday commands:
 
 ```sh
@@ -461,7 +473,8 @@ findings it emits `warning: [xcpurge] K more findings not shown (run xcpurge sca
 `note: [xcpurge] T findings (h high, m medium, l low)`. The same `--max-warnings` flag works on any `--format xcode`
 scan. On GitHub, [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml) is a complete workflow: a pinned release binary (no
 Homebrew, no xcodebuild) and `xcpurge scan . --format github --min-confidence medium --baseline .xcpurge-baseline.json
---fail-on any`, so only findings outside the baseline fail the check.
+--fail-on any`, so only findings outside the baseline fail the check. It uses the default shallow checkout; a
+commented variant switches to `fetch-depth: 0` for `--git`.
 
 ### Live progress
 
@@ -1009,8 +1022,12 @@ numbers are: without `--app` they are **source-tree bytes (files in the reposito
 snapshot as the `xcpurge-size-base` artifact; on pull requests it downloads the latest one, runs the comparison and
 posts one sticky comment (`marocchino/sticky-pull-request-comment` with `header: xcpurge-size`, deleted when
 `size.md` is absent). Growth above 500 KB fails the job unless the PR carries the `size-increase-ok` label, the
-escape hatch for intended increases. The file also shows the no-artifact alternative (`git worktree add ../base
-origin/$BASE`, then `xcpurge size ../base --save`). Copy it into `.github/workflows/` of your repository.
+escape hatch for intended increases; adding or removing the label re-runs the job (`labeled` / `unlabeled`
+triggers). The comment steps run with `always()`, so a failed gate still leaves the comment on the PR. Pull
+requests from forks get a read-only token: the comparison and the gate run, the comment cannot be posted, and
+the job's result stays the gate's (`continue-on-error` on the comment steps). The file also shows the
+no-artifact alternative (`git worktree add ../base origin/$BASE`, then `xcpurge size ../base --save`). Copy it
+into `.github/workflows/` of your repository.
 
 Snapshots written by 0.4 carry `paths: [{name, files, bytes}]` (every file, asset sets as units; sums to
 `tree.total`) and, for an `.ipa`, `app.compressedBytes`; both are additive, `schemaVersion` stays 1.
@@ -1042,7 +1059,8 @@ $ xcpurge scan Tests/Fixtures/MixedApp --format agent
 # xcpurge agent report v1 · xcpurge 0.4.0 · root: /path/to/xcpurge/Tests/Fixtures/MixedApp
 ## Legend
 confidence: high = no reference from any module that can see it; remove, then build. medium/low = NOT proven unused: run `xcpurge explain <root> <id>` and check runtime/dynamic use first. This output is a lead, not a verdict.
-commands: remove `xcpurge remove <root> <path>` · undo `xcpurge restore <root>` · explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it
+commands: remove `xcpurge remove --yes <root> <path>` · undo `xcpurge restore <root>` · explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it
+values: paths, names and ignore entries with spaces, quotes or control characters are double-quoted with \n \r \t \" \\ \u{XX} escapes; everything else is literal.
 after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.
 reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bundle, preview-only, public-api, test-only, extension-only, app-icon, odr, numbered-sibling, font-declared, xcode-stale, ib-stale, duplicate, ghost-ref, target-member, excluded, unattributed, folder-ref, convention, stale-ignore, no-ref, generated, other
 ## Summary
@@ -1050,9 +1068,9 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
 ## unused-asset (2)
 ### MixedApp
 - id=unused-asset-ab15ed7993 high Legacy/LegacyAssets.xcassets/legacy_unused.imageset name=legacy_unused reasons=no-ref
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset   ignore: asset:legacy_unused
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset   ignore: asset:legacy_unused
 - id=unused-asset-bdd3de6eeb high Modern/ModernAssets.xcassets/modern_unused.imageset name=modern_unused reasons=no-ref
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/ModernAssets.xcassets/modern_unused.imageset   ignore: asset:modern_unused
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/ModernAssets.xcassets/modern_unused.imageset   ignore: asset:modern_unused
 ## dynamic-lookup (1)
 ### MixedApp
 - id=dynamic-lookup-d5820de9f2 low Modern/MixedAppApp.swift:12 reasons=dyn-pattern
@@ -1063,24 +1081,29 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
 ## orphan-file (2)
 ### MixedApp
 - id=orphan-file-787d8461b8 medium Modern/Excluded.swift reasons=excluded
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/Excluded.swift   ignore: Modern/Excluded.swift
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/Excluded.swift   ignore: Modern/Excluded.swift
 ### unknown
 - id=orphan-file-449b7ad154 low Stray/Stray.swift reasons=unattributed
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Stray/Stray.swift   ignore: Stray/Stray.swift
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Stray/Stray.swift   ignore: Stray/Stray.swift
 ## unused-resource (2)
 ### MixedApp
 - id=unused-resource-1ae80990f6 low Content/a.json reasons=no-ref,folder-ref
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Content/a.json   ignore: Content/a.json
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/a.json   ignore: Content/a.json
 - id=unused-resource-d760612b46 low Content/b.json reasons=no-ref,folder-ref
-  remove: xcpurge remove /path/to/xcpurge/Tests/Fixtures/MixedApp Content/b.json   ignore: Content/b.json
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/b.json   ignore: Content/b.json
 ```
 
 - Rows are grouped by kind, then module, sorted by confidence (high first) then report order. Each kind shows
   at most `--agent-limit N` rows (default 30, `0` = all); a cut-off section ends with
   `… 12 more unused-asset not shown: narrow with --targets <module>, --min-confidence high, or --agent-limit 0`.
 - The `remove:` line appears for kinds `xcpurge remove` acts on (assets, fonts, orphan, resource and interface
-  files, ghost references). The `ignore:` line follows the HTML report's rules: `asset:<name>`, `string:<key>`,
-  otherwise the path. Dynamic lookups and stale ignores get neither.
+  files, ghost references). It carries `--yes` because an agent has no terminal to answer the prompt (without
+  it, a non-interactive `remove` does nothing and exits 2). The `ignore:` line follows the HTML report's rules:
+  `asset:<name>`, `string:<key>`, otherwise the path. Dynamic lookups and stale ignores get neither.
+- Values that come from the project (path, name, module, ignore entry) are one token each: literal unless they
+  contain a space, quote, backslash or control character, then double-quoted with `\n \r \t \" \\ \u{XX}`
+  escapes. A string key containing a newline therefore cannot forge a `remove:` line; a path containing one is
+  shell-quoted as `$'…'`.
 - `reasons=` are codes for the free-text reasons (one per distinct code, in order). `no-ref` is the normal high
   case; `dyn-pattern`, `string-literal`, `main-bundle`, `convention`, `folder-ref` and friends mark the hints
   that lower a finding to medium or low and need a look. `skipped-source` means a source could not be read and
@@ -1170,7 +1193,8 @@ closest names: `nothing matches 'legacy_unusd' … Did you mean: legacy_unused, 
 ```markdown
 ## Unused resources (xcpurge)
 - Scan with `xcpurge scan . --format agent --output /tmp/xcpurge.txt`; read the legend first.
-- `high` = remove with the printed `remove:` command, then build and run tests. Rescan afterwards.
+- `high` = remove with the printed `remove:` command (it includes `--yes`; there is no prompt to answer),
+  then build and run tests. Rescan afterwards.
 - `medium`/`low` are leads, not verdicts: run `xcpurge explain . <id>` and check every reference site
   and dynamic pattern before removing anything.
 - Undo with `xcpurge restore .`. Keep removals in their own commit on a clean branch.

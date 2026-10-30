@@ -1,4 +1,3 @@
-// LANE: D
 import ArgumentParser
 import Foundation
 import XcpurgeKit
@@ -27,8 +26,8 @@ struct ExplainCommand: AsyncParsableCommand {
 
     func run() async throws {
         let config = try options.makeConfig()
-        let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
-        guard format == .text || format == .json else { throw ValidationError("explain supports --format text or json") }
+        // Only the flag chooses the format: a `"format": "github"` in xcpurge.json is for scan reports, not explain.
+        let format = options.format ?? .text
         let report: ExplainReport
         do {
             report = try await Explainer.explain(subject: subject, root: options.rootURL, config: config)

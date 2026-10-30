@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// Loose bundle resources (plist, json, media, Core ML, Core Data, scenes, documents, databases) that no visible

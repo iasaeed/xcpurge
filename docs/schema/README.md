@@ -13,13 +13,17 @@ npx ajv-cli validate -s docs/schema/findings-v2.schema.json -d report.json --spe
 ```
 
 `SchemaTests` in this repository walks every fixture's output and asserts that each key path, type and enum
-value is declared here, so the file cannot drift from the code.
+value is declared here, so the file cannot drift from the code. The schema itself is deliberately **open**: no
+object sets `additionalProperties: false`, because a report written by a newer 0.x xcpurge may carry a key or an
+enum value this file does not list yet (see the policy below). Required keys are still required.
 
 ## Version policy
 
 - `schemaVersion` is an integer. Adding an **optional** field, a new enum value for `kind`, `category`,
   `history.status` or `history.bucket`, or a new diagnostic message keeps the number. Consumers must ignore
-  unknown keys and unknown enum values. 0.4 added `id`, `history` and `baseline` this way; the version stayed 2.
+  unknown keys and unknown enum values, so a validator must not treat the `enum` lists here as closed across
+  versions: they are complete for the xcpurge that shipped this file, and may gain values within v2. 0.4 added
+  `id`, `history` and `baseline` this way; the version stayed 2.
 - Removing or renaming a key, changing a type, making an optional key required, or changing the meaning of a
   value bumps the number and ships a new `findings-v<N>.schema.json` next to the old one. The old file stays.
 - A new enum value is announced in the CHANGELOG; the JSON Schema `enum` lists are updated in the same commit.

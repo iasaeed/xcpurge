@@ -6,7 +6,8 @@
 #   Xcode Cloud (cf. Periphery #1055), and a pinned version keeps findings stable across runs.
 # - `--baseline .xcpurge-baseline.json` hides what the team has accepted (`xcpurge baseline` writes the file) so
 #   `--fail-on any` only fails on NEW findings. Drop both flags to annotate without gating.
-# - `fetch-depth: 0` is only needed when you pass `--git` (age and author per finding); shallow clones get "n/a".
+# - The default shallow checkout (`fetch-depth: 1`) is all a scan needs. `--git` (age and author per finding) needs
+#   the history: switch to the commented `fetch-depth: 0` variant and add `--git` to the scan; shallow clones get "n/a".
 name: xcpurge
 
 on:
@@ -25,12 +26,15 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # for --git; use the default (1) without it
+      # With --git (age and author per finding), check out the history instead:
+      # - uses: actions/checkout@v4
+      #   with:
+      #     fetch-depth: 0
 
       - name: Install xcpurge
-        # Pinned release binary (asset name as on the GitHub release page); `brew install iasaeed/tap/xcpurge` works
-        # too but is slower and floats to the newest version.
+        # Pinned release binary: the `xcpurge-macos.tar.gz` asset of the tagged release (built with
+        # `make package` / Scripts/package-release.sh, a universal arm64 + x86_64 binary at the archive root).
+        # `brew install iasaeed/tap/xcpurge` works too but is slower and floats to the newest version.
         run: |
           curl -fsSL "https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}/xcpurge-macos.tar.gz" -o xcpurge.tar.gz
           mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge.tar.gz -C "$HOME/.local/bin"
@@ -39,3 +43,4 @@ jobs:
 
       - name: Scan
         run: xcpurge scan . --format github --min-confidence medium --baseline .xcpurge-baseline.json --fail-on any
+        # with fetch-depth 0 above:  xcpurge scan . --git --format github --min-confidence medium --baseline .xcpurge-baseline.json --fail-on any

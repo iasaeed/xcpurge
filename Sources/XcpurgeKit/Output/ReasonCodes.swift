@@ -1,4 +1,3 @@
-// LANE: D
 import Foundation
 
 /// Short, stable codes for the free-text reasons detectors attach to findings (`--format agent`, `explain`).

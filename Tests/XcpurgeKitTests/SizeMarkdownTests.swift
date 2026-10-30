@@ -160,6 +160,9 @@ final class SizeMarkdownTests: XCTestCase {
         XCTAssertNil(ByteSize.parse("-1KB"))
         XCTAssertNil(ByteSize.parse("2%"))
         XCTAssertNil(ByteSize.parse("abc"))
+        XCTAssertNil(ByteSize.parse("99999999999999999999GB"), "does not fit Int64: rejected, not trapped")
+        XCTAssertNil(ByteSize.parse("9223372036854775808"))
+        XCTAssertEqual(ByteSize.parse("4294967296GB"), 1 << 62, "4 EiB still fits")
     }
 
     func testGateAbsoluteAndPercent() throws {
@@ -168,6 +171,11 @@ final class SizeMarkdownTests: XCTestCase {
         XCTAssertEqual(SizeLimit("0.5 %"), .percent(0.5))
         XCTAssertNil(SizeLimit("2%%"))
         XCTAssertNil(SizeLimit("-2%"))
+        XCTAssertNil(SizeLimit("inf%"))
+        XCTAssertNil(SizeLimit("nan%"))
+        XCTAssertNil(SizeLimit("1e300%"))
+        XCTAssertNil(SizeLimit("99999999999999999999GB"))
+        XCTAssertEqual(SizeLimit("1e18%")?.allowance(base: 1_000_000), Int64.max, "a share beyond Int64 allows everything")
         XCTAssertEqual(SizeLimit("100KB")?.description, "100.0 KB")
         XCTAssertEqual(SizeLimit("2%")?.description, "2%")
 
