@@ -140,7 +140,7 @@ public enum GitHistory {
                 } else if walk.failure != nil {
                     history = FindingHistory(status: .unavailable, note: "n/a (git log failed)")
                 } else {
-                    history = FindingHistory(status: .untracked, note: "n/a (not committed)")
+                    history = FindingHistory(status: .untracked, note: "n/a (not tracked: never committed, ignored or deleted)")
                     stats.untracked += indices.count
                 }
                 for i in indices { out[i].history = history }
@@ -158,10 +158,34 @@ public enum GitHistory {
         var failure: String?
     }
 
-    /// One streaming `git log` over the repo (limited to `prefix`), stopped once every path has a commit.
+    /// Pathspec for the root inside its repository: literal, so `*?[` in a folder name are not globs.
+    private static func pathspec(_ repo: Repo) -> [String] {
+        repo.prefix.isEmpty ? [] : ["--", ":(literal)" + repo.prefix]
+    }
+
+    /// The finding paths (files or folder units) that have at least one tracked file, from the index. nil when
+    /// `ls-files` failed (every path is then walked).
+    private static func trackedPaths(_ git: String, repo: Repo) -> Set<String>? {
+        guard let (outcome, data) = try? StreamingProcess.capture(git, ["-C", repo.dir.path, "ls-files", "-z"] + pathspec(repo), timeout: 120),
+              outcome.status == 0 else { return nil }
+        var tracked = Set<String>()
+        var remaining = Set(repo.paths.keys)
+        for file in GitLogParser.paths(fromNulSeparated: data) where !remaining.isEmpty {
+            var p = file
+            while !p.isEmpty {
+                if remaining.remove(p) != nil { tracked.insert(p) }
+                p = RelPath.parent(p)
+            }
+        }
+        return tracked
+    }
+
+    /// One streaming `git log` over the repo (limited to `prefix`), stopped once every tracked path has a
+    /// commit. Paths the index does not know (uncommitted, ignored, ghosts) never hold the walk up.
     private static func walk(_ git: String, repo: Repo) -> Walk {
         var walk = Walk()
-        var pending = Set(repo.paths.keys)
+        var pending = trackedPaths(git, repo: repo) ?? Set(repo.paths.keys)
+        guard !pending.isEmpty else { return walk }
         var parser = GitLogParser()
         func attribute(_ commit: GitLogParser.Commit) {
             for logged in commit.paths {
@@ -172,8 +196,7 @@ public enum GitHistory {
                 }
             }
         }
-        var args = ["-C", repo.dir.path, "log", "--no-renames", logFormat, "--name-only", "-z"]
-        if !repo.prefix.isEmpty { args += ["--", repo.prefix] }
+        let args = ["-C", repo.dir.path, "log", "--no-renames", logFormat, "--name-only", "-z"] + pathspec(repo)
         do {
             let outcome = try StreamingProcess.run(git, args) { chunk in
                 for commit in parser.feed(chunk) where !pending.isEmpty {
@@ -201,8 +224,7 @@ public enum GitHistory {
     /// Paths added within the window (`--diff-filter=A`), repo-relative.
     private static func recentlyAdded(_ git: String, repo: Repo, days: Int) -> Set<String> {
         guard days > 0 else { return [] }
-        var args = ["-C", repo.dir.path, "log", "--since=\(days).days", "--diff-filter=A", "--name-only", "-z", "--format="]
-        if !repo.prefix.isEmpty { args += ["--", repo.prefix] }
+        let args = ["-C", repo.dir.path, "log", "--since=\(days).days", "--diff-filter=A", "--name-only", "-z", "--format="] + pathspec(repo)
         guard let (outcome, data) = try? StreamingProcess.capture(git, args), outcome.status == 0 else { return [] }
         return Set(GitLogParser.paths(fromNulSeparated: data))
     }

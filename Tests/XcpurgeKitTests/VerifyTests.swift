@@ -63,7 +63,7 @@ final class VerifyTests: XCTestCase {
         let started = Date()
         let r = ShellRunner.run("sleep 5.137; echo done", cwd: root, timeout: 1)
         XCTAssertTrue(r.timedOut)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 4)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "SIGTERM reaches the group; no wait for the SIGKILL grace")
         XCTAssertFalse(r.output.contains("done"))
         // The group got SIGTERM; nothing of it is left (allow a moment for the kernel to reap).
         var left = sleepProcesses
@@ -245,8 +245,11 @@ final class VerifyTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 20)
         XCTAssertTrue(run.stderr.contains("build timed out after 1 s"), run.stderr)
         XCTAssertTrue(run.stderr.contains("everything was restored"), run.stderr)
-        XCTAssertEqual(try snapshot(root), before)
-        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+        XCTAssertEqual(try snapshot(root).filter { !$0.key.hasPrefix(TrashStore.directoryName) }, before)
+        let session = try XCTUnwrap(try TrashStore.sessions(root: root).first, "the record of what happened stays")
+        XCTAssertTrue(session.entries.isEmpty)
+        XCTAssertEqual(session.verify?.outcome, .restoredAll)
+        XCTAssertEqual(session.verify?.reason, "timed out")
         var left = sleepProcesses
         for _ in 0..<20 where !left.isEmpty { Thread.sleep(forTimeInterval: 0.1); left = sleepProcesses }
         XCTAssertEqual(left, "", "leftover processes: \(left)")
@@ -272,5 +275,139 @@ final class VerifyTests: XCTestCase {
         let run = try CLISupport.run(["files", root.path, "--verify", "true", "--quiet"])
         XCTAssertEqual(run.status, 2, run.stderr)
         XCTAssertTrue(run.stderr.contains("--verify needs --delete"), run.stderr)
+    }
+
+    // MARK: - Review fixes
+
+    /// The run ends when the shell exits even if a background child keeps the pipe open; the child is killed.
+    func testShellRunnerEndsWhenShellExitsDespiteBackgroundChild() {
+        let started = Date()
+        let r = ShellRunner.run("echo hi; sleep 5.173 & exit 0", cwd: FileManager.default.temporaryDirectory, timeout: 30)
+        XCTAssertEqual(r.status, 0)
+        XCTAssertFalse(r.timedOut)
+        XCTAssertTrue(r.output.contains("hi\n"), r.output)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 3, "one second of grace for stragglers, not the sleep")
+        var left = (try? ProcessRunner.run("/usr/bin/pgrep", ["-f", "sleep 5.173"], timeout: 10)).map { String(decoding: $0.stdout, as: UTF8.self) } ?? ""
+        for _ in 0..<20 where !left.isEmpty {
+            Thread.sleep(forTimeInterval: 0.1)
+            left = (try? ProcessRunner.run("/usr/bin/pgrep", ["-f", "sleep 5.173"], timeout: 10)).map { String(decoding: $0.stdout, as: UTF8.self) } ?? ""
+        }
+        XCTAssertEqual(left, "", "leftover processes: \(left)")
+    }
+
+    /// The child starts with signals unblocked and at their defaults, so SIGTERM is not ignored.
+    func testShellRunnerChildReceivesSignals() {
+        let r = ShellRunner.run("kill -TERM $$; sleep 1; echo survived", cwd: FileManager.default.temporaryDirectory, timeout: 30)
+        XCTAssertFalse(r.output.contains("survived"), r.output)
+        XCTAssertEqual(r.status, -SIGTERM)
+    }
+
+    /// Units are built from the trash copies: files that reference each other join even though they are no
+    /// longer in the tree.
+    func testRemovalUnitsReadTrashedFiles() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        try Data("import Foundation\n\nstruct AThing {}\n".utf8).write(to: root.appendingPathComponent("ClassicApp/AThing.swift"))
+        try Data("import Foundation\n\nlet b = AThing()\n".utf8).write(to: root.appendingPathComponent("ClassicApp/BThing.swift"))
+        let context = try await ScanEngine(root: root, config: Config()).makeContext()
+        let store = try TrashStore.begin(root: context.root)
+        let report = try Trash(store: store).remove(paths: ["ClassicApp/AThing.swift", "ClassicApp/BThing.swift", "ClassicApp/Unused.plist"],
+                                                    context: context)
+        XCTAssertEqual(report.moved.count, 3)
+        // As production calls it: after the move, reading from the session.
+        let stored = { (path: String) -> URL? in store.entries.first { $0.action == .moved && $0.path == path }.map(store.storedURL) }
+        let units = RemovalUnits.make(paths: report.moved, context: context, fileURL: stored)
+        XCTAssertEqual(units.map(\.paths), [["ClassicApp/AThing.swift", "ClassicApp/BThing.swift"], ["ClassicApp/Unused.plist"]])
+        XCTAssertEqual(RemovalUnits.make(paths: report.moved, context: context).count, 3, "without the trash copies nothing can join")
+    }
+
+    /// End to end: the compiler names `AThing`; the file that uses it comes back with it (one unit), the rest stays removed.
+    func testConnectedSourcesAreRestoredTogether() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        try Data("import Foundation\n\nstruct AThing {}\n".utf8).write(to: root.appendingPathComponent("ClassicApp/AThing.swift"))
+        try Data("import Foundation\n\nlet b = AThing()\n".utf8).write(to: root.appendingPathComponent("ClassicApp/BThing.swift"))
+        let cmd = try failsWithout("ClassicApp/AThing.swift", message: "\(root.path)/ClassicApp/AppDelegate.swift:3:5: error: cannot find 'AThing' in scope",
+                                   root: root)
+        let run = try CLISupport.run(["remove", root.path, "ClassicApp/AThing.swift", "ClassicApp/BThing.swift", "ClassicApp/unused_loose.png",
+                                      "--yes", "--quiet", "--verify", cmd])
+        XCTAssertEqual(run.status, 0, run.stderr)
+        let fm = FileManager.default
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("ClassicApp/AThing.swift").path))
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("ClassicApp/BThing.swift").path), "same unit as AThing.swift")
+        XCTAssertFalse(fm.fileExists(atPath: root.appendingPathComponent("ClassicApp/unused_loose.png").path))
+        XCTAssertTrue(run.stderr.contains("1 removed and build-verified, 2 blocked (restored), 0 restored unverified; 2 build(s) used of 8"), run.stderr)
+        XCTAssertTrue(run.stderr.contains("  blocked ClassicApp/BThing.swift: "), run.stderr)
+        XCTAssertEqual(VerifyBlocklist.paths(root: root), ["ClassicApp/AThing.swift", "ClassicApp/BThing.swift"])
+    }
+
+    /// Only a project edit (ghost reference) and a red build: nothing to bisect, everything restored, exit 4.
+    func testGhostOnlyRedBuildRestoresAndExits4() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let cmd = try script("grep -q Ghost.swift '\(root.path)/ClassicApp.xcodeproj/project.pbxproj' && exit 0; echo 'error: opaque'; exit 1", near: root)
+        let run = try CLISupport.run(["remove", root.path, "ClassicApp/Ghost.swift", "--yes", "--quiet", "--verify", cmd, "--verify-max-builds", "3"])
+        XCTAssertEqual(run.status, 4, run.stderr)
+        XCTAssertTrue(run.stderr.contains("no removed file can be blamed"), run.stderr)
+        XCTAssertTrue(run.stderr.contains("everything was restored"), run.stderr)
+        XCTAssertEqual(try snapshot(root).filter { !$0.key.hasPrefix(TrashStore.directoryName) }, before, "the project edit is back")
+        let session = try XCTUnwrap(try TrashStore.sessions(root: root).first)
+        XCTAssertTrue(session.entries.isEmpty)
+        XCTAssertEqual(session.verify?.outcome, .restoredAll)
+        XCTAssertEqual(session.verify?.reason, "unresolved")
+        XCTAssertEqual(session.verify?.builds, 2, "preflight and one build; no bisection of empty sets")
+    }
+
+    /// A restore that cannot put a file back (something sits there now) is reported, not claimed.
+    func testRestoreFailureIsReported() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let plist = root.appendingPathComponent("ClassicApp/Unused.plist")
+        let cmd = try script("if [ ! -e '\(plist.path)' ]; then echo stub > '\(plist.path)'; "
+            + "echo \"error: Build input file cannot be found: '\(plist.path)'\"; exit 1; fi; exit 0", near: root)
+        let run = try CLISupport.run(["remove", root.path, "ClassicApp/unused_loose.png", "ClassicApp/Unused.plist", "--yes", "--quiet",
+                                      "--verify", cmd])
+        XCTAssertEqual(run.status, 0, run.stderr)
+        XCTAssertTrue(run.stderr.contains("  could not restore ClassicApp/Unused.plist: a file already exists there"), run.stderr)
+        XCTAssertTrue(run.stderr.contains("  skipped ClassicApp/Unused.plist: --verify could not restore it: a file already exists there"), run.stderr)
+        XCTAssertFalse(run.stderr.contains("  skipped ClassicApp/Unused.plist: blocked by --verify"), run.stderr)
+        XCTAssertEqual(try String(contentsOf: plist, encoding: .utf8), "stub\n", "the build's file is not clobbered")
+        let session = try XCTUnwrap(try TrashStore.sessions(root: root).first)
+        XCTAssertTrue(session.entries.contains { $0.path == "ClassicApp/Unused.plist" && $0.action == .moved }, "the original stays in the session")
+    }
+
+    /// SIGTERM during a build stops the build's process group, restores everything, records it and exits 4.
+    func testInterruptStopsBuildRestoresAndExits4() throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let cmd = try script("[ -e '\(root.path)/ClassicApp/Unused.plist' ] && exit 0; sleep 7.311; exit 1", near: root)
+        guard FileManager.default.isExecutableFile(atPath: CLISupport.binary.path) else { throw XCTSkip("xcpurge not built") }
+        let process = Process()
+        process.executableURL = CLISupport.binary
+        process.arguments = ["remove", root.path, "ClassicApp/unused_loose.png", "ClassicApp/Unused.plist", "--yes", "--quiet", "--verify", cmd]
+        let err = Pipe()
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = err
+        try process.run()
+        // Wait for the removal to be applied and the build to start, then interrupt xcpurge itself.
+        let deadline = Date().addingTimeInterval(15)
+        while FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/Unused.plist").path), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+        kill(process.processIdentifier, SIGTERM)
+        let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        XCTAssertEqual(process.terminationStatus, 4, stderr)
+        XCTAssertTrue(stderr.contains("interrupted; the build was stopped"), stderr)
+        XCTAssertTrue(stderr.contains("everything was restored"), stderr)
+        XCTAssertEqual(try snapshot(root).filter { !$0.key.hasPrefix(TrashStore.directoryName) }, before)
+        let session = try XCTUnwrap(try TrashStore.sessions(root: root).first)
+        XCTAssertTrue(session.entries.isEmpty)
+        XCTAssertEqual(session.verify?.outcome, .restoredAll)
+        XCTAssertEqual(session.verify?.reason, "interrupted")
+        var left = (try? ProcessRunner.run("/usr/bin/pgrep", ["-f", "sleep 7.311"], timeout: 10)).map { String(decoding: $0.stdout, as: UTF8.self) } ?? ""
+        for _ in 0..<20 where !left.isEmpty {
+            Thread.sleep(forTimeInterval: 0.1)
+            left = (try? ProcessRunner.run("/usr/bin/pgrep", ["-f", "sleep 7.311"], timeout: 10)).map { String(decoding: $0.stdout, as: UTF8.self) } ?? ""
+        }
+        XCTAssertEqual(left, "", "the build was not orphaned: \(left)")
     }
 }

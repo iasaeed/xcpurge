@@ -10,7 +10,7 @@ struct RestoreCommand: AsyncParsableCommand {
     @Argument(help: "Project root.", completion: .directory) var path: String = "."
     @Option(help: "Session ID to restore (default: newest).") var session: String?
     @Option(name: .customLong("path"), parsing: .singleValue,
-            help: "Restore only this path from the session (repeatable); project edits are re-planned for what stays in the trash.")
+            help: "Restore only this file or asset set (root-relative or absolute; repeatable), leaving the rest of the session in the trash; project.pbxproj edits are redone for what stays trashed.")
     var paths: [String] = []
     @Flag(help: "List sessions instead of restoring.") var list = false
 

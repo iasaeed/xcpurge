@@ -116,7 +116,7 @@ final class GitHistoryTests: XCTestCase {
         XCTAssertEqual(out[0].history?.status, .untracked)
         XCTAssertNil(out[0].history?.lastCommit)
         XCTAssertNil(out[0].history?.ageDays)
-        XCTAssertEqual(out[0].history?.note, "n/a (not committed)")
+        XCTAssertEqual(out[0].history?.note, "n/a (not tracked: never committed, ignored or deleted)")
         XCTAssertEqual(out[1].history?.status, .ok)
         XCTAssertEqual(stats.untracked, 1)
     }
@@ -138,6 +138,17 @@ final class GitHistoryTests: XCTestCase {
         let (out, _, _) = await annotate([finding("App/a.swift")], root: repo.url.appendingPathComponent("ios"))
         XCTAssertEqual(out[0].history?.status, .ok)
         XCTAssertEqual(out[0].history?.lastCommit?.sha, sha)
+    }
+
+    /// Glob characters in the root's folder name are not patterns.
+    func testRootPrefixWithGlobCharactersIsLiteral() async throws {
+        let repo = try Repo.make(["ios[1]/App/a.swift": "1\n", "ios1/App/a.swift": "1\n"])
+        let sha = try repo.commit("mono", date: Self.day1)
+        try repo.write("ios1/App/a.swift", "2\n")
+        _ = try repo.commit("touch the other", date: Self.day2)
+        let (out, _, _) = await annotate([finding("App/a.swift")], root: repo.url.appendingPathComponent("ios[1]"))
+        XCTAssertEqual(out[0].history?.status, .ok)
+        XCTAssertEqual(out[0].history?.lastCommit?.sha, sha, "not the commit that touched ios1/")
     }
 
     func testShallowCloneGivesNoteAndNoDates() async throws {
@@ -218,8 +229,12 @@ final class GitHistoryTests: XCTestCase {
         let newest = try repo.commit("newest", date: Self.day2)
         XCTAssertEqual(Int(try repo.git(["rev-list", "--count", "HEAD"])), 202)
 
-        let (out, _, stats) = await annotate([finding("a.swift")], root: repo.url)
+        // An uncommitted path (and a ghost: a file that never existed) must not hold the walk up.
+        try repo.write("loose.png", "p")
+        let (out, _, stats) = await annotate([finding("a.swift"), finding("loose.png"), finding("Ghost.swift")], root: repo.url)
         XCTAssertEqual(out[0].history?.lastCommit?.sha, newest)
+        XCTAssertEqual(out[1].history?.status, .untracked)
+        XCTAssertEqual(out[2].history?.status, .untracked)
         XCTAssertLessThan(stats.commitsWalked, 202, "the walk stopped before the end of history")
     }
 

@@ -17,7 +17,9 @@ public enum RemovalUnits {
     /// Groups `paths` into units. Source files (`.swift`, `.m`, `.mm`, `.h`) are connected when a name one of
     /// them declares (`DeclarationCollector`) appears among the identifiers of the other
     /// (`refs.identifiersByFile`); everything else is its own unit.
-    public static func make(paths: [String], context: ScanContext) -> [RemovalUnit] {
+    /// - Parameter fileURL: where to read a path's contents when it is no longer at its place in the tree
+    ///   (its copy in the trash); nil reads it from the root.
+    public static func make(paths: [String], context: ScanContext, fileURL: (String) -> URL? = { _ in nil }) -> [RemovalUnit] {
         let unique = Array(Set(paths)).sorted()
         var parent = Array(unique.indices)
         func find(_ i: Int) -> Int {
@@ -31,7 +33,7 @@ public enum RemovalUnits {
         if sources.count > 1 {
             var declared: [Int: Set<String>] = [:], identifiers: [Int: Set<String>] = [:]
             for i in sources {
-                declared[i] = declaredNames(of: unique[i], context: context)
+                declared[i] = declaredNames(of: unique[i], context: context, at: fileURL(unique[i]))
                 if let index = context.inventory.index(of: unique[i]) {
                     identifiers[i] = context.refs.identifiersByFile[Int32(index)] ?? []
                 }
