@@ -19,12 +19,19 @@ public struct Config: Codable, Sendable, Equatable {
     public var verbose = false
     /// Extra function names treated as localization calls (e.g. `L`, `tr`).
     public var localizationMacros: [String] = []
+    /// Baseline file whose findings are hidden (`--baseline`); see `xcpurge baseline`.
+    public var baseline: String?
+    /// Warn when the baseline is older than this many days (0 = never).
+    public var baselineMaxAgeDays = 90
+    /// Report `.xcpurgeignore` rules and inline markers that suppress nothing (`--no-stale-ignore` turns it off).
+    public var staleIgnores = true
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case project, workspace, package, targets, format, failOn, minConfidence, exclude, derivedData,
-             includePods, ignoreTestReferences, retainPublic, noSwift, verbose, localizationMacros
+             includePods, ignoreTestReferences, retainPublic, noSwift, verbose, localizationMacros,
+             baseline, baselineMaxAgeDays, staleIgnores
     }
 
     /// Tolerant decoding: every key optional, unknown keys ignored.
@@ -45,6 +52,9 @@ public struct Config: Codable, Sendable, Equatable {
         noSwift = try c.decodeIfPresent(Bool.self, forKey: .noSwift) ?? false
         verbose = try c.decodeIfPresent(Bool.self, forKey: .verbose) ?? false
         localizationMacros = try c.decodeIfPresent([String].self, forKey: .localizationMacros) ?? []
+        baseline = try c.decodeIfPresent(String.self, forKey: .baseline)
+        baselineMaxAgeDays = try c.decodeIfPresent(Int.self, forKey: .baselineMaxAgeDays) ?? 90
+        staleIgnores = try c.decodeIfPresent(Bool.self, forKey: .staleIgnores) ?? true
     }
 
     public static let fileName = "xcpurge.json"

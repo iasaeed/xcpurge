@@ -11,7 +11,7 @@ struct CommonOptions: ParsableArguments {
     @Option(help: "Scan the projects and packages of this .xcworkspace.") var workspace: String?
     @Option(help: "Scan only this Swift package (directory or Package.swift).") var package: String?
     @Option(parsing: .upToNextOption, help: "Only report findings in these modules.") var targets: [String] = []
-    @Option(help: "Output format: text, json, xcode, github, html.") var format: OutputFormat?
+    @Option(help: "Output format: text, json, xcode, github, html, agent.") var format: OutputFormat?
     @Option(help: "Write the report to this file (html default: <path>/.xcpurge/report-<timestamp>.html).", completion: .file())
     var output: String?
     @Flag(name: .customLong("open"), help: "Open the HTML report when written.") var openReport = false
@@ -30,6 +30,10 @@ struct CommonOptions: ParsableArguments {
     @Flag(name: .shortAndLong, help: "More detail (reasons, info diagnostics, per-file attribution).") var verbose = false
     @Flag(name: .shortAndLong, help: "No progress, summary or hints on stderr (warnings and errors still print).")
     var quiet = false
+    @Option(help: "Cap --format xcode warnings at this many; a summary line follows.") var maxWarnings: Int?
+    @Option(help: "--format agent rows per kind; 0 = all.") var agentLimit: Int = 30
+    @OptionGroup var baselineOptions: BaselineOptions
+    @OptionGroup var gitOptions: GitOptions
 
     var rootURL: URL { Self.absolute(path) }
 
@@ -64,7 +68,14 @@ struct CommonOptions: ParsableArguments {
         c.retainPublic = c.retainPublic || retainPublic
         c.noSwift = c.noSwift || noSwift
         c.verbose = c.verbose || verbose
+        if let baseline = baselineOptions.baseline { c.baseline = Self.absolute(baseline).path }
+        if let days = baselineOptions.baselineMaxAge { c.baselineMaxAgeDays = days }
+        if baselineOptions.noStaleIgnore { c.staleIgnores = false }
+        if baselineOptions.failOnStaleIgnore, !c.failOn.contains("stale-ignore") { c.failOn.append("stale-ignore") }
         if let f = c.format, OutputFormat(rawValue: f) == nil { throw XcpurgeError.invalidConfig("unknown format \(f)") }
+        if c.format == OutputFormat.markdown.rawValue {
+            throw XcpurgeError.invalidConfig("markdown is only supported by `xcpurge size`")
+        }
         try FailOn.validate(c.failOn)
         return c
     }

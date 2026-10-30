@@ -2,7 +2,8 @@ import ArgumentParser
 import Foundation
 import XcpurgeKit
 
-/// Shared body of scan-style commands: build config, run the engine, print, apply `--fail-on`.
+/// Shared body of scan-style commands: build config, run the engine, apply the baseline and `--git`, print, apply
+/// `--fail-on`.
 enum ScanRunner {
     /// Runs the scan with live progress on stderr (terminal only, not under `--quiet`). The summary line is left
     /// behind when the report goes to stdout; a report written to a file prints it with the file's path instead.
@@ -13,8 +14,13 @@ enum ScanRunner {
         let progress = TerminalProgress(isTTY: StderrTerminal.isTTY, quiet: options.quiet, colors: StderrTerminal.colors,
                                         width: StderrTerminal.width,
                                         printsSummary: outputURL(format: format, root: options.rootURL, options: options) == nil)
-        defer { progress.stop() }
-        return try await ScanEngine(root: options.rootURL, config: config, progress: progress).run(categories: categories)
+        let result: ScanResult
+        do { result = try await ScanEngine(root: options.rootURL, config: config, progress: progress).run(categories: categories) }
+        catch { progress.stop(); throw error }
+        progress.stop()
+        var r = try BaselineGate.apply(result, options: options)
+        r = await HistoryStep.enrich(r, options: options.gitOptions, quiet: options.quiet)
+        return r
     }
 
     /// A root holding several unrelated repositories (e.g. `~/Projects`) makes one slow, mixed scan; say so.
@@ -68,7 +74,9 @@ enum ScanRunner {
         let file = outputURL(format: format, root: result.context.root, options: options)
         let colors = format == .text && file == nil && isatty(STDOUT_FILENO) != 0
             && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
-        let text = format.reporter(colors: colors, verbose: config.verbose).render(result)
+        let reporterOptions = ReporterOptions(colors: colors, verbose: config.verbose, maxWarnings: options?.maxWarnings,
+                                              agentLimit: options?.agentLimit ?? 30)
+        let text = format.reporter(reporterOptions).render(result)
         guard let file else { print(text, terminator: ""); return }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: file, options: .atomic)
@@ -100,7 +108,9 @@ enum ScanRunner {
     }
 
     static func exitIfFailOn(_ result: ScanResult) throws {
-        if FailOn.hit(result.context.config.failOn, result.findings) { throw XcpurgeExit.failOnHit.exitCode }
+        if BaselineGate.failsStrict(result) || FailOn.hit(result.context.config.failOn, result.findings) {
+            throw XcpurgeExit.failOnHit.exitCode
+        }
     }
 
     static func printAction(_ report: ActionReport, verb: String, session: String) {

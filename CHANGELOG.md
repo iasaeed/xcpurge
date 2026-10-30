@@ -1,6 +1,42 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - unreleased
+
+### Added
+
+<!-- lane A:baseline -->
+- Baseline (`xcpurge baseline`, `--baseline`, `--strict-baseline`, `--baseline-max-age`): _Coming in 0.4.0._
+<!-- /lane A -->
+
+<!-- lane A:stale-ignores -->
+- Stale ignore rules and markers (`stale-ignore` findings, `--no-stale-ignore`, `--fail-on-stale-ignore`): _Coming in 0.4.0._
+<!-- /lane A -->
+
+<!-- lane B:size-pr -->
+- `xcpurge size --compare --format markdown|github`, `--fail-if-grows`, `--comment-threshold` (PR comment and size gate): _Coming in 0.4.0._
+<!-- /lane B -->
+
+<!-- lane B:xcode-phase -->
+- `xcpurge init --xcode-phase` and `--max-warnings` for `--format xcode`: _Coming in 0.4.0._
+<!-- /lane B -->
+
+<!-- lane C:git -->
+- `--git`, `--git-emails`, `--git-dead-since`, `--git-recent-days` (last commit, age and author per finding): _Coming in 0.4.0._
+<!-- /lane C -->
+
+<!-- lane C:verify -->
+- `--verify "<build command>"` for `assets|files --delete` and `remove`, partial `restore --path`, exit code 4: _Coming in 0.4.0._
+<!-- /lane C -->
+
+<!-- lane D:agents -->
+- `--format agent`, `--agent-limit`, `xcpurge explain`, JSON schema and the `skills/xcpurge` skill: _Coming in 0.4.0._
+<!-- /lane D -->
+
+### Changed
+
+- JSON findings carry a stable `id` (`<kind>-<10 hex>`, from the finding's identity key and path; no line
+  number, so it survives edits elsewhere in the file). `schemaVersion` stays 2: the field is additive, as are the
+  optional `history` (with `--git`) and `baseline` (with `--baseline`) fields.
 
 ## 0.3.0 - 2026-10-29
 

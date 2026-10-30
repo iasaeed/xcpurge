@@ -37,7 +37,7 @@ final class SizeTests: XCTestCase {
         let root = FixtureSupport.fixtureURL("ModularWorkspace")
         let result = try await ScanEngine(root: root, config: Self.noSwift).run()
         let date = Date(timeIntervalSince1970: 0)
-        let s = SizeMeasurer.snapshot(result, categories: Set(XcpurgeKit.Category.allCases), date: date)
+        let s = SizeMeasurer.snapshot(result, categories: XcpurgeKit.Category.scannable, date: date)
         let cat = { (name: String) in s.tree.categories.first { $0.name == name }! }
 
         XCTAssertEqual(s.tree.categories.map(\.name), SizeMeasurer.categoryNames)
@@ -76,7 +76,7 @@ final class SizeTests: XCTestCase {
 
         // Deterministic: a second scan gives the same snapshot and JSON.
         let again = SizeMeasurer.snapshot(try await ScanEngine(root: root, config: Self.noSwift).run(),
-                                          categories: Set(XcpurgeKit.Category.allCases), date: date)
+                                          categories: XcpurgeKit.Category.scannable, date: date)
         XCTAssertEqual(s.json(), again.json())
         XCTAssertEqual(try JSONDecoder().decode(SizeSnapshot.self, from: Data(s.json().utf8)), s)
 

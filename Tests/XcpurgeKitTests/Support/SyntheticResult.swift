@@ -23,6 +23,8 @@ enum SyntheticResult {
                                     module: site.module, confidence: .low,
                                     reasons: ["name built at runtime: UIImage(named: \"icon_\\(…)\")"]))
         }
+        findings.append(Finding(kind: .staleIgnore, category: .ignores, path: ".xcpurgeignore", line: 3, name: "Vendor/**",
+                                module: "unknown", confidence: .medium, reasons: ["matches no file on disk"]))
         let weights: [(FindingKind, XcpurgeKit.Category, Int)] = [
             (.unusedAsset, .assets, 30), (.unusedFont, .assets, 3), (.unusedString, .strings, 28), (.staleString, .strings, 6),
             (.orphanFile, .files, 8), (.ghostReference, .files, 3), (.deadSource, .files, 9), (.unusedInterfaceFile, .files, 2),

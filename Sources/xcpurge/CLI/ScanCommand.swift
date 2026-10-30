@@ -9,7 +9,7 @@ struct ScanCommand: AsyncParsableCommand {
     @OptionGroup var options: CommonOptions
 
     func run() async throws {
-        let result = try await ScanRunner.scan(options, categories: Set(XcpurgeKit.Category.allCases))
+        let result = try await ScanRunner.scan(options, categories: XcpurgeKit.Category.scannable)
         try ScanRunner.report(result, options)
         try ScanRunner.exitIfFailOn(result)
     }

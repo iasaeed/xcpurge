@@ -87,7 +87,7 @@ public enum SizeText {
 
     /// `9.1 KB`, plus the detector categories when they are not all of them: `140 B (assets, duplicates)`.
     static func reclaimable(_ r: Reclaimable) -> String {
-        let all = Category.allCases.map(\.rawValue).sorted()
+        let all = Category.scannable.map(\.rawValue).sorted()
         let scope = r.categories.flatMap { $0 == all ? nil : " (" + $0.joined(separator: ", ") + ")" } ?? ""
         return ByteFormatter.string(r.highMedium) + scope
     }

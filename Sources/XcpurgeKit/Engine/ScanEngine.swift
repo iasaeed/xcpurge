@@ -65,7 +65,7 @@ public struct ScanEngine: Sendable {
     }
 
     /// Full scan for the given categories.
-    public func run(categories: Set<Category> = Set(Category.allCases)) async throws -> ScanResult {
+    public func run(categories: Set<Category> = Category.scannable) async throws -> ScanResult {
         let start = Date()
         let context = try await makeContext()
         let detectors = DetectorRegistry.detectors(for: categories)
@@ -81,8 +81,14 @@ public struct ScanEngine: Sendable {
             }
             return all
         }
-        let result = ScanResult(context: context, findings: filter(capForSkippedSources(raw, refs: context.refs), context: context),
-                                elapsed: Date().timeIntervalSince(start))
+        let capped = capForSkippedSources(raw, refs: context.refs)
+        var out = filter(capped, context: context)
+        if config.staleIgnores {
+            // Staleness needs the unfiltered findings: markers and rules are also honoured inside the detectors.
+            out = (out + StaleIgnoreDetector.find(unfiltered: capped, context: context, categories: categories))
+                .sorted(by: Finding.reportOrder)
+        }
+        let result = ScanResult(context: context, findings: out, elapsed: Date().timeIntervalSince(start))
         progress.report(.finished(ScanSummary(result)))
         return result
     }

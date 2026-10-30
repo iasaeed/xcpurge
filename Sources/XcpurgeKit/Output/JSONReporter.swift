@@ -1,6 +1,7 @@
 import Foundation
 
-/// Machine-readable report: `schemaVersion` 2 (adds `size` to 1), stable key order and finding order.
+/// Machine-readable report: `schemaVersion` 2 (adds `size` to 1; 0.4 adds the optional `id`, `history` and
+/// `baseline` fields without a bump), stable key order and finding order.
 public struct JSONReporter: Reporter {
     public static let schemaVersion = 2
 
@@ -24,6 +25,8 @@ public struct JSONReporter: Reporter {
         let size: SizeReport
         let findings: [Finding]
         let diagnostics: [Diagnostics.Entry]
+        /// Present only when `--baseline` was applied.
+        let baseline: BaselineReport?
     }
 
     public func render(_ result: ScanResult) -> String {
@@ -40,7 +43,8 @@ public struct JSONReporter: Reporter {
             summary: .init(byKind: byKind, count: findings.count, bytes: findings.compactMap(\.sizeBytes).reduce(0, +)),
             size: SizeMeasurer.report(result),
             findings: findings,
-            diagnostics: result.context.diagnostics.entries)
+            diagnostics: result.context.diagnostics.entries,
+            baseline: result.baseline)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = (try? encoder.encode(doc)) ?? Data("{}".utf8)

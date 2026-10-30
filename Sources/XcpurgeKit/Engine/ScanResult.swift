@@ -5,11 +5,14 @@ public struct ScanResult: Sendable {
     public let findings: [Finding]
     /// Wall-clock seconds the scan took (0 when unknown).
     public let elapsed: Double
+    /// What `--baseline` hid and found fixed; nil when no baseline was applied.
+    public var baseline: BaselineReport?
 
-    public init(context: ScanContext, findings: [Finding], elapsed: Double = 0) {
+    public init(context: ScanContext, findings: [Finding], elapsed: Double = 0, baseline: BaselineReport? = nil) {
         self.context = context
         self.findings = findings
         self.elapsed = elapsed
+        self.baseline = baseline
     }
 
     /// The report after `--delete` / `--prune`: drops findings whose path was moved to the trash, and acted-on
@@ -20,6 +23,6 @@ public struct ScanResult: Sendable {
             if action.moved.contains(where: { RelPath.isUnder(f.path, $0) }) { return false }
             return !(actedSet.contains(f) && action.rewritten.contains(f.path))
         }
-        return ScanResult(context: context, findings: kept, elapsed: elapsed)
+        return ScanResult(context: context, findings: kept, elapsed: elapsed, baseline: baseline)
     }
 }

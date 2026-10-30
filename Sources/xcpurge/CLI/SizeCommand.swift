@@ -26,8 +26,8 @@ struct SizeCommand: AsyncParsableCommand {
         var opts = options
         opts.format = options.format ?? .text
         opts.output = nil
-        let result = try await ScanRunner.scan(opts, categories: Set(XcpurgeKit.Category.allCases))
-        let snapshot = SizeMeasurer.snapshot(result, categories: Set(XcpurgeKit.Category.allCases), app: appSize)
+        let result = try await ScanRunner.scan(opts, categories: XcpurgeKit.Category.scannable)
+        let snapshot = SizeMeasurer.snapshot(result, categories: XcpurgeKit.Category.scannable, app: appSize)
         if let save {
             let url = CommonOptions.absolute(save)
             try snapshot.write(to: url)

@@ -2,7 +2,8 @@ import ArgumentParser
 import Foundation
 import XcpurgeKit
 
-/// Root command: subcommands, version, and exit-code mapping (0 ok, 1 fail-on hit, 2 usage/config, 3 internal).
+/// Root command: subcommands, version, and exit-code mapping (0 ok, 1 fail-on hit, 2 usage/config, 3 internal,
+/// 4 verify failed).
 @main
 struct XcpurgeCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -10,7 +11,8 @@ struct XcpurgeCommand: AsyncParsableCommand {
         abstract: "Find unused assets, localized strings and files in Xcode projects and Swift packages.",
         version: XcpurgeVersion.current,
         subcommands: [ScanCommand.self, AssetsCommand.self, StringsCommand.self, FilesCommand.self,
-                      RemoveCommand.self, RestoreCommand.self, SizeCommand.self, ModulesCommand.self, InitCommand.self, DoctorCommand.self],
+                      RemoveCommand.self, RestoreCommand.self, BaselineCommand.self, ExplainCommand.self, SizeCommand.self,
+                      ModulesCommand.self, InitCommand.self, DoctorCommand.self],
         defaultSubcommand: ScanCommand.self)
 
     static func main() async {

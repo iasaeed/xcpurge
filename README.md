@@ -27,6 +27,7 @@ xcpurge scan --format html --open
 - [Output formats and CI](#output-formats-and-ci)
 - [How do I remove things safely?](#how-do-i-remove-things-safely)
 - [Measuring size](#measuring-size)
+- [Using xcpurge from coding agents](#using-xcpurge-from-coding-agents)
 - [Configuration reference](#configuration-reference)
 - [Known limitations](#known-limitations) · [Roadmap](#roadmap) · [Comparison](#comparison) ·
   [Contributing](#contributing) · [FAQ](#faq)
@@ -431,6 +432,10 @@ $ xcpurge files --format github
 Full lines: [format-xcode-classicapp.txt](docs/examples/format-xcode-classicapp.txt),
 [format-github-classicapp.txt](docs/examples/format-github-classicapp.txt).
 
+<!-- lane B:xcode-phase -->
+_Coming in 0.4.0._
+<!-- /lane B -->
+
 ### Live progress
 
 While it scans, xcpurge shows progress on stderr: walking files, discovering projects, attributing to modules,
@@ -512,6 +517,10 @@ xcpurge does not build your project. It reads files and follows five steps.
    setting that could name it) gives medium. A runtime-built name, previews-only use or public library API gives
    low. A reference source that could not be read caps every finding at medium, since it could hold the only use.
    Then ignore rules apply and findings are sorted.
+
+<!-- lane C:git -->
+_Coming in 0.4.0._
+<!-- /lane C -->
 
 ### What counts as a reference
 
@@ -622,6 +631,10 @@ excluded files are still read as references, so excluding generated code (SwiftG
 never makes what they use look unused. `xcpurge init` writes `"exclude": ["Vendor/**"]`; generated accessor
 files are recognized without excluding them.
 
+<!-- lane A:stale-ignores -->
+_Coming in 0.4.0._
+<!-- /lane A -->
+
 ## Output formats and CI
 
 Choose with `--format text|json|xcode|github|html`. `--output FILE` writes the report to a file instead of
@@ -652,6 +665,10 @@ fi
 JSON (`schemaVersion: 2`) contains `tool`, `root`, `modules`, `summary`, `size` (tree bytes by category and
 module plus the reclaimable estimate; new in 2), `findings` (sorted by category, kind, path, name, line) and
 `diagnostics`. Two runs on the same tree produce identical output.
+
+<!-- lane A:baseline -->
+_Coming in 0.4.0._
+<!-- /lane A -->
 
 ### HTML report
 
@@ -724,6 +741,10 @@ Why it is safe:
 
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
 
+<!-- lane C:verify -->
+_Coming in 0.4.0._
+<!-- /lane C -->
+
 ### Remove a single finding from the report
 
 The HTML report's detail drawer has a **Remove from terminal** section for every finding backed by a file:
@@ -781,6 +802,10 @@ categories: [{name, files, bytes}], modules: [{id, files, bytes}], assetCatalogs
 {high, highMedium, categories}, app?: {path, total, sections: [{name, bytes}]}}`. `--compare` with
 `--format json` prints `{before, after}`. Changes are colored on a terminal (shrinking green, growing red).
 
+<!-- lane B:size-pr -->
+_Coming in 0.4.0._
+<!-- /lane B -->
+
 ### Before and after a purge
 
 `assets --delete`, `files --delete` and `strings --prune` measure the tree before acting and again after. They
@@ -789,6 +814,12 @@ changed (the `Size before → after` table in the [walkthrough](#delete-safely-t
 prints the same table reversed. `xcpurge size --compare .xcpurge-trash/<session>/size-before.json` compares any
 later state with the tree before that action. A purge's reclaimable estimate covers only its own categories
 (shown in parentheses in a comparison).
+
+## Using xcpurge from coding agents
+
+<!-- lane D:agents -->
+_Coming in 0.4.0._
+<!-- /lane D -->
 
 ## Configuration reference
 
@@ -801,7 +832,7 @@ commas are allowed, and unknown keys are ignored. `xcpurge init` writes a starte
 | `workspace` | string | - | `--workspace` |
 | `package` | string | - | `--package` |
 | `targets` | [string] | `[]` (all) | `--targets` |
-| `format` | `text` \| `json` \| `xcode` \| `github` \| `html` | `text` | `--format` |
+| `format` | `text` \| `json` \| `xcode` \| `github` \| `html` \| `agent` | `text` | `--format` |
 | `failOn` | [string] | `[]` | `--fail-on` |
 | `minConfidence` | `low` \| `medium` \| `high` | `low` | `--min-confidence` |
 | `exclude` | [glob] | `[]` | `--exclude` (adds) |
@@ -812,6 +843,9 @@ commas are allowed, and unknown keys are ignored. `xcpurge init` writes a starte
 | `noSwift` | bool | `false` | `--no-swift` |
 | `verbose` | bool | `false` | `--verbose` |
 | `localizationMacros` | [string] | `[]` | `--localization-macro` (adds) |
+| `baseline` | path | - | `--baseline` |
+| `baselineMaxAgeDays` | int | `90` | `--baseline-max-age` |
+| `staleIgnores` | bool | `true` | `--no-stale-ignore` |
 
 ## Known limitations
 
