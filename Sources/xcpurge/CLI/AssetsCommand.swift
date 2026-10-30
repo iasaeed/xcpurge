@@ -18,7 +18,11 @@ struct AssetsCommand: AsyncParsableCommand {
     }
 
     func run() async throws {
-        let result = try await ScanRunner.scan(options, categories: [.assets, .duplicates])
+        // Gates (baseline, --git) are applied here so the ungated result is at hand: `size-before.json` must count
+        // every finding, like the ungated rescan behind `size-after.json`.
+        let ungated = try await ScanRunner.scan(options, categories: [.assets, .duplicates], applyGates: false)
+        var result = try BaselineGate.apply(ungated, options: options, categories: [.assets, .duplicates])
+        result = await HistoryStep.enrich(result, options: options.gitOptions, quiet: options.quiet)
         if delete {
             let deletable = VerifyStep.dropBlocked(ScanRunner.actionable(result, category: .assets, options: options),
                                                    root: result.context.root)
@@ -28,7 +32,7 @@ struct AssetsCommand: AsyncParsableCommand {
                                         details: deletable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
             try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
-            let sizeBefore = SizeMeasurer.snapshot(result, categories: [.assets, .duplicates])
+            let sizeBefore = SizeMeasurer.snapshot(ungated, categories: [.assets, .duplicates])
             let store = try TrashStore.begin(root: result.context.root)
             var report = try Trash(store: store).apply(deletable, context: result.context)
             report = try VerifyStep.verify(verifyOptions, store: store, context: result.context, action: report, quiet: options.quiet)

@@ -122,6 +122,8 @@ public enum ShellRunner {
         let child = pid
         registry.add(child)
         defer { registry.remove(child) }
+        // An interrupt that landed between posix_spawn and the registration found nothing to kill: do it now.
+        if registry.interrupted { terminate(group: child) }
 
         let timedOut = Flag()
         var timer: DispatchWorkItem?
@@ -146,6 +148,9 @@ public enum ShellRunner {
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         var sawEOF = false
         while true {
+            // Shell gone but something still holds the pipe (even a chatty one): give it the grace, then kill
+            // what is left. Checked every round, whether or not data arrived.
+            if let at = exit.exitedAt, Date().timeIntervalSince(at) > drainGrace { break }
             var fd = pollfd(fd: readEnd, events: Int16(POLLIN), revents: 0)
             let ready = poll(&fd, 1, 200)
             if ready > 0 {
@@ -153,14 +158,13 @@ public enum ShellRunner {
                 if n > 0 {
                     ring.append(contentsOf: buffer[0..<n])
                     if ring.count > outputCap { ring.removeFirst(ring.count - outputCap) }
-                    continue
+                } else if n == 0 || errno != EINTR {
+                    sawEOF = true
+                    break
                 }
-                if n == 0 || errno != EINTR { sawEOF = true; break }
             } else if ready < 0, errno != EINTR {
                 break
             }
-            // Shell gone but something still holds the pipe: give it the grace, then kill what is left.
-            if let at = exit.exitedAt, Date().timeIntervalSince(at) > drainGrace { break }
         }
         close(readEnd)
         if !sawEOF {

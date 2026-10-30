@@ -100,11 +100,18 @@ public enum VerifyRunner {
     /// applied: they terminate the build's process group instead, and the caller restores everything.
     final class InterruptGuard {
         private var sources: [any DispatchSourceSignal] = []
+        /// What each signal did before the guard (full `sigaction`), put back by `dispose`.
+        private var previous: [(signal: Int32, action: sigaction)] = []
 
         init() {
             ShellRunner.clearInterrupt()
             for sig in [SIGINT, SIGTERM] {
-                signal(sig, SIG_IGN)
+                var ignore = sigaction()
+                ignore.__sigaction_u.__sa_handler = SIG_IGN
+                sigemptyset(&ignore.sa_mask)
+                var old = sigaction()
+                sigaction(sig, &ignore, &old)
+                previous.append((sig, old))
                 let source = DispatchSource.makeSignalSource(signal: sig, queue: .global())
                 source.setEventHandler { ShellRunner.interruptAll() }
                 source.resume()
@@ -117,8 +124,11 @@ public enum VerifyRunner {
         func dispose() {
             for s in sources { s.cancel() }
             sources = []
-            signal(SIGINT, SIG_DFL)
-            signal(SIGTERM, SIG_DFL)
+            for entry in previous {
+                var action = entry.action
+                sigaction(entry.signal, &action, nil)
+            }
+            previous = []
         }
     }
 

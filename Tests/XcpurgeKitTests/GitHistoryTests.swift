@@ -151,6 +151,27 @@ final class GitHistoryTests: XCTestCase {
         XCTAssertEqual(out[0].history?.lastCommit?.sha, sha, "not the commit that touched ios1/")
     }
 
+    /// A ghost reference (the project names a file that is gone) shows the commit that deleted the file.
+    func testGhostReferenceShowsDeletionCommit() async throws {
+        let repo = try Repo.make(["App/Gone.swift": "1\n", "App/keep.swift": "1\n"])
+        _ = try repo.commit("add", date: Self.day1)
+        try FileManager.default.removeItem(at: repo.url.appendingPathComponent("App/Gone.swift"))
+        let deletion = try repo.commit("delete Gone", author: "Deleter", date: Self.day2)
+        let ghost = Finding(kind: .ghostReference, category: .files, path: "App/Gone.swift", module: "App", confidence: .high)
+        let never = Finding(kind: .ghostReference, category: .files, path: "App/NeverWas.swift", module: "App", confidence: .high)
+        let (out, _, stats) = await annotate([ghost, never, finding("App/keep.swift")], root: repo.url)
+        XCTAssertEqual(out[0].history?.status, .ok)
+        XCTAssertEqual(out[0].history?.lastCommit?.sha, deletion)
+        XCTAssertEqual(out[0].history?.lastCommit?.authorName, "Deleter")
+        XCTAssertEqual(out[0].history?.ageDays, 10)
+        XCTAssertEqual(out[0].history?.note, "deleted in \(deletion.prefix(7))")
+        XCTAssertNil(out[0].history?.bucket)
+        XCTAssertEqual(out[1].history?.status, .untracked, "a ghost that was never committed")
+        XCTAssertEqual(out[2].history?.status, .ok)
+        XCTAssertEqual(stats.annotated, 2)
+        XCTAssertEqual(stats.untracked, 1)
+    }
+
     func testShallowCloneGivesNoteAndNoDates() async throws {
         let origin = try Repo.make(["a.swift": "1\n"])
         _ = try origin.commit("one", date: Self.day1)

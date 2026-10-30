@@ -18,7 +18,11 @@ struct FilesCommand: AsyncParsableCommand {
     }
 
     func run() async throws {
-        let result = try await ScanRunner.scan(options, categories: [.files])
+        // Gates (baseline, --git) are applied here so the ungated result is at hand: `size-before.json` must count
+        // every finding, like the ungated rescan behind `size-after.json`.
+        let ungated = try await ScanRunner.scan(options, categories: [.files], applyGates: false)
+        var result = try BaselineGate.apply(ungated, options: options, categories: [.files])
+        result = await HistoryStep.enrich(result, options: options.gitOptions, quiet: options.quiet)
         if delete {
             let deletable = VerifyStep.dropBlocked(ScanRunner.actionable(result, category: .files, options: options),
                                                    root: result.context.root)
@@ -26,7 +30,7 @@ struct FilesCommand: AsyncParsableCommand {
                   ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
             else { return try ScanRunner.report(result, options) }
             try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
-            let sizeBefore = SizeMeasurer.snapshot(result, categories: [.files])
+            let sizeBefore = SizeMeasurer.snapshot(ungated, categories: [.files])
             let store = try TrashStore.begin(root: result.context.root)
             var report = try Trash(store: store).apply(deletable, context: result.context)
             report = try VerifyStep.verify(verifyOptions, store: store, context: result.context, action: report, quiet: options.quiet)

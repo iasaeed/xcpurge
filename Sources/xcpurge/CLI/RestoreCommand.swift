@@ -21,13 +21,16 @@ struct RestoreCommand: AsyncParsableCommand {
             if sessions.isEmpty { print("No trash sessions.") }
             for s in sessions {
                 let bytes = s.entries.map(\.sizeBytes).reduce(0, +)
-                print("\(s.id)  \(s.entries.count) entr\(s.entries.count == 1 ? "y" : "ies")  \(bytes) bytes")
+                var line = "\(s.id)  \(s.entries.count) entr\(s.entries.count == 1 ? "y" : "ies")  \(bytes) bytes"
+                if s.entries.isEmpty, let v = s.verify {
+                    line += "  (record only: --verify \(v.outcome.rawValue)\(v.reason.map { ", \($0)" } ?? ""))"
+                }
+                print(line)
             }
             return
         }
-        guard !sessions.isEmpty else { throw XcpurgeError.notFound(TrashStore.directoryName) }
         if let session, !sessions.contains(where: { $0.id == session }) { throw XcpurgeError.notFound(session) }
-        let id = session ?? sessions[0].id
+        guard let id = session ?? Restore.defaultSession(sessions)?.id else { throw XcpurgeError.notFound(TrashStore.directoryName) }
         // Read before restoring: a fully restored session folder is removed.
         let sessionURL = TrashStore.sessionURL(root: root, id: id)
         let before = try? SizeSnapshot.load(from: sessionURL.appendingPathComponent(SizeSnapshot.beforeFileName))
