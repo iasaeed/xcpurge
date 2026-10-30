@@ -688,7 +688,7 @@ confidence. Plain folders are refused: pass the files inside.
 
 ### explain
 
-`xcpurge explain [PATH] SUBJECT` explains one finding. The subject is a finding id, a path or a name. It takes the
+`xcpurge explain [FOLDER] SUBJECT` explains one finding. The subject is a finding id, a path or a name. It takes the
 `scan` flags; `--format` is `text` or `json`.
 
 It has no extra flags. It stops with exit code 2 when nothing matches and suggests close names.
