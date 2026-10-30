@@ -19,10 +19,13 @@
 - `stale-ignore` findings (new category `ignores`, informational) for `.xcpurgeignore` rules and `//
   xcpurge:ignore` markers that suppress nothing: path globs matching no path on disk (checked against the inventory,
   then one lazy walk of the root that ignores `--targets`, `--exclude` and skipped `Pods/`), `kind:` typos,
-  `module:` names no module has, `asset:` / `string:` rules with no match (only when that category was scanned), and
+  `module:` names no module has, `asset:` / `string:` rules with no match (only when that category was scanned; `asset:` matches loose file names with or without extension, as suppression does), and
   line-style markers that a second detector pass without markers still finds nothing for (never when a dynamic name
   or a kept dead-source file is involved). Block-comment markers and markers in generic text files are never
-  reported. `--no-stale-ignore` / `"staleIgnores": false` turns it off, `--fail-on-stale-ignore` exits 1.
+  reported; scoped runs (`--project`, `--package`, `--workspace`) keep only the glob and `kind:` checks. The disk
+  walk prunes directories no rule can match under, skips build output and is capped (undecided rules are reported
+  low as "could not evaluate"). `--no-stale-ignore` / `"staleIgnores": false` turns it off, `--fail-on-stale-ignore`
+  exits 1.
 - `.xcpurgeignore` rules remember their line and text (`Ignore.ruleSummaries`); the Swift/ObjC tokenizer exposes
   `ignoreMarkers` (line, covered lines, `//` or `/* */` style) next to the unchanged `ignoredLines`.
 

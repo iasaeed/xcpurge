@@ -15,6 +15,14 @@ struct BaselineCommand: AsyncParsableCommand {
 
     @OptionGroup var options: CommonOptions
 
+    /// The shared options are accepted for scope and config; the report-only ones have no meaning here.
+    func validate() throws {
+        if options.format != nil || options.openReport || options.browser != nil {
+            throw ValidationError("--format, --open and --browser do not apply to `xcpurge baseline`; "
+                + "it writes a baseline file (--output chooses where)")
+        }
+    }
+
     func run() async throws {
         var config = try options.makeConfig()
         let url = options.output.map(CommonOptions.absolute) ?? options.rootURL.appendingPathComponent(BaselineFile.defaultName)
