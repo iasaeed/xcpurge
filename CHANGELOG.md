@@ -29,7 +29,9 @@
 <!-- /lane C -->
 
 <!-- lane D:agents -->
-- `--format agent`, `--agent-limit`, `xcpurge explain`, JSON schema and the `skills/xcpurge` skill: _Coming in 0.4.0._
+- `--format agent` (`--agent-limit N`): plain, deterministic report for coding agents with one legend, a summary, rows grouped by kind and module (stable `id`, confidence, reason codes, ready `remove` command and `.xcpurgeignore` line), capped per kind with a narrowing hint.
+- `xcpurge explain <root> <id|path|name>` (`--format text|json`): reported / suppressed (which rule or marker) / belowThreshold / notReported, owners, modules checked, the visibility rule, reference sites, dynamic patterns, the confidence derivation and what would make it safe; exit 2 with suggestions when nothing matches.
+- `docs/schema/findings-v2.schema.json` (JSON Schema draft 2020-12) for the `--format json` document with a version policy, and the `skills/xcpurge` agent skill plus an AGENTS.md snippet in the README.
 <!-- /lane D -->
 
 ### Changed
