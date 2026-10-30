@@ -432,7 +432,6 @@ $ xcpurge files --format github
 Full lines: [format-xcode-classicapp.txt](docs/examples/format-xcode-classicapp.txt),
 [format-github-classicapp.txt](docs/examples/format-github-classicapp.txt).
 
-<!-- lane B:xcode-phase -->
 `xcpurge init --xcode-phase` prints a ready-made Run Script phase (it writes nothing and never edits your project
 file):
 
@@ -463,7 +462,6 @@ findings it emits `warning: [xcpurge] K more findings not shown (run xcpurge sca
 scan. On GitHub, [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml) is a complete workflow: a pinned release binary (no
 Homebrew, no xcodebuild) and `xcpurge scan . --format github --min-confidence medium --baseline .xcpurge-baseline.json
 --fail-on any`, so only findings outside the baseline fail the check.
-<!-- /lane B -->
 
 ### Live progress
 
@@ -547,7 +545,6 @@ xcpurge does not build your project. It reads files and follows five steps.
    low. A reference source that could not be read caps every finding at medium, since it could hold the only use.
    Then ignore rules apply and findings are sorted.
 
-<!-- lane C:git -->
 ### Who touched it last? (`--git`)
 
 `--git` annotates every finding with its git history: the last commit that changed the file or bundle unit
@@ -584,7 +581,6 @@ that removed its last use. Common words (`icon`, `title`) make it wrong; it is l
 Privacy: author **names** only by default (`.mailmap` is honoured). Emails appear in JSON only with
 `--git-emails`, and the HTML report never shows them. The `history` object in JSON is optional and additive
 (`schemaVersion` stays 2).
-<!-- /lane C -->
 
 ### What counts as a reference
 
@@ -695,7 +691,6 @@ excluded files are still read as references, so excluding generated code (SwiftG
 never makes what they use look unused. `xcpurge init` writes `"exclude": ["Vendor/**"]`; generated accessor
 files are recognized without excluding them.
 
-<!-- lane A:stale-ignores -->
 ### Stale ignores
 
 Ignore rules outlive what they were written for. xcpurge reports rules and markers that suppress nothing as
@@ -728,7 +723,6 @@ Ignores (2)
 `--no-stale-ignore` (or `"staleIgnores": false`) turns the check off; `--fail-on-stale-ignore` (or `--fail-on
 stale-ignore`) exits 1 on one. `kind:stale-ignore` in `.xcpurgeignore` silences it like any other kind, and stale
 findings are baselined like any other finding.
-<!-- /lane A -->
 
 ## Output formats and CI
 
@@ -737,7 +731,7 @@ stdout.
 
 `--fail-on` exits 1 when a finding matches: `any`, a category (`assets`, `unused-assets`, `strings`, `files`,
 `duplicates`) or a kind (`dead-source`). Exit codes: 0 ok, 1 `--fail-on` hit, 2 usage or config error,
-3 internal error.
+3 internal error, 4 `--verify` could not reach a passing build (preflight red or timeout).
 
 GitHub `file=` paths are relative to `$GITHUB_WORKSPACE` (else the working directory), so scanning a subfolder
 annotates the right file. Folder findings (image sets) point at their `Contents.json`.
@@ -761,7 +755,6 @@ JSON (`schemaVersion: 2`) contains `tool`, `root`, `modules`, `summary`, `size` 
 module plus the reclaimable estimate; new in 2), `findings` (sorted by category, kind, path, name, line) and
 `diagnostics`. Two runs on the same tree produce identical output.
 
-<!-- lane A:baseline -->
 ### Baseline: adopt xcpurge on an existing project
 
 A legacy project has hundreds of findings nobody will fix this week. A baseline records them so CI fails only on
@@ -801,7 +794,6 @@ file's; it was written by another xcpurge minor version; or it has no entries. A
 newer-version file is an error (exit 2), never a silent no-op. Keep the file at its default dot-name or outside
 the root: xcpurge drops the configured baseline from the inventory, but any other copy of it inside the tree is a
 JSON file that names every finding.
-<!-- /lane A -->
 
 ### HTML report
 
@@ -874,7 +866,6 @@ Why it is safe:
 
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
 
-<!-- lane C:verify -->
 ### Let the build check the removal (`--verify`)
 
 `--verify "<command>"` on `assets --delete`, `files --delete` and `remove` runs your build before and after the
@@ -926,7 +917,6 @@ session manifest records the verification (`verify`: command, builds, outcome, b
 Partial restore: `xcpurge restore --path <p>` (repeatable) puts back only those paths and re-edits the
 `project.pbxproj` for what stays in the trash (byte-identical once everything is back). A session that still
 holds entries is never deleted.
-<!-- /lane C -->
 
 ### Remove a single finding from the report
 
@@ -985,7 +975,6 @@ categories: [{name, files, bytes}], modules: [{id, files, bytes}], assetCatalogs
 {high, highMedium, categories}, app?: {path, total, sections: [{name, bytes}]}}`. `--compare` with
 `--format json` prints `{before, after}`. Changes are colored on a terminal (shrinking green, growing red).
 
-<!-- lane B:size-pr -->
 ### Size in pull requests
 
 `xcpurge size --compare base.json --format markdown` turns the comparison into a pull-request comment, and
@@ -1025,7 +1014,6 @@ origin/$BASE`, then `xcpurge size ../base --save`). Copy it into `.github/workfl
 
 Snapshots written by 0.4 carry `paths: [{name, files, bytes}]` (every file, asset sets as units; sums to
 `tree.total`) and, for an `.ipa`, `app.compressedBytes`; both are additive, `schemaVersion` stays 1.
-<!-- /lane B -->
 
 ### Before and after a purge
 
@@ -1038,7 +1026,6 @@ later state with the tree before that action. A purge's reclaimable estimate cov
 
 ## Using xcpurge from coding agents
 
-<!-- lane D:agents -->
 Coding agents (Claude Code, Codex, Cursor, Copilot) are good at running a scan and bad at telling a proven
 finding from a hint. xcpurge gives them a plain-text report that says which is which, an `explain` command
 that shows the evidence behind one finding, a JSON Schema for the machine-readable report, and a skill that
@@ -1190,7 +1177,6 @@ closest names: `nothing matches 'legacy_unusd' … Did you mean: legacy_unused, 
 - Never add `.xcpurgeignore` entries or `// xcpurge:ignore` markers to make a scan green; an ignore
   needs a `# reason` comment above it explaining where the thing is used.
 ```
-<!-- /lane D -->
 
 ## Configuration reference
 

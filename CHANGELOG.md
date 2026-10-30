@@ -4,7 +4,6 @@
 
 ### Added
 
-<!-- lane A:baseline -->
 - `xcpurge baseline [root] [--output FILE]` writes `.xcpurge-baseline.json`: one sorted line per finding identity
   (no line numbers or confidence, root-relative paths, locales collapsed into a count), regenerated in full with a
   `+N added, -M removed` summary, byte-identical for an unchanged tree on the same day.
@@ -16,9 +15,7 @@
   (`configHash`), uncovered categories, a changed `--min-confidence`, another xcpurge minor version and empty files;
   a missing, empty, unparseable or newer-version baseline exits 2. The configured baseline file is dropped from the
   scan inventory so it is never read as a reference.
-<!-- /lane A -->
 
-<!-- lane A:stale-ignores -->
 - `stale-ignore` findings (new category `ignores`, informational) for `.xcpurgeignore` rules and `//
   xcpurge:ignore` markers that suppress nothing: path globs matching no path on disk (checked against the inventory,
   then one lazy walk of the root that ignores `--targets`, `--exclude` and skipped `Pods/`), `kind:` typos,
@@ -28,9 +25,7 @@
   reported. `--no-stale-ignore` / `"staleIgnores": false` turns it off, `--fail-on-stale-ignore` exits 1.
 - `.xcpurgeignore` rules remember their line and text (`Ignore.ruleSummaries`); the Swift/ObjC tokenizer exposes
   `ignoreMarkers` (line, covered lines, `//` or `/* */` style) next to the unchanged `ignoredLines`.
-<!-- /lane A -->
 
-<!-- lane B:size-pr -->
 - `xcpurge size --compare base.json --format markdown|github`: a pull-request comment body that starts with
   `<!-- xcpurge-size -->` (sticky, edited in place), headline `### xcpurge size: +X (+Y%)`, an honest "what was
   measured" line (source-tree bytes; install size with `--app`; download size ≈ .ipa bytes for an .ipa), Base | PR |
@@ -42,9 +37,7 @@
   makes a missing base a note (exit 0). Snapshots gain `paths` (per-path bytes, asset sets as units) and
   `app.compressedBytes` for an .ipa; `schemaVersion` stays 1. Sample workflow: `docs/ci/xcpurge-size.yml`
   (artifact base, sticky comment deleted when quiet, `size-increase-ok` label skips the gate).
-<!-- /lane B -->
 
-<!-- lane B:xcode-phase -->
 - `xcpurge init --xcode-phase [--configuration Release|any] [--max-warnings 50]` prints a Run Script build phase
   (Homebrew/local PATH, skips CI and other configurations, `command -v` guard that warns instead of failing, stamp
   file for incremental skips, sandboxing note); it writes nothing and never edits a project file. `--max-warnings N`
@@ -59,18 +52,14 @@
   columns, a History facet and `age:>90` / `author:` / `bucket:` search tokens (only when some finding has
   history), a drawer History section (last commit, bucket and dead-since labelled heuristic) and `id` / `ageDays` /
   `author` CSV columns. Author e-mails are never shown.
-<!-- /lane B -->
 
-<!-- lane C:git -->
 - `--git` annotates findings with their last commit (sha, author name, date, subject), age in days and a
   `recentlyAdded`/`leftover` bucket (`--git-recent-days`, default 30) as an optional `history` object in JSON.
   One streaming `git log --name-only` per repository with early exit; submodules are walked separately. Shallow
   clones give `status: shallow` with a note instead of dates; uncommitted paths `untracked`; a non-git root
   `not-git`. `--git-emails` adds author emails (never by default); `--git-dead-since` runs a capped `git log -S`
   heuristic for the commit that removed the last use. Age never changes confidence.
-<!-- /lane C -->
 
-<!-- lane C:verify -->
 - `--verify "<build command>"` on `assets --delete`, `files --delete` and `remove` (with `--verify-timeout`,
   default 1800 s, and `--verify-max-builds`, default 8): preflight build (red → exit 4, nothing removed), build
   after the removal, restore the units the compiler names, bisect the rest under the cap, full restore and
@@ -79,13 +68,10 @@
   (`--delete` skips them, `remove` warns); the session manifest gains a `verify` record.
 - `xcpurge restore --path <p>` (repeatable) restores part of a session and re-plans the `project.pbxproj` edit
   for what stays in the trash; a session that still has entries is never deleted.
-<!-- /lane C -->
 
-<!-- lane D:agents -->
 - `--format agent` (`--agent-limit N`): plain, deterministic report for coding agents with one legend, a summary, rows grouped by kind and module (stable `id`, confidence, reason codes, ready `remove` command and `.xcpurgeignore` line), capped per kind with a narrowing hint.
 - `xcpurge explain <root> <id|path|name>` (`--format text|json`): reported / suppressed (which rule or marker) / belowThreshold / notReported, owners, modules checked, the visibility rule, reference sites, dynamic patterns, the confidence derivation and what would make it safe; exit 2 with suggestions when nothing matches.
 - `docs/schema/findings-v2.schema.json` (JSON Schema draft 2020-12) for the `--format json` document with a version policy, and the `skills/xcpurge` agent skill plus an AGENTS.md snippet in the README.
-<!-- /lane D -->
 
 ### Changed
 
