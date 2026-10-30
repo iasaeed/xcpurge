@@ -221,12 +221,12 @@ It reports four kinds of file finding:
 | `unused-resource`, `unused-interface-file` | A bundled data file, xib or storyboard nothing loads. | `Unused.plist`, `Unused.xib` |
 
 **Next:** `xcpurge files . --delete` moves orphans, unused resources and unused xibs/storyboards to the trash.
-Dead-source files and ghost references are only reported. Remove one of those yourself with `xcpurge remove . PATH`.
+Dead-source files and ghost references are only reported. Remove one of those yourself with `xcpurge remove . FILE-PATH`.
 
 ### Delete safely and undo
 
-**When:** you have checked the findings and want them gone. In these commands, `PATH` stands for a path from the
-report, for example `App/Old.swift`.
+**When:** you have checked the findings and want them gone. In these commands, `FILE-PATH` stands for a path from
+the report, for example `App/Old.swift`. Run one line at a time; do not paste the whole block.
 
 ```sh
 # unused assets (high confidence only)
@@ -236,13 +236,13 @@ xcpurge files . --delete
 # unused string keys (high only)
 xcpurge strings . --prune
 # exactly these paths, whatever their kind or confidence
-xcpurge remove . PATH
+xcpurge remove . FILE-PATH
 # list trash sessions
 xcpurge restore . --list
 # undo the newest session
 xcpurge restore .
 # put back only this path, keep the rest of the session in the trash
-xcpurge restore . --path PATH
+xcpurge restore . --path FILE-PATH
 ```
 
 Each action prints what it moved, a `Size before → after` table and the exact undo command, such as
@@ -540,6 +540,8 @@ kind:dead-source
 
 A `#` only starts a comment at the beginning of a line, so put each comment on its own line above the rule.
 `kind:` hides a whole kind of finding; use the kind names from the report, such as `kind:dead-source`.
+These rules are samples. Keep only the ones that match your project, or xcpurge reports the rest as `stale-ignore`.
+`asset:` rules do not hide `duplicate` findings; use a path rule for those.
 
 **Inline:** put `// xcpurge:ignore - reason` on a line of code, or alone on the line above a declaration. It hides
 findings on that line. Always write the reason.
@@ -574,7 +576,7 @@ still counts as used. That makes it safe to exclude generated or vendored code.
 ## Command reference
 
 `xcpurge COMMAND --help` prints the same flags. `scan` is the default command, so `xcpurge` alone means
-`xcpurge scan .`. `PATH` is the project folder and defaults to `.`; uppercase words are placeholders.
+`xcpurge scan .`. `FOLDER` is the project folder and defaults to `.`; uppercase words are placeholders.
 
 Every command takes these two flags:
 
@@ -585,7 +587,7 @@ Every command takes these two flags:
 
 ### scan
 
-`xcpurge scan [PATH]` reports unused assets, strings and files. It never changes anything. The same flags work on
+`xcpurge scan [FOLDER]` reports unused assets, strings and files. It never changes anything. The same flags work on
 `assets`, `strings`, `files`, `baseline`, `explain`, `size` and `modules`.
 
 | Flag | What it does | Default |
@@ -624,7 +626,7 @@ Every command takes these two flags:
 
 ### assets
 
-`xcpurge assets [PATH]` reports unused assets, fonts and duplicates. All `scan` flags, plus:
+`xcpurge assets [FOLDER]` reports unused assets, fonts and duplicates. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -636,7 +638,7 @@ Every command takes these two flags:
 
 ### strings
 
-`xcpurge strings [PATH]` reports unused and stale localized strings. All `scan` flags, plus:
+`xcpurge strings [FOLDER]` reports unused and stale localized strings. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -645,7 +647,7 @@ Every command takes these two flags:
 
 ### files
 
-`xcpurge files [PATH]` reports orphan, ghost, dead-source and unused resource files. All `scan` flags, plus:
+`xcpurge files [FOLDER]` reports orphan, ghost, dead-source and unused resource files. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -671,7 +673,7 @@ confidence. Plain folders are refused: pass the files inside.
 
 ### restore
 
-`xcpurge restore [PATH]` undoes a delete, prune or remove from `.xcpurge-trash`.
+`xcpurge restore [FOLDER]` undoes a delete, prune or remove from `.xcpurge-trash`.
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -681,7 +683,7 @@ confidence. Plain folders are refused: pass the files inside.
 
 ### baseline
 
-`xcpurge baseline [PATH]` writes today's findings to `.xcpurge-baseline.json`. It takes the `scan` flags, and
+`xcpurge baseline [FOLDER]` writes today's findings to `.xcpurge-baseline.json`. It takes the `scan` flags, and
 `--output` picks another file. `--format`, `--open` and `--browser` are rejected; there are no extra flags.
 
 ### explain
@@ -693,7 +695,7 @@ It has no extra flags. It stops with exit code 2 when nothing matches and sugges
 
 ### size
 
-`xcpurge size [PATH]` measures the project by category and module, and estimates what a cleanup saves. All `scan`
+`xcpurge size [FOLDER]` measures the project by category and module, and estimates what a cleanup saves. All `scan`
 flags (plus `--format markdown`), and:
 
 | Flag | What it does | Default |
@@ -709,12 +711,12 @@ flags (plus `--format markdown`), and:
 
 ### modules
 
-`xcpurge modules [PATH]` shows the modules it found, what each depends on, and which module can see which. It
+`xcpurge modules [FOLDER]` shows the modules it found, what each depends on, and which module can see which. It
 takes the `scan` flags; `--verbose` lists which file went to which module. No extra flags.
 
 ### init
 
-`xcpurge init [PATH]` writes a starter `xcpurge.json` and `.xcpurgeignore`.
+`xcpurge init [FOLDER]` writes a starter `xcpurge.json` and `.xcpurgeignore`.
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -725,7 +727,7 @@ takes the `scan` flags; `--verbose` lists which file went to which module. No ex
 
 ### doctor
 
-`xcpurge doctor [PATH]` prints the Xcode and Swift versions it found and the project formats in the folder. It has
+`xcpurge doctor [FOLDER]` prints the Xcode and Swift versions it found and the project formats in the folder. It has
 no flags beyond `--version` and `--help`.
 
 ### Exit codes
