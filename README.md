@@ -433,7 +433,36 @@ Full lines: [format-xcode-classicapp.txt](docs/examples/format-xcode-classicapp.
 [format-github-classicapp.txt](docs/examples/format-github-classicapp.txt).
 
 <!-- lane B:xcode-phase -->
-_Coming in 0.4.0._
+`xcpurge init --xcode-phase` prints a ready-made Run Script phase (it writes nothing and never edits your project
+file):
+
+```sh
+$ xcpurge init --xcode-phase                     # or: --configuration any --max-warnings 20
+# xcpurge Run Script phase (xcpurge 0.4.0). Add after "Compile Sources".
+# Either set ENABLE_USER_SCRIPT_SANDBOXING = NO for this target, or add $(SRCROOT) to Input File Lists.
+# Output Files: $(DERIVED_FILE_DIR)/xcpurge.stamp  (lets Xcode skip the phase when nothing changed)
+if [ "$(uname -m)" = arm64 ]; then export PATH="/opt/homebrew/bin:$PATH"; fi
+export PATH="$PATH:/usr/local/bin:$HOME/.local/bin"
+if [ -n "${CI:-}" ]; then echo "note: xcpurge skipped on CI"; exit 0; fi
+WANT="${XCPURGE_CONFIGURATION:-Release}"
+if [ "$WANT" != any ] && [ "${CONFIGURATION:-}" != "$WANT" ]; then exit 0; fi
+command -v xcpurge >/dev/null 2>&1 || { echo "warning: xcpurge not installed"; exit 0; }
+xcpurge scan "${SRCROOT}" --format xcode --min-confidence medium --quiet --max-warnings 50 || true
+touch "${DERIVED_FILE_DIR}/xcpurge.stamp"
+```
+
+To add it: select the app target, **Build Phases**, **+**, **New Run Script Phase**, paste the script, and drag the
+phase below **Compile Sources**. Then either turn off **User Script Sandboxing** (`ENABLE_USER_SCRIPT_SANDBOXING = NO`)
+for that target, because the sandbox blocks a script from reading files it did not declare, or declare the inputs:
+add `$(SRCROOT)` to **Input File Lists** and `$(DERIVED_FILE_DIR)/xcpurge.stamp` to **Output Files**, which also
+lets Xcode skip the phase when nothing changed. The script never fails a build: it exits 0 on CI, for configurations
+other than the one chosen (`--configuration Release|any`; `XCPURGE_CONFIGURATION` overrides at build time) and when
+xcpurge is not installed (a single `warning:` line). `--max-warnings N` caps the warnings Xcode shows: after `N`
+findings it emits `warning: [xcpurge] K more findings not shown (run xcpurge scan for all)`, and every run ends with
+`note: [xcpurge] T findings (h high, m medium, l low)`. The same `--max-warnings` flag works on any `--format xcode`
+scan. On GitHub, [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml) is a complete workflow: a pinned release binary (no
+Homebrew, no xcodebuild) and `xcpurge scan . --format github --min-confidence medium --baseline .xcpurge-baseline.json
+--fail-on any`, so only findings outside the baseline fail the check.
 <!-- /lane B -->
 
 ### Live progress
@@ -803,7 +832,45 @@ categories: [{name, files, bytes}], modules: [{id, files, bytes}], assetCatalogs
 `--format json` prints `{before, after}`. Changes are colored on a terminal (shrinking green, growing red).
 
 <!-- lane B:size-pr -->
-_Coming in 0.4.0._
+### Size in pull requests
+
+`xcpurge size --compare base.json --format markdown` turns the comparison into a pull-request comment, and
+`--fail-if-grows` into a gate. Nothing is uploaded anywhere and no account is needed: the base is a snapshot you saved
+on the main branch.
+
+```sh
+xcpurge size . --save size-base.json                                   # on main, kept as a CI artifact
+xcpurge size . --compare size-base.json --format markdown \
+  --comment-threshold 100KB --fail-if-grows 500KB --output size.md     # on the pull request
+```
+
+The comment starts with `<!-- xcpurge-size -->` (so a sticky-comment action finds and **edits** it instead of posting
+a new one on every push), then a headline such as `### xcpurge size: +142.3 KB (+0.8%)`, a line saying what was
+measured, Base | PR | Change tables for the whole tree and each category (modules fold into `<details>`), **Top
+changes**: the `--top 20` paths that changed most (grown and shrunk, asset sets count as one path; changes below
+`--min-path-delta 500` bytes are left out; the rest fold away), the reclaimable estimate and a footer with the
+xcpurge version. It never exceeds 60,000 characters (GitHub's limit is 65,536). The labels are honest about what the
+numbers are: without `--app` they are **source-tree bytes (files in the repository), not shipped bytes**. With
+`--app` on both sides the headline is the **install size** (uncompressed .app, unthinned); an `.ipa` adds the
+**download size** (≈ the .ipa bytes, compressed, unthinned; not the App Store download). A base saved by xcpurge
+0.3 has no per-path data; the comment says so instead of listing top changes.
+
+- `--comment-threshold 100KB`: below that |change| nothing is printed and no `--output` file is written, so the
+  workflow can delete a stale comment. Status checks still run; the threshold only quiets the comment.
+- `--fail-if-grows 500KB` (or `2%`): exit 1 with `size gate: grew +X (limit Y)` on stderr when the headline metric
+  grew by more than the limit. The comment is written first. The gate and the threshold are independent.
+- `--allow-missing-compare`: a missing base file is a note and exit 0 (the first run on a new branch).
+- `--format github` prints the same body and also appends it to `$GITHUB_STEP_SUMMARY`.
+
+[docs/ci/xcpurge-size.yml](docs/ci/xcpurge-size.yml) is a complete workflow: on push to `main` it saves the base
+snapshot as the `xcpurge-size-base` artifact; on pull requests it downloads the latest one, runs the comparison and
+posts one sticky comment (`marocchino/sticky-pull-request-comment` with `header: xcpurge-size`, deleted when
+`size.md` is absent). Growth above 500 KB fails the job unless the PR carries the `size-increase-ok` label, the
+escape hatch for intended increases. The file also shows the no-artifact alternative (`git worktree add ../base
+origin/$BASE`, then `xcpurge size ../base --save`). Copy it into `.github/workflows/` of your repository.
+
+Snapshots written by 0.4 carry `paths: [{name, files, bytes}]` (every file, asset sets as units; sums to
+`tree.total`) and, for an `.ipa`, `app.compressedBytes`; both are additive, `schemaVersion` stays 1.
 <!-- /lane B -->
 
 ### Before and after a purge

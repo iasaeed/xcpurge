@@ -62,6 +62,20 @@ final class SizeTests: XCTestCase {
         XCTAssertEqual(types.reduce(0) { $0 + $1.bytes }, cat("Asset catalogs").bytes)
         XCTAssertEqual(Set(types.map(\.name)), ["appiconset", "imageset", "colorset", "other"])
 
+        // Per-path bytes: one entry per file, catalogs split into asset sets (plus their loose files); sums to the total.
+        let paths = try XCTUnwrap(s.paths)
+        XCTAssertEqual(paths.reduce(0) { $0 + $1.bytes }, s.tree.total)
+        XCTAssertEqual(paths.map(\.name), paths.map(\.name).sorted(), "sorted by path")
+        XCTAssertEqual(Set(paths.map(\.name)).count, paths.count, "unique paths")
+        XCTAssertTrue(paths.contains { $0.name == "App/AppWidget/Assets.xcassets/widget_icon.imageset" }, "asset sets are units")
+        XCTAssertTrue(paths.contains { $0.name == "App/App/Assets.xcassets" && $0.files > 0 }, "the catalog's own Contents.json")
+        XCTAssertFalse(paths.contains { $0.name.hasSuffix(".xcassets/Contents.json") }, "loose catalog files fold into the catalog entry")
+        let sets = paths.filter { $0.name.contains(".xcassets/") }
+        XCTAssertEqual(sets.reduce(0) { $0 + $1.bytes } + paths.filter { $0.name.hasSuffix(".xcassets") }.reduce(0) { $0 + $1.bytes },
+                       cat("Asset catalogs").bytes)
+        XCTAssertEqual(paths.filter { !$0.name.contains(".xcassets") }.count, s.tree.files - cat("Asset catalogs").files)
+        XCTAssertNil(SizeMeasurer.report(result).tree.assetTypes, "the JSON report's size object is unchanged")
+
         // Modules: each attributed file counts in its modules; unattributed ones in their own row.
         XCTAssertEqual(s.tree.modules.first?.id, "App/App.xcodeproj:App")
         XCTAssertTrue(s.tree.modules.contains { $0.id == "Packages/Core:Core" })
@@ -151,6 +165,9 @@ final class SizeTests: XCTestCase {
         let fromIPA = try AppMeasurer.measure(ipa)
         XCTAssertEqual(fromIPA.sections, size.sections)
         XCTAssertEqual(fromIPA.path, ipa.path)
+        XCTAssertEqual(fromIPA.compressedBytes, Int64(try Data(contentsOf: ipa).count), "an .ipa records its own (compressed) size")
+        XCTAssertNil(size.compressedBytes, "a bare .app has no download size")
+        XCTAssertEqual(fromIPA.total, size.total)
         XCTAssertThrowsError(try AppMeasurer.measure(dir.appendingPathComponent("Missing.app")))
     }
 
@@ -214,6 +231,27 @@ final class SizeTests: XCTestCase {
         XCTAssertTrue(compared.stdout.contains("no change"), compared.stdout)
         XCTAssertFalse(compared.stdout.contains("%)"), "nothing changed between the two runs")
         let html = try CLISupport.run(["size", fixture, "--format", "html"])
-        XCTAssertNotEqual(html.status, 0, "size supports text and json only")
+        XCTAssertNotEqual(html.status, 0, "size supports text, json, markdown and github only")
+        XCTAssertNotNil(printed.paths, "--save / --format json carry per-path bytes")
+    }
+
+    /// `--fail-if-grows` exits 1 (after the report) when the live tree is bigger than the base by more than the limit.
+    func testFailIfGrowsExitsOne() throws {
+        let fixture = FixtureSupport.fixtureURL("ModularWorkspace").path
+        let saved = try FixtureSupport.tempTree([:]).appendingPathComponent("base.json")
+        XCTAssertEqual(try CLISupport.run(["size", fixture, "--no-swift", "--save", saved.path, "--quiet"]).status, 0)
+        var base = try SizeSnapshot.load(from: saved)
+        base.tree.total -= 2_048
+        try base.write(to: saved)
+        let ok = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--fail-if-grows", "4KB"])
+        XCTAssertEqual(ok.status, 0, ok.stderr)
+        XCTAssertTrue(ok.stdout.contains("+2.0 KB"), ok.stdout)
+        let bad = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--fail-if-grows", "1KB"])
+        XCTAssertEqual(bad.status, 1, bad.stderr)
+        XCTAssertTrue(bad.stdout.contains("+2.0 KB"), "the comparison is still printed")
+        XCTAssertTrue(bad.stderr.hasSuffix("size gate: grew +2.0 KB (limit 1.0 KB)\n"), bad.stderr)
+        let pct = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--fail-if-grows", "1%", "--format", "json"])
+        XCTAssertEqual(pct.status, 1, pct.stderr)
+        XCTAssertTrue(pct.stdout.hasPrefix("{"), "json is still printed before the gate fires")
     }
 }

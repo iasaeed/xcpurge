@@ -1,8 +1,9 @@
-// LANE: C
+// LANE: B
 import Foundation
 
 /// GitHub Actions workflow commands: one `::warning file=<rel>,line=<n>,title=xcpurge <kind>::<msg>` per finding
-/// (`::notice` for informational kinds), then a `::notice::` summary line. Deterministic report order.
+/// (`::notice` for informational kinds), a `::notice::` for fixed baseline entries, then a `::notice::` summary line
+/// (with the baseline counts when one was applied). Deterministic report order.
 /// `file=` is relative to the repository checkout (`$GITHUB_WORKSPACE`, else the working directory) so annotations
 /// land on the right file when the scan root is a subfolder; folder findings point at their `Contents.json`.
 public struct GitHubReporter: Reporter {
@@ -29,7 +30,16 @@ public struct GitHubReporter: Reporter {
         let counts = Confidence.allCases.reversed().map { c in
             "\(result.findings.filter { $0.confidence == c }.count) \(c.rawValue)"
         }
-        out += "::notice::\(Self.escapeData("xcpurge: \(result.findings.count) findings (\(counts.joined(separator: ", ")))"))\n"
+        var summary = "xcpurge: \(result.findings.count) findings (\(counts.joined(separator: ", ")))"
+        if let b = result.baseline {
+            if !b.fixed.isEmpty {
+                let list = b.fixed.sorted().map { "\($0.kind.flagName) \($0.module) \($0.name ?? $0.path)" }.joined(separator: "; ")
+                out += "::notice title=\(Self.escapeProperty("xcpurge baseline"))::"
+                    + Self.escapeData("\(b.fixed.count) fixed baseline entr\(b.fixed.count == 1 ? "y" : "ies") (regenerate with xcpurge baseline): \(list)") + "\n"
+            }
+            summary += "; baseline: \(b.baselinedCount) baselined, \(b.newCount) new, \(b.fixed.count) fixed"
+        }
+        out += "::notice::\(Self.escapeData(summary))\n"
         return out
     }
 

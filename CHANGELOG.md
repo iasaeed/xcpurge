@@ -13,11 +13,34 @@
 <!-- /lane A -->
 
 <!-- lane B:size-pr -->
-- `xcpurge size --compare --format markdown|github`, `--fail-if-grows`, `--comment-threshold` (PR comment and size gate): _Coming in 0.4.0._
+- `xcpurge size --compare base.json --format markdown|github`: a pull-request comment body that starts with
+  `<!-- xcpurge-size -->` (sticky, edited in place), headline `### xcpurge size: +X (+Y%)`, an honest "what was
+  measured" line (source-tree bytes; install size with `--app`; download size ≈ .ipa bytes for an .ipa), Base | PR |
+  Change tables for tree and categories, modules and app sections in `<details>`, **Top changes** (`--top 20` paths
+  with |change| ≥ `--min-path-delta 500` bytes, asset sets as units, the rest folded), reclaimable estimate and a
+  footer; capped at 60,000 characters. `github` also appends the body to `$GITHUB_STEP_SUMMARY`.
+  `--comment-threshold 100KB` prints nothing (and writes no `--output`) below that |change|; `--fail-if-grows
+  500KB|2%` exits 1 with `size gate: grew +X (limit Y)` after the comment is written; `--allow-missing-compare`
+  makes a missing base a note (exit 0). Snapshots gain `paths` (per-path bytes, asset sets as units) and
+  `app.compressedBytes` for an .ipa; `schemaVersion` stays 1. Sample workflow: `docs/ci/xcpurge-size.yml`
+  (artifact base, sticky comment deleted when quiet, `size-increase-ok` label skips the gate).
 <!-- /lane B -->
 
 <!-- lane B:xcode-phase -->
-- `xcpurge init --xcode-phase` and `--max-warnings` for `--format xcode`: _Coming in 0.4.0._
+- `xcpurge init --xcode-phase [--configuration Release|any] [--max-warnings 50]` prints a Run Script build phase
+  (Homebrew/local PATH, skips CI and other configurations, `command -v` guard that warns instead of failing, stamp
+  file for incremental skips, sandboxing note); it writes nothing and never edits a project file. `--max-warnings N`
+  on `--format xcode` caps the warning lines, adds `warning: [xcpurge] K more findings not shown (run xcpurge scan
+  for all)` and always ends with `note: [xcpurge] T findings (h high, m medium, l low)` when there are findings.
+  Sample workflow: `docs/ci/xcpurge.yml` (release binary, `--format github --baseline ... --fail-on any`, no
+  xcodebuild).
+- Reports present baselines and git history: text prints `Baseline: N baselined, M new, K fixed (D days old)` plus
+  warnings (fixed list under `--verbose`) and `· 3y, J. Appleseed` after findings with history; `--format github`
+  adds `; baseline: ...` to its summary notice and one `::notice` listing fixed entries; the HTML report gains an
+  `ignores` category colour, a Baseline card (New / Baselined / Fixed, fixed list, age warning), Age and Author
+  columns, a History facet and `age:>90` / `author:` / `bucket:` search tokens (only when some finding has
+  history), a drawer History section (last commit, bucket and dead-since labelled heuristic) and `id` / `ageDays` /
+  `author` CSV columns. Author e-mails are never shown.
 <!-- /lane B -->
 
 <!-- lane C:git -->
