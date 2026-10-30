@@ -1,0 +1,41 @@
+# Sample workflow: unused-resource findings as pull-request annotations with `xcpurge scan`.
+# Copy to .github/workflows/xcpurge.yml in YOUR repository (it lives under docs/ here so it never runs on xcpurge's own
+# repository). No xcodebuild: xcpurge reads the files in the checkout, so this runs in well under a minute.
+#
+# - A release binary is downloaded rather than brewed: Homebrew installs are slow and unreliable on hosted runners and
+#   Xcode Cloud (cf. Periphery #1055), and a pinned version keeps findings stable across runs.
+# - `--baseline .xcpurge-baseline.json` hides what the team has accepted (`xcpurge baseline` writes the file) so
+#   `--fail-on any` only fails on NEW findings. Drop both flags to annotate without gating.
+# - `fetch-depth: 0` is only needed when you pass `--git` (age and author per finding); shallow clones get "n/a".
+name: xcpurge
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  XCPURGE_VERSION: "0.4.0"
+
+jobs:
+  scan:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # for --git; use the default (1) without it
+
+      - name: Install xcpurge
+        # Pinned release binary (asset name as on the GitHub release page); `brew install iasaeed/tap/xcpurge` works
+        # too but is slower and floats to the newest version.
+        run: |
+          curl -fsSL "https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}/xcpurge-macos.tar.gz" -o xcpurge.tar.gz
+          mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge.tar.gz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/xcpurge" --version
+
+      - name: Scan
+        run: xcpurge scan . --format github --min-confidence medium --baseline .xcpurge-baseline.json --fail-on any

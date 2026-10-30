@@ -10,7 +10,7 @@
   --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f0f2f5; --text: #151a21; --muted: #5d6675; --faint: #8a93a2;
   --border: #e1e4ea; --accent: #2457d6; --accent-soft: #e7eefc; --sel: #eaf0fd; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
   --high: #c9342b; --high-bg: #fdeceb; --medium: #a86a00; --medium-bg: #fdf3dc; --low: #5b6b80; --low-bg: #eef1f5;
-  --c-assets: #2f6fe4; --c-strings: #8150e0; --c-files: #0f8f80; --c-duplicates: #d03d86;
+  --c-assets: #2f6fe4; --c-strings: #8150e0; --c-files: #0f8f80; --c-duplicates: #d03d86; --c-ignores: #7c8a3b;
   --k-app: #2f6fe4; --k-ext: #0f8f80; --k-lib: #8150e0; --k-test: #8a93a2; --k-other: #a86a00;
   --edge: #b3bac6; --on-fill: #ffffff;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -49,6 +49,12 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .size-dl dt { color: var(--muted); font-size: 12px; }
 .size-dl dd { margin: 2px 0 0; font-size: 17px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .size-dl small { color: var(--faint); font-size: 11px; }
+.size-dl.base { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.size-dl dd.warn { color: var(--medium); }
+.card details { margin-top: 12px; }
+.card details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.card .warnings { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--medium); font-size: 12.5px; }
+.base-meta { margin-top: 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 main { padding-top: 20px; padding-bottom: 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
 section > h2, .sec-head h2 { margin-bottom: 10px; }
@@ -82,10 +88,10 @@ figcaption small { color: var(--faint); font-weight: 400; }
 .legend-row span { display: inline-flex; gap: 6px; align-items: center; }
 .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
 .f-high { fill: var(--high); } .f-medium { fill: var(--medium); } .f-low { fill: var(--low); }
-.f-assets { fill: var(--c-assets); } .f-strings { fill: var(--c-strings); } .f-files { fill: var(--c-files); } .f-duplicates { fill: var(--c-duplicates); }
+.f-assets { fill: var(--c-assets); } .f-strings { fill: var(--c-strings); } .f-files { fill: var(--c-files); } .f-duplicates { fill: var(--c-duplicates); } .f-ignores { fill: var(--c-ignores); }
 .f-accent { fill: var(--accent); }
 .bg-high { background: var(--high); } .bg-medium { background: var(--medium); } .bg-low { background: var(--low); }
-.bg-assets { background: var(--c-assets); } .bg-strings { background: var(--c-strings); } .bg-files { background: var(--c-files); } .bg-duplicates { background: var(--c-duplicates); }
+.bg-assets { background: var(--c-assets); } .bg-strings { background: var(--c-strings); } .bg-files { background: var(--c-files); } .bg-duplicates { background: var(--c-duplicates); } .bg-ignores { background: var(--c-ignores); }
 .bg-k-app { background: var(--k-app); } .bg-k-ext { background: var(--k-ext); } .bg-k-lib { background: var(--k-lib); } .bg-k-test { background: var(--k-test); } .bg-k-other { background: var(--k-other); }
 
 /* graph */
@@ -164,6 +170,13 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td .base { font-family: var(--mono); font-size: 12.5px; }
 td .dir { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-left: 6px; }
 td.reason { color: var(--muted); }
+td.author { color: var(--muted); }
+col.c-name { width: 20%; } col.c-path { width: 28%; }
+/* With Age and Author showing, Name and Path give up some room so Reasons keeps a column. */
+body:not(.no-hist) col.c-name { width: 15%; } body:not(.no-hist) col.c-path { width: 21%; }
+.no-hist .c-hist { display: none; }
+.drawer .hist dd .sha { font-family: var(--mono); font-size: 12px; }
+.drawer .heur { color: var(--faint); font-size: 11.5px; }
 td .more { color: var(--accent); font-size: 11px; margin-left: 6px; }
 .kind { display: inline-flex; align-items: center; gap: 7px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
@@ -224,7 +237,7 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
   .wrap { padding: 0 16px; }
   .stats, .size-dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .charts, .lower { grid-template-columns: minmax(0, 1fr); }
-  col.c-reason, th.c-reason, td.reason, col.c-module, th.c-module, td.mod { display: none; }
+  col.c-reason, th.c-reason, td.reason, col.c-module, th.c-module, td.mod, .c-hist { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
 </style>
@@ -268,6 +281,18 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
     </dl>
   </section>
 
+  <section class="card" id="baseline-card" aria-labelledby="h-baseline" hidden>
+    <h2 id="h-baseline">Baseline <span class="hint">· findings hidden by <code id="b-file"></code></span></h2>
+    <dl class="size-dl base">
+      <div><dt>New <small>shown below</small></dt><dd id="b-new">–</dd></div>
+      <div><dt>Baselined <small>hidden</small></dt><dd id="b-base">–</dd></div>
+      <div><dt>Fixed <small>no longer found</small></dt><dd id="b-fixed">–</dd></div>
+    </dl>
+    <p class="base-meta" id="b-meta"></p>
+    <ul class="warnings" id="b-warnings"></ul>
+    <details id="b-fixed-wrap" hidden><summary id="b-fixed-sum">Fixed entries</summary><ul class="list" id="b-fixed-list"></ul></details>
+  </section>
+
   <section aria-labelledby="h-overview">
     <h2 id="h-overview">Overview <span class="hint">· click a bar or segment to filter</span></h2>
     <div class="charts">
@@ -305,14 +330,14 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
       <div class="results">
         <div class="toolbar">
           <button id="btn-filters" class="only-narrow" type="button" aria-expanded="false" aria-controls="facets">Filters</button>
-          <div class="search"><input id="q" type="search" autocomplete="off" spellcheck="false" aria-label="Search findings. Supports kind:, conf:, module:, path:, name:, cat: tokens and /regex/" placeholder="Search…  kind:unused-asset conf:high module:App path:Assets /regex/"></div>
+          <div class="search"><input id="q" type="search" autocomplete="off" spellcheck="false" aria-label="Search findings. Supports kind:, conf:, module:, path:, name:, cat:, age:, author:, bucket: tokens and /regex/" placeholder="Search…  kind:unused-asset conf:high module:App path:Assets age:>90 author:name /regex/"></div>
           <span id="count" class="count" aria-live="polite"></span>
           <button id="btn-clear" type="button">Clear</button>
         </div>
         <div id="chips" class="chips"></div>
         <div id="scroller" class="scroller" tabindex="0" aria-label="Findings table. Arrow keys move between rows, Enter opens details.">
           <table id="tbl" aria-label="Findings">
-            <colgroup><col style="width:150px"><col style="width:92px"><col class="c-module" style="width:130px"><col style="width:20%"><col style="width:28%"><col style="width:84px"><col class="c-reason"></colgroup>
+            <colgroup><col style="width:150px"><col style="width:92px"><col class="c-module" style="width:130px"><col class="c-name"><col class="c-path"><col style="width:84px"><col class="c-hist" style="width:56px"><col class="c-hist" style="width:110px"><col class="c-reason"></colgroup>
             <thead><tr>
               <th scope="col" data-sort="kind"><button type="button">Kind</button></th>
               <th scope="col" data-sort="conf"><button type="button">Confidence</button></th>
@@ -320,6 +345,8 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
               <th scope="col" data-sort="name"><button type="button">Name</button></th>
               <th scope="col" data-sort="path"><button type="button">Path</button></th>
               <th scope="col" class="num" data-sort="size"><button type="button">Size</button></th>
+              <th scope="col" class="num c-hist" data-sort="age"><button type="button">Age</button></th>
+              <th scope="col" class="c-hist" data-sort="author"><button type="button">Author</button></th>
               <th scope="col" class="c-reason" data-sort="reasons"><button type="button">Reasons</button></th>
             </tr></thead>
             <tbody id="rows"></tbody>
@@ -364,7 +391,7 @@ timings.parse = performance.now() - t0;
 const F = Array.isArray(D.findings) ? D.findings : [];
 const MODULES = Array.isArray(D.modules) ? D.modules : [];
 const N = F.length;
-const CATS = ['assets', 'strings', 'files', 'duplicates'];
+const CATS = ['assets', 'strings', 'files', 'duplicates', 'ignores'];
 const CONFS = ['high', 'medium', 'low'];
 const CONF_RANK = { high: 0, medium: 1, low: 2 };
 
@@ -387,9 +414,22 @@ const removeCmd = f => 'xcpurge remove ' + shArg(D.root || '.') + ' ' + shArg(f.
 const kindClass = k => ({ app: 'k-app', appClip: 'k-app', watchApp: 'k-app', appExtension: 'k-ext', unitTest: 'k-test', uiTest: 'k-test',
   framework: 'k-lib', staticLib: 'k-lib', packageLibrary: 'k-lib', packageExecutable: 'k-lib', macro: 'k-lib', plugin: 'k-lib' })[k] || 'k-other';
 const DYN_RE = /dynamically at (\S+?):(\d+)/g;
+// Git history (`--git`): last commit, age and bucket per finding. Author names only; emails are never shown.
+const hist = f => (f.history && typeof f.history === 'object') ? f.history : null;
+const histAuthor = f => { const h = hist(f); return h && h.lastCommit && h.lastCommit.authorName ? String(h.lastCommit.authorName) : ''; };
+const histAge = f => { const h = hist(f); return h && h.ageDays != null && isFinite(h.ageDays) ? +h.ageDays : null; };
+// Facet value: the heuristic bucket when git gave one, else the status (shallow, untracked, not-git, unavailable).
+const histVal = f => { const h = hist(f); if (!h) return 'none'; return h.bucket ? String(h.bucket) : (h.status === 'ok' ? 'no bucket' : String(h.status || 'unavailable')); };
+const HIST_LABEL = { recentlyAdded: 'recently added', leftover: 'leftover', 'no bucket': 'dated, no bucket', none: 'no history' };
+const histShow = v => HIST_LABEL[v] || v;
+const ageText = d => d == null ? '' : d < 30 ? d + 'd' : d < 365 ? Math.floor(d / 30) + 'mo' : Math.floor(d / 365) + 'y';
+const shortSha = s => String(s || '').slice(0, 10);
+let HAS_HIST = false;
+for (let i = 0; i < N; i++) if (hist(F[i])) { HAS_HIST = true; break; }
+document.body.classList.toggle('no-hist', !HAS_HIST);
 
 // ---- index (built once) ----
-const LNAME = new Array(N), LPATH = new Array(N), LMOD = new Array(N), LREAS = new Array(N), HAY = new Array(N);
+const LNAME = new Array(N), LPATH = new Array(N), LMOD = new Array(N), LREAS = new Array(N), LAUTH = new Array(N), HAY = new Array(N);
 const kindCat = {};
 for (let i = 0; i < N; i++) {
   const f = F[i];
@@ -398,7 +438,8 @@ for (let i = 0; i < N; i++) {
   LPATH[i] = loc(f).toLowerCase();
   LMOD[i] = String(f.module).toLowerCase();
   LREAS[i] = f.reasons.join('\n').toLowerCase();
-  HAY[i] = LNAME[i] + '\n' + LPATH[i] + '\n' + LMOD[i] + '\n' + LREAS[i];
+  LAUTH[i] = histAuthor(f).toLowerCase();
+  HAY[i] = LNAME[i] + '\n' + LPATH[i] + '\n' + LMOD[i] + '\n' + LREAS[i] + (LAUTH[i] ? '\n' + LAUTH[i] : '');
   if (!kindCat[f.kind]) kindCat[f.kind] = f.category;
 }
 const KEBAB_TO_KIND = {};
@@ -408,12 +449,16 @@ const FACETS = [
   { key: 'conf', label: 'Confidence', get: f => f.confidence },
   { key: 'mod', label: 'Module', get: f => f.module },
 ];
+// Only when some finding carries git history (`--git`); kept last so chart code can address the first four by index.
+if (HAS_HIST) FACETS.push({ key: 'hist', label: 'History', get: histVal, show: histShow });
+const HIST_ORDER = ['recentlyAdded', 'leftover', 'no bucket', 'shallow', 'untracked', 'not-git', 'unavailable', 'none'];
 for (const fc of FACETS) {
   const counts = new Map();
   for (let i = 0; i < N; i++) { const v = fc.get(F[i]); counts.set(v, (counts.get(v) || 0) + 1); }
   let vals = [...counts.keys()];
   if (fc.key === 'cat') vals.sort((a, b) => CATS.indexOf(a) - CATS.indexOf(b));
   else if (fc.key === 'conf') vals.sort((a, b) => CONF_RANK[a] - CONF_RANK[b]);
+  else if (fc.key === 'hist') vals.sort((a, b) => HIST_ORDER.indexOf(a) - HIST_ORDER.indexOf(b));
   else vals.sort((a, b) => counts.get(b) - counts.get(a) || (a < b ? -1 : 1));
   fc.values = vals; fc.total = counts; fc.index = new Map(vals.map((v, i) => [v, i]));
   fc.codes = new Uint16Array(N);
@@ -463,6 +508,8 @@ const SORTS = {
   name: (a, b) => cmpStr(LNAME[a] || LPATH[a], LNAME[b] || LPATH[b]),
   path: (a, b) => cmpStr(LPATH[a], LPATH[b]),
   size: (a, b) => (F[a].sizeBytes || 0) - (F[b].sizeBytes || 0),
+  age: (a, b) => { const x = histAge(F[a]), y = histAge(F[b]); return (x == null ? -1 : x) - (y == null ? -1 : y); },
+  author: (a, b) => cmpStr(LAUTH[a], LAUTH[b]),
   reasons: (a, b) => cmpStr(LREAS[a], LREAS[b]),
 };
 const orderCache = {};
@@ -484,8 +531,12 @@ const FIELD = {
   path: { test: (i, v) => LPATH[i].includes(v), raw: i => loc(F[i]) },
   name: { test: (i, v) => LNAME[i].includes(v), raw: i => F[i].name || '' },
   reason: { test: (i, v) => LREAS[i].includes(v), raw: i => F[i].reasons.join('\n') },
+  // age:>90, age:<30, age:>=365, age:90 (at least); findings without history never match.
+  age: { test: (i, v) => { const m = /^(>=|<=|>|<|=)?\s*(\d+)$/.exec(v); const d = histAge(F[i]); if (!m || d == null) return false; const n = +m[2]; switch (m[1]) { case '>': return d > n; case '<': return d < n; case '<=': return d <= n; case '=': return d === n; default: return d >= n; } }, raw: i => { const d = histAge(F[i]); return d == null ? '' : String(d); } },
+  author: { test: (i, v) => LAUTH[i].includes(v), raw: i => histAuthor(F[i]) },
+  bucket: { norm: v => v.replace(/[\s_-]/g, ''), test: (i, v) => histVal(F[i]).toLowerCase().replace(/[\s_-]/g, '').startsWith(v), raw: i => histVal(F[i]) },
 };
-const ALIAS = { confidence: 'conf', category: 'cat', mod: 'module', reasons: 'reason', file: 'path' };
+const ALIAS = { confidence: 'conf', category: 'cat', mod: 'module', reasons: 'reason', file: 'path', history: 'bucket', hist: 'bucket' };
 let queryError = false;
 function parseQuery(q) {
   queryError = false;
@@ -534,7 +585,7 @@ function compute() {
     for (const k of anyIdx) { if (!selArr[k][FACETS[k].codes[i]]) { miss = k; if (++nmiss > 1) break; } }
     if (nmiss === 0) {
       mask[i] = 1; total++; bytes += F[i].sizeBytes || 0;
-      for (let k = 0; k < 4; k++) counts[k][FACETS[k].codes[i]]++;
+      for (let k = 0; k < FACETS.length; k++) counts[k][FACETS[k].codes[i]]++;
     } else if (nmiss === 1) counts[miss][FACETS[miss].codes[i]]++;
   }
   const ord = order(state.sort === 'default' ? 'conf' : state.sort); // default: high first, then report order
@@ -583,7 +634,8 @@ function renderRows() {
   const start = Math.max(0, Math.floor(top / ROW_H) - BUFFER);
   const end = Math.min(n, Math.ceil((top + h - headH) / ROW_H) + BUFFER);
   let s = '';
-  if (start > 0) s += '<tr class="spacer" aria-hidden="true"><td colspan="7" style="height:' + (start * ROW_H) + 'px"></td></tr>';
+  const COLS = HAS_HIST ? 9 : 7;
+  if (start > 0) s += '<tr class="spacer" aria-hidden="true"><td colspan="' + COLS + '" style="height:' + (start * ROW_H) + 'px"></td></tr>';
   for (let r = start; r < end; r++) {
     const i = view[r], f = F[i];
     const reasons = f.reasons;
@@ -594,10 +646,17 @@ function renderRows() {
       + '<td title="' + esc(f.name || '') + '">' + (f.name ? esc(f.name) : '<span class="muted">—</span>') + '</td>'
       + '<td title="' + esc(loc(f)) + '"><span class="base">' + esc(base(f.path)) + (f.line != null ? ':' + f.line : '') + '</span><span class="dir">' + esc(dirOf(f.path)) + '</span></td>'
       + '<td class="num">' + (f.sizeBytes != null ? esc(human(f.sizeBytes)) : '<span class="muted">—</span>') + '</td>'
+      + (HAS_HIST ? histCells(f) : '')
       + '<td class="reason" title="' + esc(reasons.join('\n')) + '">' + esc(reasons[0] || '') + (reasons.length > 1 ? '<span class="more">+' + (reasons.length - 1) + '</span>' : '') + '</td></tr>';
   }
-  if (end < n) s += '<tr class="spacer" aria-hidden="true"><td colspan="7" style="height:' + ((n - end) * ROW_H) + 'px"></td></tr>';
+  if (end < n) s += '<tr class="spacer" aria-hidden="true"><td colspan="' + COLS + '" style="height:' + ((n - end) * ROW_H) + 'px"></td></tr>';
   tbody.innerHTML = s;
+}
+function histCells(f) {
+  const h = hist(f), d = histAge(f), a = histAuthor(f);
+  const title = h ? (h.status === 'ok' ? (h.lastCommit ? h.lastCommit.date + ' · ' + a + (h.lastCommit.subject ? ' · ' + h.lastCommit.subject : '') : '') : (h.note || h.status)) : '';
+  return '<td class="num c-hist" title="' + esc(title) + '">' + (d != null ? esc(ageText(d)) : '<span class="muted">' + esc(h && h.status !== 'ok' ? 'n/a' : '—') + '</span>') + '</td>'
+    + '<td class="author c-hist" title="' + esc(a) + '">' + (a ? esc(a) : '<span class="muted">—</span>') + '</td>';
 }
 scroller.addEventListener('scroll', () => { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; const had = scroller.contains(document.activeElement) && document.activeElement !== scroller; renderRows(); if (had) focusRow(false); }); } }, { passive: true });
 function focusRow(scroll = true) {
@@ -646,6 +705,7 @@ facetsEl.innerHTML = FACETS.map((fc, k) => '<fieldset class="facet' + (fc.key ==
     + (fc.key === 'conf' ? '<span class="badge b-' + esc(v) + '">' + esc(v) + '</span><span class="lbl"></span>'
       : fc.key === 'cat' ? '<i class="sw bg-' + esc(v) + '" aria-hidden="true"></i><span class="lbl">' + esc(v) + '</span>'
       : fc.key === 'kind' ? '<i class="dot bg-' + esc(kindCat[v]) + '" aria-hidden="true"></i><span class="lbl">' + esc(kebab(v)) + '</span>'
+      : fc.key === 'hist' ? '<span class="lbl" title="' + esc(histShow(v)) + '">' + esc(histShow(v)) + '</span>'
       : '<span class="lbl" title="' + esc(v) + '">' + esc(v) + '</span>')
     + '<span class="num"></span></label>').join('') + '</div></fieldset>').join('');
 facetsEl.addEventListener('change', e => {
@@ -968,6 +1028,7 @@ function openDrawer(i) {
     + (f.sizeBytes != null ? '<dt>Size</dt><dd>' + human(f.sizeBytes) + ' <span class="muted">(' + fmt(f.sizeBytes) + ' bytes)</span></dd>' : '')
     + (f.groupID ? '<dt>Group</dt><dd><code>' + esc(f.groupID) + '</code></dd>' : '') + '</dl>'
     + '<div><h4>Reasons</h4>' + (f.reasons.length ? '<ol>' + f.reasons.map(r => '<li>' + esc(r) + '</li>').join('') + '</ol>' : '<p class="muted">None given.</p>') + '</div>'
+    + historyHTML(f)
     + (sites.length ? '<div><h4>Dynamic lookup sites</h4><ul class="sites">' + siteHTML + '</ul></div>' : '')
     + (group.length ? '<div><h4>Same duplicate group</h4><ul class="list">' + group.slice(0, 50).map(j => '<li><button type="button" class="link" data-open="' + j + '">' + esc(loc(F[j])) + '</button><span class="muted">' + esc(F[j].module) + '</span></li>').join('') + '</ul></div>' : '')
     + removeHTML
@@ -977,6 +1038,20 @@ function openDrawer(i) {
   $('#d-copy-ignore').onclick = () => copy(entry, 'ignore entry');
   drawer.hidden = false;
   $('#d-close').focus();
+}
+// Git history for the drawer: last commit (sha, date, author, subject), age, the bucket and dead-since, both
+// labelled as heuristics. Email addresses are never rendered, even when the JSON carries them.
+function historyHTML(f) {
+  const h = hist(f); if (!h) return '';
+  const commit = c => '<span class="sha">' + esc(shortSha(c.sha)) + '</span> ' + esc(String(c.date || '').slice(0, 10)) + (c.authorName ? ' · ' + esc(c.authorName) : '') + (c.subject ? '<br><span class="muted">' + esc(c.subject) + '</span>' : '');
+  let s = '<dl class="hist">';
+  if (h.status !== 'ok') s += '<dt>Status</dt><dd>' + esc(h.status) + (h.note ? ' <span class="muted">' + esc(h.note) + '</span>' : '') + '</dd>';
+  if (h.lastCommit) s += '<dt>Last commit</dt><dd>' + commit(h.lastCommit) + '</dd>';
+  if (h.ageDays != null) s += '<dt>Age</dt><dd>' + fmt(h.ageDays) + ' day' + (h.ageDays === 1 ? '' : 's') + ' <span class="muted">(' + esc(ageText(histAge(f))) + ')</span></dd>';
+  if (h.bucket) s += '<dt>Bucket</dt><dd>' + esc(histShow(String(h.bucket))) + ' <span class="heur">heuristic: added within the recent window or not</span></dd>';
+  if (h.deadSince) s += '<dt>Dead since</dt><dd>' + commit(h.deadSince) + '<br><span class="heur">heuristic: last commit that removed a use of the name (--git-dead-since)</span></dd>';
+  if (h.status === 'ok' && h.note) s += '<dt>Note</dt><dd>' + esc(h.note) + '</dd>';
+  return '<div><h4>History</h4>' + s + '</dl></div>';
 }
 function closeDrawer() { if (drawer.hidden) return; drawer.hidden = true; drawerIndex = -1; focusRow(true); }
 $('#d-close').addEventListener('click', closeDrawer);
@@ -1014,8 +1089,8 @@ $('#btn-json').addEventListener('click', () => {
 });
 $('#btn-csv').addEventListener('click', () => {
   const cell = v => { let s = String(v == null ? '' : v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-  const head = ['kind', 'category', 'confidence', 'module', 'name', 'path', 'line', 'sizeBytes', 'groupID', 'reasons'];
-  const lines = [head.join(',')].concat(rows().map(f => [f.kind, f.category, f.confidence, f.module, f.name, f.path, f.line, f.sizeBytes, f.groupID, f.reasons.join(' | ')].map(cell).join(',')));
+  const head = ['id', 'kind', 'category', 'confidence', 'module', 'name', 'path', 'line', 'sizeBytes', 'groupID', 'ageDays', 'author', 'reasons'];
+  const lines = [head.join(',')].concat(rows().map(f => [f.id, f.kind, f.category, f.confidence, f.module, f.name, f.path, f.line, f.sizeBytes, f.groupID, histAge(f), histAuthor(f), f.reasons.join(' | ')].map(cell).join(',')));
   download('xcpurge-' + stamp() + '.csv', 'text/csv', lines.join('\r\n') + '\r\n');
 });
 $('#btn-ignore').addEventListener('click', () => {
@@ -1090,6 +1165,27 @@ if (Z) {
   setZ('#z-high', Z.reclaimable ? Z.reclaimable.high : 0);
   setZ('#z-hm', Z.reclaimable ? Z.reclaimable.highMedium : 0);
   $('#size-card').hidden = false;
+}
+// Baseline card: present when the scan ran with --baseline (`doc.baseline`); fixed entries fold into <details>.
+const B = D.baseline && typeof D.baseline === 'object' ? D.baseline : null;
+if (B) {
+  const fixed = Array.isArray(B.fixed) ? B.fixed : [], warnings = Array.isArray(B.warnings) ? B.warnings : [];
+  $('#b-file').textContent = B.file || '';
+  $('#b-new').textContent = fmt(B.newCount || 0);
+  $('#b-base').textContent = fmt(B.baselinedCount || 0);
+  $('#b-fixed').textContent = fmt(fixed.length);
+  if (fixed.length) { $('#b-fixed').classList.add('warn'); $('#b-fixed').title = 'Regenerate the baseline with xcpurge baseline'; }
+  const age = B.ageDays != null ? +B.ageDays : null;
+  $('#b-meta').textContent = (B.createdAt ? 'Created ' + String(B.createdAt).slice(0, 10) : '') + (age != null ? (B.createdAt ? ' · ' : '') + fmt(age) + ' day' + (age === 1 ? '' : 's') + ' old' : '') + (B.toolVersion ? ' · xcpurge ' + B.toolVersion : '') + (B.strict ? ' · strict' : '');
+  const warnList = warnings.slice();
+  if (age != null && age > 90 && !warnings.some(w => /old/i.test(w))) warnList.push('baseline is ' + fmt(age) + ' days old; regenerate with xcpurge baseline');
+  $('#b-warnings').innerHTML = warnList.map(w => '<li><span class="badge b-medium">warning</span> ' + esc(w) + '</li>').join('');
+  if (fixed.length) {
+    $('#b-fixed-sum').textContent = fmt(fixed.length) + ' fixed entr' + (fixed.length === 1 ? 'y' : 'ies') + ' (no longer found; regenerate with xcpurge baseline)';
+    $('#b-fixed-list').innerHTML = fixed.slice(0, 500).map(e => '<li><span class="kind"><i class="dot bg-' + esc(e.category) + '" aria-hidden="true"></i>' + esc(kebab(e.kind)) + '</span><span class="grow"><code>' + esc(e.name || base(e.path || '')) + '</code> <span class="muted">' + esc(e.path || '') + '</span></span><span class="muted">' + esc(e.module || '') + (e.count > 1 ? ' ×' + fmt(e.count) : '') + '</span></li>').join('');
+    $('#b-fixed-wrap').hidden = false;
+  }
+  $('#baseline-card').hidden = false;
 }
 const dt = new Date($('#s-date').getAttribute('datetime'));
 if (!isNaN(dt)) $('#s-date').textContent = dt.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

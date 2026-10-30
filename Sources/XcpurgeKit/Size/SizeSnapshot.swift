@@ -78,13 +78,17 @@ public struct AppSection: Codable, Equatable, Sendable {
 /// Size of a built `.app` (or the `.app` inside an `.ipa`).
 public struct AppSize: Codable, Equatable, Sendable {
     public var path: String
+    /// Uncompressed bytes of the bundle (install size, unthinned).
     public var total: Int64
     public var sections: [AppSection]
+    /// The `.ipa` file's own size when the input was an `.ipa`: compressed, unthinned, not the App Store download.
+    public var compressedBytes: Int64?
 
-    public init(path: String, total: Int64, sections: [AppSection]) {
+    public init(path: String, total: Int64, sections: [AppSection], compressedBytes: Int64? = nil) {
         self.path = path
         self.total = total
         self.sections = sections
+        self.compressedBytes = compressedBytes
     }
 }
 
@@ -113,14 +117,20 @@ public struct SizeSnapshot: Codable, Equatable, Sendable {
     public var tree: TreeSize
     public var reclaimable: Reclaimable
     public var app: AppSize?
+    /// Bytes per root-relative path, sorted by path: every inventory file, with asset catalogs split into their
+    /// asset sets (plus one entry for the catalog's own files). Only `xcpurge size` writes it (0.4+); they add up
+    /// to `tree.total`.
+    public var paths: [SizeEntry]?
 
-    public init(root: String, measuredAt: Date, tree: TreeSize, reclaimable: Reclaimable, app: AppSize? = nil) {
+    public init(root: String, measuredAt: Date, tree: TreeSize, reclaimable: Reclaimable, app: AppSize? = nil,
+                paths: [SizeEntry]? = nil) {
         self.schemaVersion = Self.schemaVersion
         self.root = root
         self.measuredAt = ISO8601DateFormatter().string(from: measuredAt)
         self.tree = tree
         self.reclaimable = reclaimable
         self.app = app
+        self.paths = paths
     }
 
     public func json() -> String {

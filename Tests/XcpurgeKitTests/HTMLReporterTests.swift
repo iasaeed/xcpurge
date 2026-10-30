@@ -86,6 +86,112 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertFalse(html.contains("btn-theme"))
     }
 
+    // MARK: - History and baseline (lane B presentation of lane A / C data)
+
+    /// `SyntheticResult` plus git history on two thirds of the findings (dated, shallow, untracked) and a baseline
+    /// report with fixed entries and a warning; the result both renders and round-trips.
+    static func withHistoryAndBaseline(_ result: ScanResult) -> ScanResult {
+        let authors = ["J. Appleseed", "Ada Lovelace", "Grace Hopper", "Linus T."]
+        var findings = result.findings
+        for i in findings.indices {
+            switch i % 3 {
+            case 0:
+                let days = (i * 37) % 1_500
+                let date = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: 1_790_000_000 - Double(days) * 86_400))
+                let commit = FindingHistory.Commit(sha: String(format: "%040x", i * 2_654_435_761), date: date,
+                                                   authorName: authors[i % authors.count], authorEmail: "hidden@example.com",
+                                                   subject: "Commit touching \(findings[i].name ?? findings[i].path)")
+                findings[i].history = FindingHistory(status: .ok, lastCommit: commit, ageDays: days,
+                                                     bucket: days < 30 ? .recentlyAdded : .leftover,
+                                                     deadSince: i % 9 == 0 ? FindingHistory.Commit(sha: "feedfacecafebeef0000", date: date,
+                                                                                                  authorName: authors[(i + 1) % authors.count],
+                                                                                                  subject: "Remove last use") : nil)
+            case 1:
+                findings[i].history = FindingHistory(status: i % 2 == 0 ? .shallow : .untracked,
+                                                     note: i % 2 == 0 ? "n/a (shallow clone; use fetch-depth: 0)" : nil)
+            default:
+                break
+            }
+        }
+        var out = ScanResult(context: result.context, findings: findings, elapsed: result.elapsed)
+        out.baseline = BaselineReport(
+            file: ".xcpurge-baseline.json", createdAt: "2026-06-01T12:00:00Z", ageDays: 112, toolVersion: "0.4.0",
+            baselinedCount: 1_240, newCount: findings.count,
+            fixed: [BaselineEntry(key: "unusedAsset|App|old_icon", kind: .unusedAsset, category: .assets, module: "App",
+                                  path: "App/Resources/Assets.xcassets/old_icon.imageset", name: "old_icon"),
+                    BaselineEntry(key: "deadSource|FeatureKit|FeatureKit/Sources/Gone.swift", kind: .deadSource, category: .files,
+                                  module: "FeatureKit", path: "FeatureKit/Sources/Gone.swift", count: 2),
+                    BaselineEntry(key: "staleIgnore|.xcpurgeignore|Legacy/**", kind: .staleIgnore, category: .ignores, module: "unknown",
+                                  path: ".xcpurgeignore", name: "Legacy/**")],
+            warnings: ["baseline is 112 days old; regenerate with xcpurge baseline", "configHash differs: exclude changed"])
+        return out
+    }
+
+    func testTemplateHasHistoryAndBaselineHooks() {
+        let html = HTMLReporter.template
+        for hook in ["const CATS = ['assets', 'strings', 'files', 'duplicates', 'ignores'];", "--c-ignores:", ".bg-ignores {", ".f-ignores {",
+                     #"id="baseline-card""#, #"id="b-new""#, #"id="b-base""#, #"id="b-fixed""#, #"id="b-fixed-list""#, #"id="b-warnings""#,
+                     #"data-sort="age""#, #"data-sort="author""#, "key: 'hist', label: 'History'", "age: { test:", "author: { test:",
+                     "bucket: { norm:", "<h4>History</h4>", "heuristic", "Dead since", "'no-hist', !HAS_HIST",
+                     "const head = ['id', 'kind', 'category', 'confidence', 'module', 'name', 'path', 'line', 'sizeBytes', 'groupID', 'ageDays', 'author', 'reasons'];"] {
+            XCTAssertTrue(html.contains(hook), hook)
+        }
+        XCTAssertFalse(html.contains("authorEmail"), "email is never read, let alone shown")
+        XCTAssertFalse(html.contains("prefers-color-scheme: dark"), "light theme only")
+    }
+
+    func testRendersWithHistoryAndBaselineAndWithout() throws {
+        let plain = SyntheticResult.make(count: 300)
+        let rich = Self.withHistoryAndBaseline(plain)
+        let html = HTMLReporter(date: Self.date).render(rich)
+        XCTAssertNil(html.range(of: #"\{\{[A-Z]+\}\}"#, options: .regularExpression))
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try dataBlock(html).utf8)) as? [String: Any])
+        let baseline = try XCTUnwrap(object["baseline"] as? [String: Any])
+        XCTAssertEqual(baseline["baselinedCount"] as? Int, 1_240)
+        XCTAssertEqual((baseline["fixed"] as? [Any])?.count, 3)
+        let findings = try XCTUnwrap(object["findings"] as? [[String: Any]])
+        XCTAssertEqual(findings.filter { $0["history"] != nil }.count, 200)
+        XCTAssertTrue(findings.allSatisfy { $0["id"] is String })
+        XCTAssertTrue(html.contains("hidden@example.com"), "the JSON carries the email when --git-emails was used...")
+        let bytes = html.utf8.count
+        XCTAssertLessThan(bytes, 2_000_000)
+
+        // Without history or baseline the same template renders too, and the data block has neither.
+        let bare = HTMLReporter(date: Self.date).render(plain)
+        let bareObject = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try dataBlock(bare).utf8)) as? [String: Any])
+        XCTAssertNil(bareObject["baseline"])
+        XCTAssertFalse(try dataBlock(bare).contains("\"history\""))
+    }
+
+    /// Headless Chrome: the baseline card and the Age/Author columns appear only with that data; the drawer's
+    /// History section labels heuristics and never prints the email; the `ignores` category gets its own colour class.
+    func testBaselineCardAndHistoryColumnsInDOM() throws {
+        let rich = Self.withHistoryAndBaseline(SyntheticResult.make(count: 120))
+        let dom = try dumpDOM(HTMLReporter(date: Self.date).render(rich))
+        XCTAssertTrue(dom.contains(#"id="js-errors" hidden"#), "no JS errors")
+        XCTAssertTrue(dom.contains(#"<section class="card" id="baseline-card" aria-labelledby="h-baseline">"#), "card shown")
+        XCTAssertTrue(dom.contains(#"<dd id="b-base">1,240</dd>"#), dom.contains("b-base") ? "count filled" : "card missing")
+        XCTAssertTrue(dom.contains(#"<dd id="b-fixed" class="warn" title="Regenerate the baseline with xcpurge baseline">3</dd>"#))
+        XCTAssertTrue(dom.contains("baseline is 112 days old"))
+        XCTAssertTrue(dom.contains("3 fixed entries (no longer found; regenerate with xcpurge baseline)"))
+        XCTAssertTrue(dom.contains("<code>old_icon</code>"))
+        XCTAssertTrue(dom.contains(#"class="dot bg-ignores""#), "ignores category colour")
+        XCTAssertFalse(dom.contains(#"<body class="no-hist">"#), "history columns visible")
+        XCTAssertTrue(dom.contains(#"<fieldset class="facet"><h3>History</h3>"#), "History facet")
+        XCTAssertTrue(dom.contains("recently added") && dom.contains("leftover") && dom.contains("shallow"))
+        XCTAssertNotNil(dom.range(of: #"<td class="num c-hist" title="[^"]*">\d+(d|mo|y)</td><td class="author c-hist" title="[^"]*">[^<]+</td>"#,
+                                  options: .regularExpression), "age and author cells")
+        XCTAssertTrue(dom.contains(#"<td class="num c-hist" title="n/a (shallow clone; use fetch-depth: 0)"><span class="muted">n/a</span></td>"#))
+        XCTAssertFalse(try slice(dom, from: #"<tbody id="rows">"#, to: "</tbody>").contains("hidden@example.com"), "no email in rows")
+        XCTAssertTrue(dom.contains(#"colspan="9""#) || !dom.contains("spacer"), "spacers span the extra columns")
+
+        let bare = try dumpDOM(HTMLReporter(date: Self.date).render(SyntheticResult.make(count: 120)))
+        XCTAssertTrue(bare.contains(#"id="js-errors" hidden"#))
+        XCTAssertTrue(bare.contains(#"<body class="no-hist">"#))
+        XCTAssertTrue(bare.contains(#"id="baseline-card" aria-labelledby="h-baseline" hidden"#), "card hidden without a baseline")
+        XCTAssertFalse(bare.contains("<h3>History</h3>"), "no History facet without history")
+    }
+
     func testOpenerArguments() {
         let file = URL(fileURLWithPath: "/tmp/r.html")
         XCTAssertEqual(ReportOpener.arguments(file: file, browser: nil), ["/tmp/r.html"])
@@ -159,6 +265,8 @@ final class HTMLReporterTests: XCTestCase {
             let html = HTMLReporter(date: Self.date).render(SyntheticResult.make(count: count))
             try Data(html.utf8).write(to: out.appendingPathComponent("synthetic-\(count).html"))
         }
+        let rich = HTMLReporter(date: Self.date).render(Self.withHistoryAndBaseline(SyntheticResult.make(count: 3_000)))
+        try Data(rich.utf8).write(to: out.appendingPathComponent("synthetic-history-baseline.html"))
         for path in (env["XCPURGE_CORPUS_JSON"] ?? "").split(separator: ":").map(String.init) {
             let json = try String(contentsOfFile: path, encoding: .utf8)
             let name = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent

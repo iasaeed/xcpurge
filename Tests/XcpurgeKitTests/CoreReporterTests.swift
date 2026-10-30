@@ -51,6 +51,36 @@ final class CoreReporterTests: XCTestCase {
         XCTAssertTrue(json.contains("\"category\" : \"assets\""), "sorted keys, pretty printed")
     }
 
+    /// `--baseline` adds a header (warnings always, the fixed list under `--verbose`); `--git` adds `· age, author`.
+    func testTextBaselineHeaderAndHistorySuffix() async throws {
+        let r = try await result()
+        let commit = FindingHistory.Commit(sha: "0123456789abcdef", date: "2023-04-05T10:00:00Z", authorName: "J. Appleseed",
+                                           authorEmail: "j@example.com", subject: "Add logo")
+        var findings = r.findings
+        findings[0].history = FindingHistory(status: .ok, lastCommit: commit, ageDays: 3 * 365 + 20, bucket: .leftover)
+        findings[1].history = FindingHistory(status: .shallow, note: "n/a (shallow clone; use fetch-depth: 0)")
+        findings[2].history = FindingHistory(status: .ok, lastCommit: commit, ageDays: 12, bucket: .recentlyAdded)
+        var withBoth = ScanResult(context: r.context, findings: findings)
+        withBoth.baseline = BaselineReport(file: ".xcpurge-baseline.json", createdAt: "2026-10-01T00:00:00Z", ageDays: 12,
+                                           toolVersion: "0.4.0", baselinedCount: 140, newCount: 3,
+                                           fixed: [BaselineEntry(key: "unusedAsset|App|old_icon", kind: .unusedAsset, category: .assets,
+                                                                 module: "App", path: "App/Assets.xcassets/old_icon.imageset", name: "old_icon", count: 2)],
+                                           warnings: ["baseline is 12 days old"])
+        let text = TextReporter().render(withBoth)
+        XCTAssertTrue(text.hasPrefix("Baseline: 140 baselined, 3 new, 1 fixed (12 days old)\n  warning: baseline is 12 days old\n\nAssets"), text)
+        XCTAssertFalse(text.contains("Fixed baseline entries"), "fixed list only under --verbose")
+        XCTAssertTrue(text.contains("  · 3y, J. Appleseed\n"), text)
+        XCTAssertTrue(text.contains("  · n/a (shallow)\n"), text)
+        XCTAssertTrue(text.contains("  · 12d, J. Appleseed\n"), text)
+        XCTAssertFalse(text.contains("j@example.com"), "emails never shown")
+        let verbose = TextReporter(verbose: true).render(withBoth)
+        XCTAssertTrue(verbose.contains("  Fixed baseline entries (regenerate with xcpurge baseline):\n    unused-asset App old_icon ×2\n"), verbose)
+        XCTAssertEqual(TextReporter.age(days: 45), "1mo")
+        XCTAssertEqual(TextReporter.age(days: 800), "2y")
+        XCTAssertFalse(TextReporter().render(r).contains("Baseline:"), "no baseline, no header")
+        XCTAssertFalse(TextReporter().render(r).contains(" · "), "no history, no suffix")
+    }
+
     func testEmptyReport() async throws {
         let ctx = try await FixtureSupport.context("SyncedApp", config: { var c = Config(); c.noSwift = true; return c }())
         XCTAssertEqual(TextReporter().render(ScanResult(context: ctx, findings: [])), "No findings.\n")

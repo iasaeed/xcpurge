@@ -33,7 +33,9 @@ public enum AppMeasurer {
         guard process.terminationStatus == 0, let app else {
             throw XcpurgeError.invalidConfig("\(url.path): no Payload/*.app inside (is it an .ipa?)")
         }
-        return measureBundle(payload.appendingPathComponent(app), reportedPath: url.path)
+        var size = measureBundle(payload.appendingPathComponent(app), reportedPath: url.path)
+        size.compressedBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value
+        return size
     }
 
     static func measureBundle(_ app: URL, reportedPath: String) -> AppSize {

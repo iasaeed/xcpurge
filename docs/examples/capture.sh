@@ -26,6 +26,19 @@ cap files-classicapp.txt         files   Tests/Fixtures/ClassicApp
 cap files-mixedapp.txt           files   Tests/Fixtures/MixedApp
 cap size-modularworkspace.txt    size    Tests/Fixtures/ModularWorkspace
 cap html-report-modularworkspace.txt scan Tests/Fixtures/ModularWorkspace --format html --output /tmp/xcpurge-report.html
+cap init-xcode-phase.txt         init    --xcode-phase
+
+# Size PR comment: base snapshot of the fixture, then a copy with one image grown by 3 KB.
+SIZEDEMO=$(mktemp -d)
+cp -R Tests/Fixtures/ModularWorkspace "$SIZEDEMO/mw"
+"$X" size "$SIZEDEMO/mw" --save "$SIZEDEMO/base.json" --quiet > /dev/null
+head -c 3000 /dev/urandom >> "$SIZEDEMO/mw/App/AppWidget/Assets.xcassets/widget_icon.imageset/widget_icon.png"
+{ echo "\$ xcpurge size Tests/Fixtures/ModularWorkspace --save size-base.json   # on main"
+  echo "\$ # ... a PR adds 3 KB to widget_icon.imageset ..."
+  echo "\$ xcpurge size . --compare size-base.json --format markdown"
+  "$X" size "$SIZEDEMO/mw" --compare "$SIZEDEMO/base.json" --format markdown 2>/dev/null | sed "s#$SIZEDEMO/mw#/path/to/xcpurge/Tests/Fixtures/ModularWorkspace#g"
+} > "$OUT/size-markdown-modularworkspace.md"
+rm -rf "$SIZEDEMO"
 
 # Live progress: stderr must be a terminal, stdout goes to /dev/null.
 script -q "$OUT/progress-tty.raw" sh -c "'$X' scan Tests/Fixtures/ModularWorkspace --format json > /dev/null" < /dev/null > /dev/null 2>&1 || true

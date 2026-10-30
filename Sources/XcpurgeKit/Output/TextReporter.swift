@@ -1,4 +1,5 @@
-/// Human-readable report grouped by category, kind and module, with confidence, sizes and totals.
+/// Human-readable report grouped by category, kind and module, with confidence, sizes and totals. A baseline
+/// (`--baseline`) adds a header line; git history (`--git`) adds `· age, author` after each finding.
 /// ANSI colors only when `colors` is set (the CLI enables it for terminals).
 public struct TextReporter: Reporter {
     public let colors: Bool
@@ -22,6 +23,15 @@ public struct TextReporter: Reporter {
     public func render(_ result: ScanResult) -> String {
         var lines: [String] = []
         let findings = result.findings
+        if let b = result.baseline {
+            lines.append(paint(Self.baselineLine(b), "1"))
+            for w in b.warnings { lines.append("  " + paint("warning: " + w, "33")) }
+            if verbose, !b.fixed.isEmpty {
+                lines.append("  Fixed baseline entries (regenerate with xcpurge baseline):")
+                for e in b.fixed.sorted() { lines.append("    \(e.kind.flagName) \(e.module) \(e.name ?? e.path)\(e.count > 1 ? " ×\(e.count)" : "")") }
+            }
+            lines.append("")
+        }
         let byCategory = Dictionary(grouping: findings, by: \.category)
         for category in Category.allCases {
             guard let items = byCategory[category], !items.isEmpty else { continue }
@@ -38,6 +48,7 @@ public struct TextReporter: Reporter {
                         if let name = f.name, name != f.path { line += "  \(name)" }
                         if let size = f.sizeBytes { line += "  (\(ByteFormatter.string(size)))" }
                         if let group = f.groupID { line += "  group \(group)" }
+                        if let h = f.history { line += "  · " + paint(Self.historySuffix(h), "2") }
                         lines.append(line)
                         if verbose || f.confidence != .high {
                             for reason in f.reasons { lines.append("          " + paint(reason, "2")) }
@@ -59,5 +70,26 @@ public struct TextReporter: Reporter {
             }
         }
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// `Baseline: 140 baselined, 3 new, 2 fixed (12 days old)`.
+    public static func baselineLine(_ b: BaselineReport) -> String {
+        "Baseline: \(b.baselinedCount) baselined, \(b.newCount) new, \(b.fixed.count) fixed (\(b.ageDays) day\(b.ageDays == 1 ? "" : "s") old)"
+    }
+
+    /// `3y, J. Appleseed`; `n/a (shallow)` when git could not say.
+    public static func historySuffix(_ h: FindingHistory) -> String {
+        guard h.status == .ok, let c = h.lastCommit else { return "n/a (\(h.status.rawValue))" }
+        var parts: [String] = []
+        if let days = h.ageDays { parts.append(Self.age(days: days)) }
+        parts.append(c.authorName)
+        return parts.joined(separator: ", ")
+    }
+
+    /// Compact age: `12d`, `5mo`, `3y`.
+    public static func age(days: Int) -> String {
+        if days < 30 { return "\(max(0, days))d" }
+        if days < 365 { return "\(days / 30)mo" }
+        return "\(days / 365)y"
     }
 }

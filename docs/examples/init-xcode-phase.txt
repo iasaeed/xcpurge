@@ -1,0 +1,12 @@
+$ xcpurge init --xcode-phase
+# xcpurge Run Script phase (xcpurge 0.4.0). Add after "Compile Sources".
+# Either set ENABLE_USER_SCRIPT_SANDBOXING = NO for this target, or add $(SRCROOT) to Input File Lists.
+# Output Files: $(DERIVED_FILE_DIR)/xcpurge.stamp  (lets Xcode skip the phase when nothing changed)
+if [ "$(uname -m)" = arm64 ]; then export PATH="/opt/homebrew/bin:$PATH"; fi
+export PATH="$PATH:/usr/local/bin:$HOME/.local/bin"
+if [ -n "${CI:-}" ]; then echo "note: xcpurge skipped on CI"; exit 0; fi
+WANT="${XCPURGE_CONFIGURATION:-Release}"
+if [ "$WANT" != any ] && [ "${CONFIGURATION:-}" != "$WANT" ]; then exit 0; fi
+command -v xcpurge >/dev/null 2>&1 || { echo "warning: xcpurge not installed"; exit 0; }
+xcpurge scan "${SRCROOT}" --format xcode --min-confidence medium --quiet --max-warnings 50 || true
+touch "${DERIVED_FILE_DIR}/xcpurge.stamp"

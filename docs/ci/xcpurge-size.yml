@@ -1,0 +1,104 @@
+# Sample workflow: app-size comment and gate on pull requests with `xcpurge size`.
+# Copy to .github/workflows/xcpurge-size.yml in YOUR repository (it lives under docs/ here so xcpurge's own CI never
+# posts comments). Nothing is built or uploaded anywhere: xcpurge measures the files in the checkout.
+#
+# How it works
+#   push to main      -> `xcpurge size . --save size-base.json`, kept as the `xcpurge-size-base` artifact.
+#   pull_request      -> downloads the latest main artifact, compares, writes size.md when the change is at least
+#                        --comment-threshold, and posts/edits ONE sticky comment (deleted again when size.md is absent).
+#                        `--fail-if-grows 500KB` fails the job on growth above that, unless the PR carries the
+#                        `size-increase-ok` label (the escape hatch: no re-run needed, just add the label and re-run).
+#
+# No artifact? Compare against a worktree of the base branch instead (slower, no artifact plumbing):
+#   - run: git fetch origin "$BASE" && git worktree add ../base "origin/$BASE"
+#   - run: xcpurge size ../base --save size-base.json
+#   (then the same `xcpurge size . --compare size-base.json ...` step below)
+#
+# The comment says what it measured: source-tree bytes, not shipped bytes. To compare install size, build the app on
+# both sides and pass `--app Build/Products/Release-iphoneos/MyApp.app` (or an .ipa, which also reports the compressed
+# .ipa size as the download size) to both `size` runs.
+name: xcpurge size
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+env:
+  XCPURGE_VERSION: "0.4.0"
+
+jobs:
+  size:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcpurge
+        # Pinned release binary (asset name as on the GitHub release page); `brew install iasaeed/tap/xcpurge` works
+        # too but is slower and floats to the newest version.
+        run: |
+          curl -fsSL "https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}/xcpurge-macos.tar.gz" -o xcpurge.tar.gz
+          mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge.tar.gz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/xcpurge" --version
+
+      # ---- main: record the base snapshot ----
+      - name: Measure base
+        if: github.event_name == 'push'
+        run: xcpurge size . --save size-base.json --quiet
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: xcpurge-size-base
+          path: size-base.json
+          retention-days: 90
+
+      # ---- pull requests: compare, comment, gate ----
+      - name: Find the latest base snapshot
+        if: github.event_name == 'pull_request'
+        id: base
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          run_id=$(gh run list -b "$BASE" -w xcpurge-size.yml -s success -L1 --json databaseId -q '.[0].databaseId' || true)
+          echo "run-id=${run_id}" >> "$GITHUB_OUTPUT"
+          [ -n "$run_id" ] || echo "::notice::no successful xcpurge-size run on $BASE yet; the first comparison needs one push to $BASE"
+
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'pull_request' && steps.base.outputs.run-id != ''
+        continue-on-error: true
+        with:
+          name: xcpurge-size-base
+          run-id: ${{ steps.base.outputs.run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Compare
+        if: github.event_name == 'pull_request'
+        env:
+          # Add the `size-increase-ok` label to a PR whose growth is intended: the gate is skipped, the comment stays.
+          GATE: ${{ contains(github.event.pull_request.labels.*.name, 'size-increase-ok') && '' || '--fail-if-grows 500KB' }}
+        run: |
+          # shellcheck disable=SC2086
+          xcpurge size . --compare size-base.json --format markdown \
+            --comment-threshold 100KB --allow-missing-compare --output size.md $GATE
+
+      - name: Comment
+        if: github.event_name == 'pull_request' && hashFiles('size.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: xcpurge-size
+          path: size.md
+
+      - name: Remove stale comment
+        if: github.event_name == 'pull_request' && hashFiles('size.md') == ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: xcpurge-size
+          delete: true

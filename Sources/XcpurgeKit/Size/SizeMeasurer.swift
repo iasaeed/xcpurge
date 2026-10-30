@@ -27,15 +27,40 @@ public enum SizeMeasurer {
                    reclaimable: reclaimable(result.findings))
     }
 
-    /// A full snapshot: tree (with the per-catalog and per-asset-type breakdown read from disk), reclaimable
-    /// estimate over the detector `categories` that produced `result`, and, when given, a built app.
+    /// A full snapshot: tree (with the per-catalog and per-asset-type breakdown read from disk), per-path bytes,
+    /// reclaimable estimate over the detector `categories` that produced `result`, and, when given, a built app.
     public static func snapshot(_ result: ScanResult, categories: Set<Category>, app: AppSize? = nil,
                                 date: Date = Date()) -> SizeSnapshot {
         var r = reclaimable(result.findings)
         r.categories = categories.map(\.rawValue).sorted()
+        let targets = Set(result.context.config.targets)
         return SizeSnapshot(root: result.context.root.path, measuredAt: date,
-                            tree: tree(result.context, targets: Set(result.context.config.targets), assetBreakdown: true),
-                            reclaimable: r, app: app)
+                            tree: tree(result.context, targets: targets, assetBreakdown: true),
+                            reclaimable: r, app: app, paths: paths(result.context, targets: targets))
+    }
+
+    /// Bytes per root-relative path (`SizeSnapshot.paths`): one entry per inventory file, except that an asset
+    /// catalog becomes one entry per asset set plus one for its loose files, so a comparison names the set that grew.
+    public static func paths(_ context: ScanContext, targets: Set<String> = []) -> [SizeEntry] {
+        var out: [SizeEntry] = []
+        for f in context.inventory.files where targets.isEmpty || f.modules.contains(where: { targets.contains($0.name) }) {
+            guard f.kind == .assetCatalog else {
+                out.append(SizeEntry(name: f.path, files: 1, bytes: f.size))
+                continue
+            }
+            let parts = assetSets(in: context.root.appendingPathComponent(f.path).path)
+            var loose = SizeEntry(name: f.path, files: 0, bytes: 0)
+            for part in parts {
+                if let rel = part.set {
+                    out.append(SizeEntry(name: f.path + "/" + rel, files: part.files, bytes: part.bytes))
+                } else {
+                    loose.files += part.files
+                    loose.bytes += part.bytes
+                }
+            }
+            if loose.files > 0 { out.append(loose) }
+        }
+        return out.sorted { $0.name < $1.name }
     }
 
     /// Sizes of the inventory, limited to files of `targets` (module names) when not empty.
@@ -80,25 +105,34 @@ public enum SizeMeasurer {
     /// Bytes of every asset set in a catalog folder, by set type (`imageset`, `colorset`, ...); everything
     /// outside a set (group `Contents.json` files) is `other`. Files counts are regular files.
     static func assetTypes(in catalog: String) -> [SizeEntry] {
-        guard let e = FileManager.default.enumerator(atPath: catalog) else { return [] }
         var out: [String: SizeEntry] = [:]
-        func add(_ name: String, files: Int, bytes: Int64) {
-            out[name, default: SizeEntry(name: name, files: 0, bytes: 0)].files += files
-            out[name]!.bytes += bytes
+        for part in assetSets(in: catalog) {
+            let name = part.set.map { ($0 as NSString).pathExtension.lowercased() } ?? "other"
+            out[name, default: SizeEntry(name: name, files: 0, bytes: 0)].files += part.files
+            out[name]!.bytes += part.bytes
         }
+        return Array(out.values)
+    }
+
+    /// One part of a catalog: a `*set` folder (`set` is its catalog-relative path) or a loose regular file (`set` nil).
+    struct CatalogPart { var set: String?; var files: Int; var bytes: Int64 }
+
+    /// Walks a catalog folder once: asset sets are measured whole and not entered; other regular files count singly.
+    static func assetSets(in catalog: String) -> [CatalogPart] {
+        guard let e = FileManager.default.enumerator(atPath: catalog) else { return [] }
+        var out: [CatalogPart] = []
         while let rel = e.nextObject() as? String {
             let type = e.fileAttributes?[.type] as? FileAttributeType
             if type == .typeDirectory {
-                let ext = (rel as NSString).pathExtension.lowercased()
-                guard ext.hasSuffix("set") else { continue }
+                guard (rel as NSString).pathExtension.lowercased().hasSuffix("set") else { continue }
                 e.skipDescendants()
                 let stats = treeStats(catalog + "/" + rel)
-                add(ext, files: stats.files, bytes: stats.bytes)
+                out.append(CatalogPart(set: rel, files: stats.files, bytes: stats.bytes))
             } else if type == .typeRegular {
-                add("other", files: 1, bytes: (e.fileAttributes?[.size] as? NSNumber)?.int64Value ?? 0)
+                out.append(CatalogPart(set: nil, files: 1, bytes: (e.fileAttributes?[.size] as? NSNumber)?.int64Value ?? 0))
             }
         }
-        return Array(out.values)
+        return out
     }
 
     /// Regular files and their total bytes under a folder (hidden files included, like `FileWalker.treeSize`).
