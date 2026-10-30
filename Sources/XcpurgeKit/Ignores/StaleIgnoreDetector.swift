@@ -41,7 +41,7 @@ enum StaleIgnoreDetector {
         guard !rules.isEmpty else { return [] }
         let knownKinds = Set(FindingKind.allCases.flatMap { [$0.rawValue, $0.flagName] })
         let moduleNames = Set(ctx.graph.modules.keys.map(\.name)).union([ModuleID.unknown.name])
-        var assetNamesOnDisk: Set<String>?
+        var assetNamesOnDisk: [(name: String, loose: Bool)]?
         var out: [Finding] = []
         var pathRules: [PathRule] = []
         for rule in rules {
@@ -56,11 +56,11 @@ enum StaleIgnoreDetector {
                 out.append(stale(rule, .high, "no module named like this"))
             case .asset(let p):
                 guard !scoped, categories.contains(.assets) else { continue }
-                if unfiltered.contains(where: { $0.category == .assets && $0.kind != .duplicate && Ignore.assetNameMatches(p, $0.name) }) {
+                if unfiltered.contains(where: { $0.category == .assets && $0.kind != .duplicate && Ignore.assetNameMatches(p, $0) }) {
                     continue
                 }
                 if assetNamesOnDisk == nil { assetNamesOnDisk = assetNames(ctx) }
-                if assetNamesOnDisk!.contains(where: { Ignore.assetNameMatches(p, $0) }) {
+                if assetNamesOnDisk!.contains(where: { Ignore.assetNameMatches(p, $0.name, looseFile: $0.loose) }) {
                     out.append(stale(rule, .low, "asset exists but is used; rule suppresses nothing"))
                 } else {
                     out.append(stale(rule, .medium, "no asset named like this"))
@@ -85,20 +85,18 @@ enum StaleIgnoreDetector {
                 module: ModuleID.unknown.name, confidence: confidence, reasons: [reason])
     }
 
-    /// Catalog entries (name, leaf, aliases) plus loose image and font file names, as `asset:` rules see them
-    /// (`Ignore.assetNameMatches` also tries the name without its extension).
-    private static func assetNames(_ ctx: ScanContext) -> Set<String> {
-        var names = Set<String>()
+    /// Catalog entries (name, leaf, aliases; matched exactly) plus loose image and font file names (matched with or
+    /// without extension, like `Ignore.assetNameMatches`).
+    private static func assetNames(_ ctx: ScanContext) -> [(name: String, loose: Bool)] {
+        var names: [(name: String, loose: Bool)] = []
         for file in ctx.inventory.files {
             switch file.kind {
             case .assetCatalog:
                 for asset in AssetCatalogReader.read(catalog: file.path, root: ctx.root) {
-                    names.insert(asset.name)
-                    names.insert(asset.leaf)
-                    names.formUnion(asset.aliases)
+                    for name in [asset.name, asset.leaf] + asset.aliases { names.append((name, false)) }
                 }
             case .image, .font:
-                names.insert(file.fileName)
+                names.append((file.fileName, true))
             default:
                 break
             }
@@ -156,7 +154,9 @@ enum StaleIgnoreDetector {
                                visited: ((String) -> Void)? = nil) -> (stale: [Ignore.Rule], undecided: [Ignore.Rule]) {
         guard !rules.isEmpty else { return ([], []) }
         var unmatched = Array(rules.indices)
-        var undecided = Set<Int>()
+        /// Rules that could match inside build output the walk did not enter (or past the cap). A later match
+        /// anywhere else still settles them, so this never removes a rule from `unmatched`.
+        var tentative = Set<Int>()
         var directories = Set<String>()
         for file in ctx.inventory.files {
             if file.isUnit { directories.insert(file.path) }
@@ -173,7 +173,7 @@ enum StaleIgnoreDetector {
             enumerateDisk(ctx.root) { path, isDirectory, absolute in
                 count += 1
                 visited?(path)
-                if count > walkCap { undecided.formUnion(unmatched); unmatched = []; return .stop }
+                if count > walkCap { tentative.formUnion(unmatched); return .stop }
                 consume(path, isDirectory: isDirectory)
                 if unmatched.isEmpty { return .stop }
                 guard isDirectory else { return .descend }
@@ -181,14 +181,15 @@ enum StaleIgnoreDetector {
                 if open.isEmpty { return .skip }
                 if isBuildOutput(path, absolute: absolute) {
                     // Nothing scanned lives there; a rule that only fits inside cannot be judged either way.
-                    undecided.formUnion(open)
-                    unmatched.removeAll { open.contains($0) }
-                    return unmatched.isEmpty ? .stop : .skip
+                    tentative.formUnion(open)
+                    return .skip
                 }
                 return .descend
             }
         }
-        return (unmatched.map { rules[$0].rule }, undecided.sorted().map { rules[$0].rule })
+        let undecided = unmatched.filter { tentative.contains($0) }
+        let stale = unmatched.filter { !tentative.contains($0) }
+        return (stale.map { rules[$0].rule }, undecided.map { rules[$0].rule })
     }
 
     private enum Step { case descend, skip, stop }
@@ -237,13 +238,12 @@ enum StaleIgnoreDetector {
         let refs = ctx.refs
         let files = ctx.inventory.files
         let excludes = ctx.config.exclude.map(Glob.init)
-        var candidates: [(file: Int32, path: String, marker: IgnoreMarker, ordinal: Int)] = []
+        var candidates: [(file: Int32, path: String, marker: IgnoreMarker)] = []
         for (file, markers) in refs.ignoreMarkers.sorted(by: { $0.key < $1.key }) {
             guard files.indices.contains(Int(file)), !refs.generatedFiles.contains(file) else { continue }
             let path = files[Int(file)].path
             if excludes.contains(where: { $0.matches(path) }) { continue }
-            let lineStyle = markers.filter { $0.style == .line }.sorted { $0.line < $1.line }
-            for (i, marker) in lineStyle.enumerated() { candidates.append((file, path, marker, i + 1)) }
+            for marker in markers where marker.style == .line { candidates.append((file, path, marker)) }
         }
         guard !candidates.isEmpty else { return [] }
 
@@ -269,8 +269,7 @@ enum StaleIgnoreDetector {
             }
             if used { continue }
             out.append(Finding(kind: .staleIgnore, category: .ignores, path: c.path, line: Int(c.marker.line),
-                               name: c.ordinal == 1 ? markerName : "\(markerName) #\(c.ordinal)",
-                               module: ctx.moduleName(for: c.path), confidence: .medium,
+                               name: markerName, module: ctx.moduleName(for: c.path), confidence: .medium,
                                reasons: ["marker suppresses no finding on its lines"]))
         }
         return out

@@ -52,7 +52,12 @@ final class FindingIdentityTests: XCTestCase {
             var moved = f
             moved.line = (f.line ?? 0) + 977
             XCTAssertEqual(f.key, moved.key, "\(f.kind) key depends on the line")
-            XCTAssertEqual(f.id, moved.id, "\(f.kind) id depends on the line")
+            // Stale inline markers in one file share the key by design, so only their id tells them apart.
+            if f.kind == .staleIgnore {
+                XCTAssertNotEqual(f.id, moved.id, "staleIgnore id must tell two markers in one file apart")
+            } else {
+                XCTAssertEqual(f.id, moved.id, "\(f.kind) id depends on the line")
+            }
             XCTAssertFalse(f.key.contains("|977"), f.key)
         }
     }

@@ -716,7 +716,7 @@ deliberately conservative, so a rule that is still policy is never flagged:
 | path glob (`Vendor/**`, `Docs/`, `!Keep.swift`) | it matches **no path on disk** (not just none in the scan: `Pods/`, hidden folders and `--exclude`d trees still count). The disk check walks only directories the glob could match under, skips build output like the scan does and stops after 200k entries; a rule it could not settle is reported low with "could not evaluate" | medium |
 | `kind:X` | `X` is not a finding kind (a typo); a known kind with zero findings is policy | high |
 | `module:X` | no module in the project graph has such a name | high |
-| `asset:X` | no asset finding matches by name, with or without extension for loose images and fonts (only when assets were scanned); "no asset named like this" or "asset exists but is used" | medium / low |
+| `asset:X` | no asset finding matches by name (loose images and fonts also without their extension; catalog names exactly) (only when assets were scanned); "no asset named like this" or "asset exists but is used" | medium / low |
 | `string:X` | no string finding matches (only when strings were scanned) | low |
 | `// xcpurge:ignore` | a second detector pass with markers switched off still finds nothing on its lines, no dynamic name is built there, and the file would not be a dead source without it (only on full scans) | medium |
 
