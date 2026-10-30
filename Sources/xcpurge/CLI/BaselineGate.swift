@@ -6,7 +6,7 @@ import XcpurgeKit
 enum BaselineGate {
     /// - Parameter categories: what the command scanned; decides which baseline entries may be reported as
     ///   fixed. When the caller does not pass it, it is inferred from the subcommand on the command line.
-    static func apply(_ r: ScanResult, options: CommonOptions, categories: Set<XcpurgeKit.Category>? = nil) throws -> ScanResult {
+    static func apply(_ r: ScanResult, options: CommonOptions, categories: Set<XcpurgeKit.Category>) throws -> ScanResult {
         let config = r.context.config
         guard let configured = config.baseline else { return r }
         // `--baseline` arrives absolute; a value from xcpurge.json is relative to the root.
@@ -17,7 +17,7 @@ enum BaselineGate {
         }
         let display = options.baselineOptions.baseline ?? configured
         let (kept, report) = BaselineMatcher.apply(findings: r.findings, file: file, filePath: display,
-                                                   categories: categories ?? inferCategories(), config: config,
+                                                   categories: categories, config: config,
                                                    strict: options.baselineOptions.strictBaseline, root: r.context.root)
         for warning in report.warnings { ScanRunner.stderr("warning: baseline: \(warning)\n") }
         if !options.quiet {
@@ -37,13 +37,4 @@ enum BaselineGate {
         return baseline.strict && !baseline.fixed.isEmpty
     }
 
-    /// Fallback for callers that do not pass the categories: the scan-style subcommand decides them.
-    private static func inferCategories() -> Set<XcpurgeKit.Category> {
-        switch CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) {
-        case "assets": [.assets, .duplicates]
-        case "strings": [.strings]
-        case "files": [.files]
-        default: XcpurgeKit.Category.scannable
-        }
-    }
 }

@@ -6,7 +6,7 @@ public enum OutputFormat: String, Sendable, CaseIterable, Codable {
         switch self {
         case .text: TextReporter(colors: options.colors, verbose: options.verbose)
         case .json: JSONReporter()
-        case .xcode: XcodeReporter()
+        case .xcode: XcodeReporter(maxWarnings: options.maxWarnings)
         case .github: GitHubReporter()
         case .html: HTMLReporter()
         case .agent: AgentReporter(options: options)

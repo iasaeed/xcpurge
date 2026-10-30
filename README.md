@@ -697,7 +697,7 @@ findings are baselined like any other finding.
 
 ## Output formats and CI
 
-Choose with `--format text|json|xcode|github|html`. `--output FILE` writes the report to a file instead of
+Choose with `--format text|json|xcode|github|html|agent`. `--output FILE` writes the report to a file instead of
 stdout.
 
 `--fail-on` exits 1 when a finding matches: `any`, a category (`assets`, `unused-assets`, `strings`, `files`,

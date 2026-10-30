@@ -18,7 +18,7 @@ enum ScanRunner {
         do { result = try await ScanEngine(root: options.rootURL, config: config, progress: progress).run(categories: categories) }
         catch { progress.stop(); throw error }
         progress.stop()
-        var r = try BaselineGate.apply(result, options: options)
+        var r = try BaselineGate.apply(result, options: options, categories: categories)
         r = await HistoryStep.enrich(r, options: options.gitOptions, quiet: options.quiet)
         return r
     }
