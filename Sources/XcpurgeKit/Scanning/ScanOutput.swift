@@ -3,6 +3,8 @@ public struct ScanOutput: Sendable {
     public var references: [Reference] = []
     public var patterns: [DynamicPattern] = []
     public var ignoredLines: [Int32] = []
+    /// `xcpurge:ignore` comments of Swift/ObjC sources (generic text files never fill this: their match is a raw substring).
+    public var ignoreMarkers: [IgnoreMarker] = []
     /// Accessor path -> raw resource name, when the file is a SwiftGen / R.swift generated file.
     public var accessors: [String: String] = [:]
     /// True for generated accessor files; their references are not counted as uses.

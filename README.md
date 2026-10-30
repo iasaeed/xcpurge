@@ -632,7 +632,38 @@ never makes what they use look unused. `xcpurge init` writes `"exclude": ["Vendo
 files are recognized without excluding them.
 
 <!-- lane A:stale-ignores -->
-_Coming in 0.4.0._
+### Stale ignores
+
+Ignore rules outlive what they were written for. xcpurge reports rules and markers that suppress nothing as
+`stale-ignore` findings (category `ignores`, informational: `--fail-on any` does not count them). The checks are
+deliberately conservative, so a rule that is still policy is never flagged:
+
+| Rule | Reported as stale when | Confidence |
+|---|---|---|
+| path glob (`Vendor/**`, `Docs/`, `!Keep.swift`) | it matches **no path on disk** (not just none in the scan: `Pods/`, hidden folders and `--exclude`d trees still count) | medium |
+| `kind:X` | `X` is not a finding kind (a typo); a known kind with zero findings is policy | high |
+| `module:X` | no module in the project graph has such a name | high |
+| `asset:X` | no asset finding matches (only when assets were scanned); "no asset named like this" or "asset exists but is used" | medium / low |
+| `string:X` | no string finding matches (only when strings were scanned) | low |
+| `// xcpurge:ignore` | a second detector pass with markers switched off still finds nothing on its lines, no dynamic name is built there, and the file would not be a dead source without it (only on full scans) | medium |
+
+Block-comment markers (`/* xcpurge:ignore */`) and markers in JSON, HTML, CSS or xcconfig files are honoured but
+never reported. A reason after the marker (`// xcpurge:ignore - loaded by name from the server`) is fine.
+
+```
+Ignores (2)
+  stale-ignore
+    unknown
+      [medium] .xcpurgeignore:3  Vendor/**
+          matches no file on disk
+    App
+      [medium] App/Sources/Icons.swift:41  xcpurge:ignore
+          marker suppresses no finding on its lines
+```
+
+`--no-stale-ignore` (or `"staleIgnores": false`) turns the check off; `--fail-on-stale-ignore` (or `--fail-on
+stale-ignore`) exits 1 on one. `kind:stale-ignore` in `.xcpurgeignore` silences it like any other kind, and stale
+findings are baselined like any other finding.
 <!-- /lane A -->
 
 ## Output formats and CI
@@ -667,7 +698,45 @@ module plus the reclaimable estimate; new in 2), `findings` (sorted by category,
 `diagnostics`. Two runs on the same tree produce identical output.
 
 <!-- lane A:baseline -->
-_Coming in 0.4.0._
+### Baseline: adopt xcpurge on an existing project
+
+A legacy project has hundreds of findings nobody will fix this week. A baseline records them so CI fails only on
+**new** ones:
+
+```sh
+xcpurge baseline                          # writes .xcpurge-baseline.json at the root (commit it)
+xcpurge scan --baseline .xcpurge-baseline.json --fail-on any
+```
+
+`xcpurge baseline [root] [--output FILE]` scans every category at `--min-confidence` (default `low`) with
+`.xcpurgeignore` applied and writes one entry per finding identity. Identities carry no line numbers and no
+confidence, paths are root-relative, locales collapse (`unusedString|App|Localizable|key` with a count), and an
+asset is identified by module and name, so moving it between catalogs keeps it baselined; renaming a file makes it
+one new plus one fixed finding. Entries are sorted and written one per line, so diffs and merges stay readable;
+running it twice on an unchanged tree on the same day produces a byte-identical file (`createdAt` has day precision).
+Rerunning regenerates the file in full and prints `+N added, -M removed`. On a merge conflict, regenerate instead of
+merging by hand.
+
+`--baseline FILE` (or `"baseline"` in `xcpurge.json`, relative to the root) on `scan`, `assets`, `strings` and
+`files` hides the listed findings as a multiset (two findings with one identity need two counts) and prints
+
+```
+Baseline .xcpurge-baseline.json (12 days): 140 baselined, 3 new, 2 fixed
+```
+
+`--fail-on` and `--delete` see only the new findings. Entries nothing matched are **fixed**: they warn by default,
+and `--strict-baseline` exits 1 on them with the hint to regenerate. Fixed entries are reported only for what the
+command could have scanned (`xcpurge assets --baseline` never calls a string fixed, `--targets` and `--exclude`
+narrow it the same way). The JSON report gains a `baseline` object with these counts, the fixed entries and the
+warnings.
+
+Warnings (stderr, `warning: baseline: …`): the file is older than `--baseline-max-age` days (default 90, `0`
+disables); it was written with a different scope configuration (`exclude`, `targets`, project or package, recorded
+as `configHash`); it does not cover a category this run scans; this run's `--min-confidence` differs from the
+file's; it was written by another xcpurge minor version; or it has no entries. A missing, empty, unparseable or
+newer-version file is an error (exit 2), never a silent no-op. Keep the file at its default dot-name or outside
+the root: xcpurge drops the configured baseline from the inventory, but any other copy of it inside the tree is a
+JSON file that names every finding.
 <!-- /lane A -->
 
 ### HTML report

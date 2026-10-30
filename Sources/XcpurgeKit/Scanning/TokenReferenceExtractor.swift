@@ -39,6 +39,7 @@ struct TokenReferenceExtractor {
                                         localizationMacros: localizationMacros)
         x.run()
         x.out.ignoredLines = tokenized.ignoredLines
+        x.out.ignoreMarkers = tokenized.ignoreMarkers
         return x.out
     }
 

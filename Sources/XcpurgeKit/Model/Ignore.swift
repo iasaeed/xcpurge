@@ -1,4 +1,4 @@
-// LANE: C
+// LANE: A
 import Foundation
 
 /// `.xcpurgeignore` rules, one per line, gitignore style: root-relative path globs (`**`, `*`, `?`, leading `/`
@@ -39,6 +39,17 @@ public struct Ignore: Sendable {
     struct Rule: Sendable, Hashable {
         var matcher: Matcher
         var negated: Bool
+        /// 1-based line in the ignore file.
+        var line: Int
+        /// The rule as written (trimmed, including a leading `!`).
+        var text: String
+    }
+
+    /// A rule's position and text, for reports about the ignore file itself.
+    public struct RuleSummary: Sendable, Hashable {
+        public var line: Int
+        public var text: String
+        public var negated: Bool
     }
 
     let rules: [Rule]
@@ -48,16 +59,22 @@ public struct Ignore: Sendable {
     /// Parses ignore-file text.
     public init(contents: String) {
         var rules: [Rule] = []
-        for raw in contents.split(whereSeparator: \.isNewline) {
+        for (index, raw) in contents.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated() {
             var line = raw.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty, !line.hasPrefix("#") else { continue }
+            let text = line
             var negated = false
             if line.hasPrefix("!") { negated = true; line.removeFirst() }
             if line.hasPrefix("\\") { line.removeFirst() }  // `\#file`, `\!file`
             guard !line.isEmpty else { continue }
-            rules.append(Rule(matcher: Self.matcher(for: line), negated: negated))
+            rules.append(Rule(matcher: Self.matcher(for: line), negated: negated, line: index + 1, text: text))
         }
         self.rules = rules
+    }
+
+    /// Every rule's line and text, in file order.
+    public var ruleSummaries: [RuleSummary] {
+        rules.map { RuleSummary(line: $0.line, text: $0.text, negated: $0.negated) }
     }
 
     private static func matcher(for line: String) -> Matcher {
@@ -116,7 +133,7 @@ public struct Ignore: Sendable {
         "imageset", "colorset", "appiconset", "dataset", "symbolset", "iconset", "lproj", "mlpackage",
     ])
 
-    private static func nameMatches(_ pattern: String, _ name: String?) -> Bool {
+    static func nameMatches(_ pattern: String, _ name: String?) -> Bool {
         guard let name, !pattern.isEmpty else { return false }
         return Glob.matchSegment(Array(pattern), Array(name))
     }

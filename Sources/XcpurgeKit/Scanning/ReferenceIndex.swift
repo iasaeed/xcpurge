@@ -6,7 +6,9 @@ import Foundation
 public struct ReferenceIndex: Sendable {
     public let references: [Reference]
     public let dynamicPatterns: [DynamicPattern]
-    public let ignoredLines: Set<FileLine>
+    public internal(set) var ignoredLines: Set<FileLine>
+    /// `xcpurge:ignore` comments per Swift/ObjC source index (candidates for stale-marker detection).
+    public let ignoreMarkers: [Int32: [IgnoreMarker]]
     /// Identifiers and member symbols seen per source file (for dead-code analysis).
     public let identifiersByFile: [Int32: Set<String>]
     /// Accessor path -> raw name, from SwiftGen / R.swift generated files.
@@ -35,8 +37,9 @@ public struct ReferenceIndex: Sendable {
 
     init(references: [Reference], dynamicPatterns: [DynamicPattern], ignoredLines: Set<FileLine>,
          accessors: [String: String], generatedFiles: Set<Int32>, sourcePaths: [String], sourceModules: [Set<ModuleID>],
-         skippedSources: [(path: String, reason: String)] = []) {
+         skippedSources: [(path: String, reason: String)] = [], ignoreMarkers: [Int32: [IgnoreMarker]] = [:]) {
         self.skippedSources = skippedSources
+        self.ignoreMarkers = ignoreMarkers
         self.references = references
         self.dynamicPatterns = dynamicPatterns
         self.ignoredLines = ignoredLines
@@ -111,6 +114,7 @@ public struct ReferenceIndex: Sendable {
         }
 
         var references: [Reference] = [], patterns: [DynamicPattern] = [], ignored = Set<FileLine>()
+        var markers: [Int32: [IgnoreMarker]] = [:]
         var accessors: [String: String] = [:], generated = Set<Int32>()
         var skipped: [(path: String, reason: String)] = []
         for (i, out) in outputs {
@@ -126,6 +130,7 @@ public struct ReferenceIndex: Sendable {
             references += out.references
             patterns += out.patterns
             for line in out.ignoredLines { ignored.insert(FileLine(file: Int32(i), line: line)) }
+            if !out.ignoreMarkers.isEmpty { markers[Int32(i)] = out.ignoreMarkers }
         }
 
         // Generated accessor uses: `Asset.Colors.brand`, `R.image.settingsIcon`, `L10n.welcomeTitle`.
@@ -159,7 +164,7 @@ public struct ReferenceIndex: Sendable {
         }
         return ReferenceIndex(references: references, dynamicPatterns: patterns, ignoredLines: ignored,
                               accessors: accessors, generatedFiles: generated, sourcePaths: sourcePaths,
-                              sourceModules: sourceModules, skippedSources: skipped)
+                              sourceModules: sourceModules, skippedSources: skipped, ignoreMarkers: markers)
     }
 
     static func scanFile(_ file: SourceFile, index: Int32, rootPath: String, macros: [String],
