@@ -86,7 +86,13 @@ final class IgnoreTests: XCTestCase {
         XCTAssertFalse(Ignore(contents: "asset:unused").suppresses(loose))
         XCTAssertFalse(Ignore(contents: "asset:unused_loose").suppresses(string("unused_loose.png")), "still assets only")
         XCTAssertTrue(Ignore(contents: "asset:icon").suppresses(asset("icon")), "catalog names unchanged")
-        XCTAssertFalse(Ignore(contents: "asset:icon").suppresses(asset("icon.v2")) == false, "a dotted catalog name also matches its stem")
+        XCTAssertFalse(Ignore(contents: "asset:logo").suppresses(asset("logo.dark")), "catalog names match exactly, never by stem")
+        XCTAssertTrue(Ignore(contents: "asset:logo.dark").suppresses(asset("logo.dark")))
+        let nested = Finding(kind: .unusedAsset, category: .assets, path: "App/Media.xcassets/Brand/logo.dark.imageset",
+                             name: "Brand/logo.dark", module: "App", confidence: .high)
+        XCTAssertFalse(Ignore(contents: "asset:Brand/logo").suppresses(nested))
+        XCTAssertTrue(Ignore.isCatalogPath("App/Media.xcassets/Brand/logo.dark.imageset"))
+        XCTAssertFalse(Ignore.isCatalogPath("App/Images/logo.dark.png"))
     }
 
     func testEscapesAndBlankLines() {

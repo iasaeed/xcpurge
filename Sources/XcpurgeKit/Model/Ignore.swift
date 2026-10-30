@@ -117,7 +117,7 @@ public struct Ignore: Sendable {
             let ext = (RelPath.lastComponent(f.path) as NSString).pathExtension.lowercased()
             return glob.matches(RelPath.parent(f.path)) || (folderExtensions.contains(ext) && glob.matches(f.path))
         case .asset(let p):
-            return f.category == .assets && f.kind != .duplicate && assetNameMatches(p, f.name)
+            return f.category == .assets && f.kind != .duplicate && assetNameMatches(p, f)
         case .string(let p):
             return f.category == .strings && nameMatches(p, f.name)
         case .module(let p):
@@ -138,12 +138,22 @@ public struct Ignore: Sendable {
     }
 
     /// `asset:` rules match the finding's name as reported and, for loose images and fonts (`unused_loose.png`,
-    /// `Brand.ttf`), the name without its extension. `StaleIgnoreDetector` uses the same test, so a rule that
-    /// suppresses something is never stale.
-    static func assetNameMatches(_ pattern: String, _ name: String?) -> Bool {
+    /// `Brand.ttf`), the name without its extension. Catalog entries match exactly, so `asset:logo` leaves
+    /// `logo.dark` alone. `StaleIgnoreDetector` uses the same test, so a rule that suppresses something is never stale.
+    static func assetNameMatches(_ pattern: String, _ f: Finding) -> Bool {
+        assetNameMatches(pattern, f.name, looseFile: !isCatalogPath(f.path))
+    }
+
+    static func assetNameMatches(_ pattern: String, _ name: String?, looseFile: Bool) -> Bool {
         guard let name else { return false }
         if nameMatches(pattern, name) { return true }
+        guard looseFile else { return false }
         let stem = RelPath.stem(name)
         return stem != name && nameMatches(pattern, stem)
+    }
+
+    /// True when `path` is an `.xcassets` catalog or lies inside one.
+    static func isCatalogPath(_ path: String) -> Bool {
+        path.split(separator: "/").contains { $0.lowercased().hasSuffix(".xcassets") }
     }
 }

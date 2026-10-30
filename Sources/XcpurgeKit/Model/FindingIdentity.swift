@@ -5,9 +5,8 @@ public enum FindingIdentity {
     /// - `unusedAsset` with a name: `kind|module|name`
     /// - `unusedString` / `staleString`: `kind|module|<table stem>|name` (locales collapse; counts handle multiples)
     /// - `dynamicLookup`: `kind|module|path|name`
-    /// - `staleIgnore`: `kind|path|name`, where `name` is the `.xcpurgeignore` rule text or, for an inline marker,
-    ///   `xcpurge:ignore` plus its ordinal among the file's markers (`xcpurge:ignore #2`), so several stale markers
-    ///   in one file stay distinct without a line number
+    /// - `staleIgnore`: `kind|path|name` (`name` is the `.xcpurgeignore` rule text or `xcpurge:ignore`; several stale
+    ///   markers in one file share the key and are handled by the baseline count, their `id` includes the line)
     /// - everything else (file kinds, `unusedFont`, `duplicate`): `kind|module|path`
     public static func key(_ f: Finding) -> String {
         let kind = f.kind.rawValue
@@ -26,9 +25,12 @@ public enum FindingIdentity {
     }
 
     /// `<kind flag>-<10 hex>`: the kind's kebab-case name plus the first 10 hex digits of FNV-1a-64 over
-    /// `key|path`. Two findings share an id only when they are identical dynamic lookups in one file.
+    /// `key|path` (`key|path|line` for `staleIgnore`, the only kind whose key repeats within a file by design).
+    /// Two findings share an id only when they are identical dynamic lookups in one file.
     public static func id(_ f: Finding) -> String {
-        f.kind.flagName + "-" + hex10(fnv1a64(key(f) + "|" + f.path))
+        var material = key(f) + "|" + f.path
+        if f.kind == .staleIgnore { material += "|\(f.line ?? 0)" }
+        return f.kind.flagName + "-" + hex10(fnv1a64(material))
     }
 
     static func fnv1a64(_ s: String) -> UInt64 {

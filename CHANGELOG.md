@@ -43,7 +43,7 @@
 - `stale-ignore` findings (new category `ignores`, informational) for `.xcpurgeignore` rules and `//
   xcpurge:ignore` markers that suppress nothing: path globs matching no path on disk (checked against the inventory,
   then one lazy walk of the root that ignores `--targets`, `--exclude` and skipped `Pods/`), `kind:` typos,
-  `module:` names no module has, `asset:` / `string:` rules with no match (only when that category was scanned; `asset:` matches loose file names with or without extension, as suppression does), and
+  `module:` names no module has, `asset:` / `string:` rules with no match (only when that category was scanned; `asset:` matches loose image and font names with or without extension, catalog names exactly, as suppression does), and
   line-style markers that a second detector pass without markers still finds nothing for (never when a dynamic name
   or a kept dead-source file is involved). Block-comment markers and markers in generic text files are never
   reported; scoped runs (`--project`, `--package`, `--workspace`) keep only the glob and `kind:` checks. The disk

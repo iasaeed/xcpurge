@@ -241,16 +241,63 @@ final class StaleIgnoreTests: XCTestCase {
         XCTAssertTrue(found[1].reasons[0].hasPrefix("could not evaluate"), found[1].reasons[0])
     }
 
-    func testTwoStaleMarkersInOneFileHaveDistinctIdentities() async throws {
+    /// Two stale markers in one file share the baseline key (the count covers both) but get distinct ids, and
+    /// adding an unrelated, used marker above them changes neither key.
+    func testStaleMarkersInOneFileShareTheKeyButNotTheId() async throws {
         let root = try FixtureSupport.tempTree([
             "A.swift": "struct A { func f() { B().g() } } // xcpurge:ignore\n\nlet x = 1 // xcpurge:ignore\n",
             "B.swift": "struct B { func g() { A().f() } }\n",
         ])
         let found = try await stale(root)
-        XCTAssertEqual(found.map { "\($0.line ?? 0) \($0.name ?? "")" }, ["1 xcpurge:ignore", "3 xcpurge:ignore #2"])
-        XCTAssertEqual(Set(found.map(\.key)).count, 2)
+        XCTAssertEqual(found.map { "\($0.line ?? 0) \($0.name ?? "")" }, ["1 xcpurge:ignore", "3 xcpurge:ignore"])
+        XCTAssertEqual(found.map(\.key), ["staleIgnore|A.swift|xcpurge:ignore", "staleIgnore|A.swift|xcpurge:ignore"])
         XCTAssertEqual(Set(found.map(\.id)).count, 2)
-        XCTAssertEqual(found.map(\.key), ["staleIgnore|A.swift|xcpurge:ignore", "staleIgnore|A.swift|xcpurge:ignore #2"])
+        XCTAssertEqual(BaselineFile.entries(for: found).map(\.count), [2])
+        let shifted = try FixtureSupport.tempTree([
+            "A.swift": "let used = UIImage(named: \"i_\\(1)\") // xcpurge:ignore\nstruct A { func f() { B().g() } } // xcpurge:ignore\n\nlet x = 1 // xcpurge:ignore\n",
+            "B.swift": "struct B { func g() { A().f() } }\n",
+        ])
+        let after = try await stale(shifted)
+        XCTAssertEqual(after.map(\.line), [2, 4])
+        XCTAssertEqual(after.map(\.key), found.map(\.key), "a used marker above does not rename the stale ones")
+    }
+
+    func testBuildOutputEarlyInTheWalkDoesNotHideALaterMatch() async throws {
+        // Both enumeration orders: the build-output folder sorts before and after the folder holding the match.
+        for (build, source) in [("DerivedData", "Src"), ("Zzz/DerivedData", "Aaa")] {
+            let root = try FixtureSupport.tempTree([
+                "\(build)/x/y.txt": "x",
+                "\(source)/Pods/a.txt": "x",
+                "Main.swift": "struct Main {}\n",
+                Ignore.fileName: "Pods\n**/Pods/*.txt\nNope/**\n",
+            ])
+            let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+            XCTAssertNil(ctx.inventory.index(of: "\(source)/Pods/a.txt"), "Pods is skipped by the main walk")
+            let verdict = StaleIgnoreDetector.stalePathRules(pathRules("Pods\n**/Pods/*.txt\nNope/**\n"), ctx)
+            XCTAssertEqual(verdict.stale.map(\.text), ["Nope/**"], build)
+            XCTAssertEqual(verdict.undecided, [], "\(build): a match outside build output settles the rule")
+            let found = try await stale(root)
+            XCTAssertEqual(found.map(\.name), ["Nope/**"], build)
+            let gated = try CLISupport.run(["scan", root.path, "--quiet", "--fail-on-stale-ignore", "--min-confidence", "high"])
+            XCTAssertEqual(gated.status, 0, "\(build): only the medium Nope/** remains\n\(gated.stderr)")
+        }
+    }
+
+    func testCatalogAssetRulesMatchExactlyLooseOnesAlsoByStem() async throws {
+        let root = try FixtureSupport.copyToTemp("MixedApp")
+        let catalog = root.appendingPathComponent("Modern/ModernAssets.xcassets")
+        try FileManager.default.copyItem(at: catalog.appendingPathComponent("modern_unused.imageset"),
+                                         to: catalog.appendingPathComponent("logo.dark.imageset"))
+        try write("asset:logo\n", to: root, Ignore.fileName)
+        let result = try await ScanEngine(root: root, config: Config()).run()
+        XCTAssertTrue(result.findings.contains { $0.kind == .unusedAsset && $0.name == "logo.dark" }, "not suppressed by `asset:logo`")
+        let found = result.findings.filter { $0.kind == .staleIgnore }
+        XCTAssertEqual(found.map(\.name), ["asset:logo"])
+        XCTAssertEqual(found.first?.reasons, ["no asset named like this"], "a catalog name never matches by stem")
+        try write("asset:logo.dark\n", to: root, Ignore.fileName)
+        let exact = try await ScanEngine(root: root, config: Config()).run()
+        XCTAssertFalse(exact.findings.contains { $0.kind == .unusedAsset && $0.name == "logo.dark" })
+        XCTAssertEqual(exact.findings.filter { $0.kind == .staleIgnore }, [])
     }
 
     // MARK: - Inline markers
@@ -283,7 +330,7 @@ final class StaleIgnoreTests: XCTestCase {
         \(found.map { "\($0.path):\($0.line ?? 0) \($0.reasons)" })
         """)
         let plain = found.first { $0.line == plainLine }!
-        XCTAssertEqual(plain.name, "xcpurge:ignore #2", "second line-style marker of the file; the first (line 12) is used")
+        XCTAssertEqual(plain.name, "xcpurge:ignore")
         XCTAssertEqual(plain.module, "MixedApp")
         XCTAssertEqual(plain.confidence, .medium)
         XCTAssertEqual(plain.category, .ignores)
