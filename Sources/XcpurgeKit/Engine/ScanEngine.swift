@@ -33,8 +33,10 @@ public struct ScanEngine: Sendable {
             throw XcpurgeError.notFound(rootPath)
         }
         let progress = self.progress
-        let walk = FileWalker(includePods: config.includePods, excludes: config.exclude.map(Glob.init))
+        var walk = FileWalker(includePods: config.includePods, excludes: config.exclude.map(Glob.init))
             .walk(root: root) { progress.report(.walking(files: $0)) }
+        // A baseline inside the root names every finding, so it must never be read as a reference source.
+        if let baseline = Self.baselinePath(config, rootPath: rootPath) { walk.files.removeAll { $0.path == baseline } }
         progress.report(.walking(files: walk.files.count))
         let located = try ProjectLocator.locate(root: root, walk: walk, config: config)
         progress.report(.discovering(projects: located.xcodeprojs.count, packages: located.packages.count))
@@ -62,6 +64,14 @@ public struct ScanEngine: Sendable {
         }
         return ScanContext(root: root, config: config, inventory: inventory, graph: graph, refs: refs,
                            projects: projects, derivedData: derivedData, diagnostics: diagnostics, ignore: ignore)
+    }
+
+    /// Root-relative path of `config.baseline` (absolute from the command line, root-relative from `xcpurge.json`),
+    /// or nil when it is unset or outside the root.
+    static func baselinePath(_ config: Config, rootPath: String) -> String? {
+        guard let baseline = config.baseline else { return nil }
+        let rel = RelPath.relative(RelPath.join(rootPath, baseline), to: rootPath)
+        return rel.isEmpty || rel.hasPrefix("..") ? nil : rel
     }
 
     /// Full scan for the given categories.

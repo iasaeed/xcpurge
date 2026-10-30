@@ -120,6 +120,33 @@ final class SwiftTokenizerTests: XCTestCase {
         XCTAssertEqual(Set(out.ignoredLines), [1, 2, 3, 4])
     }
 
+    func testIgnoreMarkersCarryStyleAndCoveredLines() {
+        let src = """
+        let a = UIImage(named: "x") // xcpurge:ignore
+        // xcpurge:ignore - reason
+        struct Kept {}
+        /* xcpurge:ignore */ let c = 1
+        /*
+         xcpurge:ignore
+         */
+        let d = 2
+        let s = "xcpurge:ignore"
+        // xcpurge:ignore at end of file
+        """
+        let out = SwiftTokenizer.tokenize(src)
+        XCTAssertEqual(out.ignoreMarkers, [
+            IgnoreMarker(line: 1, covers: [1], style: .line),
+            IgnoreMarker(line: 2, covers: [2, 3], style: .line),
+            IgnoreMarker(line: 4, covers: [4], style: .block),
+            IgnoreMarker(line: 5, covers: [5, 8], style: .block),
+            IgnoreMarker(line: 10, covers: [10], style: .line),
+        ])
+        XCTAssertEqual(Set(out.ignoredLines), Set(out.ignoreMarkers.flatMap(\.covers)), "ignoredLines is unchanged")
+        XCTAssertTrue(SwiftTokenizer.tokenize("let s = \"xcpurge:ignore\"").ignoreMarkers.isEmpty)
+        let objc = SwiftTokenizer.tokenize("int a = 1; // xcpurge:ignore\n/* xcpurge:ignore */ int b;", dialect: .objc)
+        XCTAssertEqual(objc.ignoreMarkers.map(\.style), [.line, .block])
+    }
+
     func testNumbersAndTupleAccess() {
         let all = tokens("let v = 1.5e3 + pair.0 + 0xFF")
         XCTAssertEqual(all.filter { $0.kind == .number }.map(\.text), ["1.5e3", "0", "0xFF"])

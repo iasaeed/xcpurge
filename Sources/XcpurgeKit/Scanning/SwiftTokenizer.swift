@@ -12,6 +12,8 @@ public struct SwiftTokenizer {
         public var tokens: [SwiftToken]
         /// Lines marked with `xcpurge:ignore` (the comment's line, plus the next code line for a standalone comment).
         public var ignoredLines: [Int32]
+        /// One entry per `xcpurge:ignore` comment, with the lines it covers (for stale-marker detection).
+        public var ignoreMarkers: [IgnoreMarker]
     }
 
     public static let ignoreMarker = "xcpurge:ignore"
@@ -28,7 +30,7 @@ public struct SwiftTokenizer {
     public static func tokenize(_ bytes: UnsafeBufferPointer<UInt8>, dialect: Dialect = .swift) -> Output {
         var lexer = SwiftTokenizer(bytes: bytes, dialect: dialect)
         lexer.scanCode(inInterpolation: false)
-        return Output(tokens: lexer.tokens, ignoredLines: lexer.ignored)
+        return Output(tokens: lexer.tokens, ignoredLines: lexer.ignored, ignoreMarkers: lexer.markers)
     }
 
     private let b: UnsafeBufferPointer<UInt8>
@@ -38,6 +40,7 @@ public struct SwiftTokenizer {
     private var line: Int32 = 1
     private var tokens: [SwiftToken] = []
     private var ignored: [Int32] = []
+    private var markers: [IgnoreMarker] = []
     private var lineHasToken = false
     private var pendingIgnore = false
 
@@ -65,7 +68,11 @@ public struct SwiftTokenizer {
     private mutating func emit(_ kind: SwiftToken.Kind, _ text: String, line tokenLine: Int32? = nil,
                                interpolated: Bool = false, suffix: String = "", segments: [String] = []) {
         let l = tokenLine ?? line
-        if pendingIgnore { ignored.append(l); pendingIgnore = false }
+        if pendingIgnore {
+            ignored.append(l)
+            pendingIgnore = false
+            if !markers.isEmpty, !markers[markers.count - 1].covers.contains(l) { markers[markers.count - 1].covers.append(l) }
+        }
         tokens.append(SwiftToken(kind: kind, text: text, line: l, interpolated: interpolated, suffix: suffix,
                                  segments: segments))
         lineHasToken = true
@@ -161,16 +168,17 @@ public struct SwiftTokenizer {
 
     // MARK: - Comments
 
-    private mutating func noteComment(_ body: String, startLine: Int32, standalone: Bool) {
+    private mutating func noteComment(_ body: String, startLine: Int32, standalone: Bool, style: IgnoreMarker.Style) {
         guard body.contains(Self.ignoreMarker) else { return }
         ignored.append(startLine)
+        markers.append(IgnoreMarker(line: startLine, covers: [startLine], style: style))
         if standalone { pendingIgnore = true }
     }
 
     private mutating func scanLineComment() {
         let start = i, startLine = line, standalone = !lineHasToken
         while i < n, b[i] != 0x0A { i += 1 }
-        noteComment(text(start, i), startLine: startLine, standalone: standalone)
+        noteComment(text(start, i), startLine: startLine, standalone: standalone, style: .line)
     }
 
     private mutating func scanBlockComment() {
@@ -182,7 +190,7 @@ public struct SwiftTokenizer {
             if b[i] == 0x0A { line += 1 }
             i += 1
         }
-        noteComment(text(start, min(i, n)), startLine: startLine, standalone: standalone)
+        noteComment(text(start, min(i, n)), startLine: startLine, standalone: standalone, style: .block)
     }
 
     // MARK: - Hash: raw strings, extended regex, macros, ObjC preprocessor
@@ -351,5 +359,23 @@ public struct SwiftTokenizer {
             s = String(s[..<lastNewline])
         }
         return s.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+/// One `xcpurge:ignore` comment in a Swift/ObjC source: the comment's line, the lines it suppresses (its own, plus
+/// the next code line when it stands alone) and whether it is a `//` or `/* */` comment.
+public struct IgnoreMarker: Sendable, Hashable {
+    public enum Style: Sendable, Hashable {
+        case line, block
+    }
+
+    public var line: Int32
+    public var covers: [Int32]
+    public var style: Style
+
+    public init(line: Int32, covers: [Int32], style: Style) {
+        self.line = line
+        self.covers = covers
+        self.style = style
     }
 }

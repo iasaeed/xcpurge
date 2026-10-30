@@ -83,6 +83,24 @@ final class IgnoreTests: XCTestCase {
         XCTAssertEqual(ignore.rules.count, 2)
     }
 
+    func testRulesKeepLineNumbersAndText() {
+        let ignore = Ignore(contents: """
+        # header
+
+        Vendor/**
+          !Vendor/Keep.swift  
+        \\#hash.swift
+        asset:server_*  
+        """)
+        XCTAssertEqual(ignore.ruleSummaries.map(\.line), [3, 4, 5, 6], "blank lines and comments count")
+        XCTAssertEqual(ignore.ruleSummaries.map(\.text), ["Vendor/**", "!Vendor/Keep.swift", "\\#hash.swift", "asset:server_*"],
+                       "text is the trimmed rule as written")
+        XCTAssertEqual(ignore.ruleSummaries.map(\.negated), [false, true, false, false])
+        XCTAssertEqual(ignore.rules.map(\.line), [3, 4, 5, 6])
+        XCTAssertEqual(Ignore(contents: "a\r\nb\r\n\r\nc").ruleSummaries.map(\.line), [1, 2, 4])
+        XCTAssertTrue(Ignore().ruleSummaries.isEmpty)
+    }
+
     func testTemplateHasNoActiveRules() {
         XCTAssertTrue(Ignore(contents: Ignore.template).isEmpty)
         XCTAssertTrue(Ignore.template.contains("asset:"))

@@ -5,11 +5,29 @@
 ### Added
 
 <!-- lane A:baseline -->
-- Baseline (`xcpurge baseline`, `--baseline`, `--strict-baseline`, `--baseline-max-age`): _Coming in 0.4.0._
+- `xcpurge baseline [root] [--output FILE]` writes `.xcpurge-baseline.json`: one sorted line per finding identity
+  (no line numbers or confidence, root-relative paths, locales collapsed into a count), regenerated in full with a
+  `+N added, -M removed` summary, byte-identical for an unchanged tree on the same day.
+- `--baseline FILE` (also `"baseline"` in `xcpurge.json`) on `scan`, `assets`, `strings` and `files` hides
+  baselined findings as a multiset, prints `Baseline FILE (N days): A baselined, B new, C fixed`, and applies
+  `--fail-on` and `--delete` to the new findings only. Fixed entries are scoped to the scanned categories,
+  `--targets` and `--exclude`; `--strict-baseline` exits 1 on them. The JSON report carries a `baseline` object.
+- Baseline warnings for age (`--baseline-max-age`, default 90 days), a different scope configuration
+  (`configHash`), uncovered categories, a changed `--min-confidence`, another xcpurge minor version and empty files;
+  a missing, empty, unparseable or newer-version baseline exits 2. The configured baseline file is dropped from the
+  scan inventory so it is never read as a reference.
 <!-- /lane A -->
 
 <!-- lane A:stale-ignores -->
-- Stale ignore rules and markers (`stale-ignore` findings, `--no-stale-ignore`, `--fail-on-stale-ignore`): _Coming in 0.4.0._
+- `stale-ignore` findings (new category `ignores`, informational) for `.xcpurgeignore` rules and `//
+  xcpurge:ignore` markers that suppress nothing: path globs matching no path on disk (checked against the inventory,
+  then one lazy walk of the root that ignores `--targets`, `--exclude` and skipped `Pods/`), `kind:` typos,
+  `module:` names no module has, `asset:` / `string:` rules with no match (only when that category was scanned), and
+  line-style markers that a second detector pass without markers still finds nothing for (never when a dynamic name
+  or a kept dead-source file is involved). Block-comment markers and markers in generic text files are never
+  reported. `--no-stale-ignore` / `"staleIgnores": false` turns it off, `--fail-on-stale-ignore` exits 1.
+- `.xcpurgeignore` rules remember their line and text (`Ignore.ruleSummaries`); the Swift/ObjC tokenizer exposes
+  `ignoreMarkers` (line, covered lines, `//` or `/* */` style) next to the unchanged `ignoredLines`.
 <!-- /lane A -->
 
 <!-- lane B:size-pr -->
