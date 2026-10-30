@@ -3,9 +3,10 @@
 ## What xcpurge does
 
 xcpurge finds things in an Xcode project that nothing uses: images, colors, fonts, localized strings and files.
-It reads your project files. It does not build your app, and a scan never changes anything.
-Every finding has a confidence level (high, medium or low) that says how sure xcpurge is.
-When you clean up, files go to a trash folder inside your project, and one command puts them back.
+It reads your project files and does not build your app. A scan never changes anything.
+
+Every finding has a confidence level (high, medium or low) that says how sure xcpurge is. When you clean up, files
+go to a trash folder inside your project. One command puts them back.
 
 ![The xcpurge HTML report: summary cards, charts, module graph and a table of findings](docs/report-light.png)
 
@@ -28,30 +29,47 @@ brew install iasaeed/tap/xcpurge
 `.sha256` checksum that proves the download is intact. CI jobs use this: it is fast and pinned to one version.
 
 ```sh
+mkdir -p ~/.local/bin
 base=https://github.com/iasaeed/xcpurge/releases/download/v0.4.0
 curl -fsSLO "$base/xcpurge-macos.tar.gz" && curl -fsSLO "$base/xcpurge-macos.tar.gz.sha256"
 shasum -a 256 -c xcpurge-macos.tar.gz.sha256 && tar -xzf xcpurge-macos.tar.gz -C ~/.local/bin
 ```
 
-`make package` (it runs `Scripts/package-release.sh`) builds the same archive and checksum into `.build/package/`.
-
 **From source:**
 
 ```sh
 git clone https://github.com/iasaeed/xcpurge.git && cd xcpurge
-make install    # builds a release binary and copies it to /usr/local/bin (or ~/.local/bin)
+# builds a release binary and copies it to /usr/local/bin (or ~/.local/bin)
+make install
 ```
 
 Check it works: `xcpurge --version` prints `0.4.0`. `xcpurge doctor` shows the Xcode and Swift it found.
 
+If the shell says `command not found: xcpurge`, the folder is not on your PATH (the list of folders the shell
+searches for commands). Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and open a new Terminal window.
+
 ## 60-second start
 
-Run these from your project folder (the folder with your `.xcodeproj`, `.xcworkspace` or `Package.swift`).
+Open Terminal and go to your project folder: the folder with your `.xcodeproj`, `.xcworkspace` or `Package.swift`.
 
-**1. Scan.** This only reads files.
-
+```sh
+cd ~/path/to/MyApp
 ```
-$ xcpurge scan .
+
+Tip: type `cd ` (with the space), drag the folder from Finder onto the Terminal window, then press Return.
+
+`sh` blocks below are commands to type or paste. `text` blocks show what xcpurge prints. In the full captures in
+`docs/examples` and the guide, lines starting with `$` are what you type; don't type the `$`.
+
+**1. Scan.** This only reads files. The `.` means "this folder".
+
+```sh
+xcpurge scan .
+```
+
+Output from `ClassicApp`, a small test project in `Tests/Fixtures`:
+
+```text
 Assets (1, 70 B)
   unused-asset
     ClassicApp
@@ -72,11 +90,16 @@ Each line is one finding: `[confidence]`, the path, the name and the size. Findi
 kind, then module. A **module** is one thing that gets built: an app target, an extension, a framework or a Swift
 package target.
 
-**2. Open the same results in your browser** with `xcpurge scan . --format html --open`. The HTML report is one
-file with search, filters and charts. It goes into `.xcpurge/`. Without `--open`, xcpurge tells you where it is (this run is on a bigger test project):
+**2. Open the same results in your browser.**
 
+```sh
+xcpurge scan . --format html --open
 ```
-$ xcpurge scan . --format html
+
+The HTML report is one file with search, filters and charts. xcpurge saves it in `.xcpurge/` and opens it. Without
+`--open`, it prints where the file is (this run was on a bigger test project):
+
+```text
 Wrote html report to /path/to/YourApp/.xcpurge/report-20261030-195638.html
 Scanned 35 files in 5 modules in 1.0s — 27 findings (12 high, 5 medium, 10 low)
 Open it with: open "/path/to/YourApp/.xcpurge/report-20261030-195638.html"
@@ -86,19 +109,38 @@ Add `.xcpurge/` to your `.gitignore`.
 
 **3. Remove one thing, then undo it.**
 
-```
-$ xcpurge remove --yes . ClassicApp/unused_loose.png
-  moved ClassicApp/unused_loose.png
-  rewrote ClassicApp.xcodeproj/project.pbxproj
-Removed 2 item(s). Undo with: xcpurge restore --session 20261030-195304
-$ xcpurge restore .
-  restored ClassicApp/unused_loose.png
-  restored ClassicApp.xcodeproj/project.pbxproj
-Restored 2 item(s) from session 20261030-195304.
+Two words first. `project.pbxproj` is the file inside your `.xcodeproj` where Xcode lists every file of the
+project. A **session** is one trash folder per run, inside `.xcpurge-trash/`, so each run can be undone on its own.
+
+Copy a path from the scan output in place of `PATH-FROM-SCAN`. xcpurge shows what it will do and asks before moving
+anything. Type `y` and press Return.
+
+```sh
+xcpurge remove . PATH-FROM-SCAN
 ```
 
-`remove` moved the file into `.xcpurge-trash/` and took its lines out of `project.pbxproj` (the file where Xcode
-lists every file of the project). `restore` put both back, byte for byte. Add `.xcpurge-trash/` to `.gitignore`.
+```text
+  ClassicApp/unused_loose.png
+  edit ClassicApp.xcodeproj/project.pbxproj
+Move 1 path(s) to .xcpurge-trash? [y/N] y
+  moved ClassicApp/unused_loose.png
+  rewrote ClassicApp.xcodeproj/project.pbxproj
+Removed 2 item(s). Undo with: xcpurge restore --session 20261030-200232
+```
+
+The two items are the image and the old copy of `project.pbxproj`. Now undo it:
+
+```sh
+xcpurge restore .
+```
+
+```text
+  restored ClassicApp/unused_loose.png
+  restored ClassicApp.xcodeproj/project.pbxproj
+Restored 2 item(s) from session 20261030-200232.
+```
+
+The image is back, and `project.pbxproj` is byte for byte as before. Add `.xcpurge-trash/` to `.gitignore` too.
 
 ## Pick your task
 
@@ -106,11 +148,14 @@ lists every file of the project). `restore` put both back, byte for byte. Add `.
 
 **When:** your asset catalogs (`.xcassets` folders) have grown and you suspect dead images.
 
+```sh
+xcpurge assets .
+```
+
 You will see `unused-asset` (images, colors, app icons, data sets, loose `.png` files), `unused-font` and
 `duplicate` (the same image bytes stored twice). From the `ModularWorkspace` test project:
 
-```
-$ xcpurge assets .
+```text
   unused-asset
     App
       [medium] App/App/Assets.xcassets/LegacyIcon.appiconset  LegacyIcon  (6.6 KB)
@@ -121,19 +166,23 @@ $ xcpurge assets .
       [high]   App/App/Assets.xcassets/unused_app_image.imageset  unused_app_image  (236 B)
 ```
 
-The badge in brackets is the **confidence**. `high` means no code, storyboard, plist or build setting that can see
-the image names it. `medium` and `low` mean "probably unused, but look first". The lines under a finding are the
-reasons. See [Reading a finding](#reading-a-finding).
+The word in brackets is the **confidence**. `high` means nothing that can see the image names it: no code,
+storyboard, plist or build setting. `medium` and `low` mean "probably unused, but look first".
+
+The indented lines under a finding are the reasons. See [Reading a finding](#reading-a-finding).
 
 **Next:** remove the high ones (see [Delete safely and undo](#delete-safely-and-undo)). For medium and low, run
-`xcpurge explain . <name>` and decide yourself.
+`xcpurge explain . NAME`, with the name from the report in place of `NAME`, and decide yourself.
 
 ### Find unused localized strings
 
 **When:** your `Localizable.xcstrings` (a string catalog) or `.strings` files hold keys nobody reads any more.
 
+```sh
+xcpurge strings .
 ```
-$ xcpurge strings .
+
+```text
   stale-string
     App
       [high]   App/App/Localizable.xcstrings:49  old_banner
@@ -148,15 +197,21 @@ $ xcpurge strings .
 A **stale** key is one Xcode itself already marked as no longer in the code. `error_404` is low because the app
 builds keys at runtime with `"error_\(code)"`, so it may still be used.
 
-**Next:** `xcpurge strings . --prune` removes the high-confidence keys from every language. It asks first. The old
-files are backed up in `.xcpurge-trash/`, so `xcpurge restore .` undoes it. If you wrap `NSLocalizedString` in your
-own function (for example `L("key")`), pass `--localization-macro L` so xcpurge sees those calls.
+**Next:** `xcpurge strings . --prune` removes the high-confidence keys from every language. It asks first and backs
+up the old files in `.xcpurge-trash/`. `xcpurge restore .` undoes it.
+
+If you wrap `NSLocalizedString` in your own function, for example `L("key")`, pass `--localization-macro L`. Then
+xcpurge sees those calls too.
 
 ### Find orphan, ghost and dead files
 
 **When:** the project folder has files no target builds, or the project lists files that are gone.
 
-Run `xcpurge files .`. It reports four kinds of file finding:
+```sh
+xcpurge files .
+```
+
+It reports four kinds of file finding:
 
 | Kind | Meaning | Example |
 |---|---|---|
@@ -166,32 +221,41 @@ Run `xcpurge files .`. It reports four kinds of file finding:
 | `unused-resource`, `unused-interface-file` | A bundled data file, xib or storyboard nothing loads. | `Unused.plist`, `Unused.xib` |
 
 **Next:** `xcpurge files . --delete` moves orphans, unused resources and unused xibs/storyboards to the trash.
-Dead-source files and ghost references are only reported. Remove one of those yourself with `xcpurge remove`.
+Dead-source files and ghost references are only reported. Remove one of those yourself with `xcpurge remove . PATH`.
 
 ### Delete safely and undo
 
-**When:** you have checked the findings and want them gone.
+**When:** you have checked the findings and want them gone. In these commands, `PATH` stands for a path from the
+report, for example `App/Old.swift`.
 
 ```sh
-xcpurge assets . --delete          # unused assets (high confidence only)
-xcpurge files . --delete           # orphans, unused resources and interface files (high only)
-xcpurge strings . --prune          # unused string keys (high only)
-xcpurge remove . App/Old.swift     # exactly these paths, whatever their kind or confidence
-xcpurge restore . --list           # list trash sessions
-xcpurge restore .                  # undo the newest session
-xcpurge restore . --path App/Old.swift   # put back only this path, keep the rest in the trash
+# unused assets (high confidence only)
+xcpurge assets . --delete
+# orphans, unused resources and interface files (high only)
+xcpurge files . --delete
+# unused string keys (high only)
+xcpurge strings . --prune
+# exactly these paths, whatever their kind or confidence
+xcpurge remove . PATH
+# list trash sessions
+xcpurge restore . --list
+# undo the newest session
+xcpurge restore .
+# put back only this path, keep the rest of the session in the trash
+xcpurge restore . --path PATH
 ```
 
-Each action prints what it moved, a `Size before → after` table and the exact undo command
-(`Undo with: xcpurge restore --session 20261030-194738`).
+Each action prints what it moved, a `Size before → after` table and the exact undo command, such as
+`Undo with: xcpurge restore --session 20261030-194738`.
 
 How it stays safe:
 
-- Each action is a **trash session**: one folder in `.xcpurge-trash/<session>/` with the moved files, the old
-  project file and a list of what happened. Nothing is deleted for real.
+- Each run is a **trash session**: one folder in `.xcpurge-trash/SESSION/` with the moved files, the old project
+  file and a list of what happened. Nothing is deleted for real.
 - `--delete` and `--prune` touch **high** findings only, unless you pass `--min-confidence` yourself.
-- They ask before acting. `--yes` skips the question. Without a terminal (CI, a script, an AI agent) and without
-  `--yes`, nothing happens and the exit code is 2.
+- They ask before acting, and `--yes` skips the question. Without a terminal (CI, a script, an AI agent) and without
+  `--yes`, nothing happens: xcpurge stops with an error status (exit code 2; all codes are listed under
+  [Exit codes](#exit-codes)).
 - Duplicates are never moved. You choose which copy to keep.
 
 The HTML report has a **Remove from terminal** box for every file finding, with a ready `xcpurge remove` command:
@@ -206,25 +270,37 @@ The HTML report has a **Remove from terminal** box for every file finding, with 
 
 ```sh
 xcpurge files . --delete --yes --verify \
-  "xcodebuild -scheme App -destination 'generic/platform=iOS' -derivedDataPath .build/verify -quiet build"
+  "xcodebuild -scheme SCHEME -destination 'generic/platform=iOS' -derivedDataPath .build/verify -quiet build"
 ```
 
-`--verify` works on `assets --delete`, `files --delete` and `remove`. It runs your build command once before
-removing anything (the **preflight**). If that build already fails, nothing is removed and the exit code is 4.
-After the removal it builds again. If the build breaks, xcpurge reads the errors, puts back the files the build
-needs, and marks them as blocked so later runs skip them. Real output (from a test run with a stand-in build
-command, `true`):
+Replace `SCHEME` with your scheme (`xcodebuild -list` shows them). Add `-workspace` or `-project` to the build
+command if the folder holds several. `--verify` works on `assets --delete`, `files --delete` and `remove`.
 
-```
+- **Preflight:** before anything is removed, xcpurge runs your build once. If that build already fails, nothing is
+  removed and xcpurge stops with an error status (exit code 4; all codes are listed under [Exit codes](#exit-codes)).
+- **After the removal:** it builds again.
+- **On failure:** it reads the build errors and puts back the files the build needs. It marks them as blocked, so
+  later runs skip them.
+
+Below is real output from a test run. The real build was replaced by the shell command `true`, which always
+succeeds.
+
+```text
 --verify: preflight build (true)
 --verify: build 1/8: after removing 1 unit(s)
 --verify: 1 removed and build-verified, 0 blocked (restored), 0 restored unverified; 1 build(s) used of 8 (plus the preflight)
 build-verified, not runtime-verified (dynamic lookups, other schemes/configurations and tests are not covered)
 ```
 
-That last line is always printed, and it matters. **Build-verified** means it compiles. It does not mean it works
-at runtime. A build cannot see `UIImage(named:)` with a name built at runtime, other schemes, or tests. Keep the
-trash session until you have run the app.
+A **unit** is one removed file or asset set. **Blocked (restored)** units were put back because the build needed
+them. **Restored unverified** units were put back because the build limit (`--verify-max-builds`) ran out before
+xcpurge could prove they were safe to remove.
+
+That last line is always printed, and it matters. **Build-verified** means the app compiles. It does not mean the
+app works.
+
+A build cannot see `UIImage(named:)` with a name built at runtime, other schemes, or tests. Keep the trash session
+until you have run the app.
 
 ### Stop new junk in CI with a baseline
 
@@ -232,23 +308,31 @@ trash session until you have run the app.
 today's findings, so CI only complains about new ones. Use it when an old project has hundreds of findings that
 nobody will fix this week.
 
+```sh
+# writes .xcpurge-baseline.json; commit it
+xcpurge baseline .
+# in CI: fail only on new findings
+xcpurge scan . --baseline .xcpurge-baseline.json --fail-on any
 ```
-$ xcpurge baseline .                                                # writes .xcpurge-baseline.json; commit it
-$ xcpurge scan . --baseline .xcpurge-baseline.json --fail-on any    # in CI
+
+The scan prints one line about the baseline:
+
+```text
 Baseline .xcpurge-baseline.json (0 days): 8 baselined, 0 new, 0 fixed
 ```
 
-- `--fail-on any` makes the scan exit with code 1 when it finds anything new. `--fail-on unused-assets` or
+- `--fail-on any` makes the scan stop with exit code 1 when it finds anything new. `--fail-on unused-assets` or
   `--fail-on dead-source` narrow it to a category or a kind.
-- **Fixed** entries are in the baseline but no longer found. They only warn. `--strict-baseline` makes them fail,
-  so the file stays current. Rerun `xcpurge baseline .` to refresh it.
+- **Fixed** entries are in the baseline but no longer found. They only warn; `--strict-baseline` makes them fail.
+  Rerun `xcpurge baseline .` to refresh the file.
 - The baseline warns when it is older than 90 days (`--baseline-max-age`).
-- **Stale ignores** are ignore rules that hide nothing any more (for example `Vendor/**` after you deleted
-  `Vendor/`). They show up as `stale-ignore` findings. `--fail-on-stale-ignore` fails on them;
-  `--no-stale-ignore` hides them.
+- **Stale ignores** are ignore rules that hide nothing any more, for example `Vendor/**` after you deleted
+  `Vendor/`. They show up as `stale-ignore` findings. `--fail-on-stale-ignore` fails on them; `--no-stale-ignore`
+  hides them.
 
 [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml) is a complete GitHub Actions workflow. It downloads a pinned release
-binary, scans with `--format github` so findings appear as comments on the changed lines, and uses the baseline.
+binary and uses the baseline. It scans with `--format github`, so findings appear as comments on the changed lines.
+
 Copy it to `.github/workflows/` in your repository. The HTML report shows the baseline at the top:
 
 ![Baseline card in the HTML report: new, baselined and fixed counts with warnings](docs/images/report-baseline.jpg)
@@ -258,14 +342,16 @@ Copy it to `.github/workflows/` in your repository. The HTML report shows the ba
 **When:** you want each pull request to show how much it grew the project.
 
 ```sh
-xcpurge size . --save size-base.json                                    # on main
+# on main
+xcpurge size . --save size-base.json
+# on the pull request
 xcpurge size . --compare size-base.json --format markdown \
-  --comment-threshold 100KB --fail-if-grows 500KB --output size.md      # on the pull request
+  --comment-threshold 100KB --fail-if-grows 500KB --output size.md
 ```
 
-**What you see** (shortened, from `ModularWorkspace` after a 3 KB image was added):
+What you see (shortened, from `ModularWorkspace` after a 3 KB image was added):
 
-```
+```text
 ### xcpurge size: +2.9 KB (+9.1%)
 
 Source-tree bytes (files in the repository), not shipped bytes.
@@ -276,15 +362,17 @@ Source-tree bytes (files in the repository), not shipped bytes.
 | Asset catalogs | 17.3 KB | 20.3 KB | +2.9 KB (+16.9%) |
 ```
 
-- `--fail-if-grows 500KB` (or `2%`) exits 1 when the total grew by more than that.
+- `--fail-if-grows 500KB` (or `2%`) stops with exit code 1 when the total grew by more than that.
 - `--comment-threshold 100KB` prints nothing when the change is smaller, so small PRs get no comment.
 
-Be clear about what is measured. Without `--app` the numbers are **files in the repository**, not the size of
-your app. With `--app MyApp.app` (or an `.ipa`) on both sides, the headline is the install size of the built app.
-That is still not the App Store download size, which Apple shrinks per device.
+Be clear about what is measured. Without `--app`, the numbers are **files in the repository**, not the size of
+your app.
 
-[docs/ci/xcpurge-size.yml](docs/ci/xcpurge-size.yml) is a complete workflow. It saves the base on `main` and posts
-one comment per pull request that it edits on every push (a **sticky comment**).
+With `--app` and the path to your built `.app` (or `.ipa`) on both sides, the headline is the install size of the
+app. That is still not the App Store download size, which Apple shrinks per device.
+
+[docs/ci/xcpurge-size.yml](docs/ci/xcpurge-size.yml) is a complete workflow. It saves the base on `main`. On each
+pull request it posts one comment and edits it on every push (a **sticky comment**).
 
 ### See findings inside Xcode
 
@@ -312,15 +400,21 @@ paste the script, and drag the phase below **Compile Sources**.
 set `ENABLE_USER_SCRIPT_SANDBOXING = NO` for that target, or add `$(SRCROOT)` to **Input File Lists** and
 `$(DERIVED_FILE_DIR)/xcpurge.stamp` to **Output Files**.
 
-The script never fails your build. By default it runs only for the Release configuration
-(`--configuration any` changes that) and shows at most 50 warnings (`--max-warnings`).
+The script never fails your build. It does nothing when the `CI` environment variable is set, so CI builds skip
+it. If xcpurge is not installed, it prints one warning and goes on.
+
+By default it runs only for the Release configuration (`--configuration any` changes that). It shows at most 50
+warnings (`--max-warnings`).
 
 ### Know who added it and when
 
 **When:** you want to ask the right person before removing something.
 
+```sh
+xcpurge files . --git
 ```
-$ xcpurge files . --git
+
+```text
 git history: 3 of 4 finding(s) annotated, 1 not committed
   dead-source
     ClassicApp
@@ -337,26 +431,29 @@ columns, and you can search for `age:>90`:
 
 - Age is context only. It never changes the confidence.
 - **Privacy:** only author names are shown. Emails appear only with `--git-emails`, and only in JSON.
-- A **shallow clone** (a checkout without history, the GitHub Actions default) shows `n/a`. Use
-  `fetch-depth: 0` in `actions/checkout` to get dates.
-- `--git-dead-since` guesses the commit that removed the last use of a name. It is a guess and it is slower.
+- A **shallow clone** (a checkout without history, the GitHub Actions default) shows `n/a`. In GitHub Actions, add
+  `fetch-depth: 0` under `with:` of the `actions/checkout` step (see [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml)).
+- `--git-dead-since` guesses the commit that removed the last use of a name. It is a guess, and it is slower.
 
 ### Use it with AI coding agents
 
 **When:** an agent such as Claude Code, Codex or Cursor does the cleanup for you.
 
-`--format agent` prints plain text made for agents. Each row has a stable id, the confidence, short reason codes,
-a ready `remove:` command and the `.xcpurgeignore` line that would hide it:
+`--format agent` prints plain text made for agents. Each row has a stable id, the confidence and short reason
+codes. It also has a ready `remove:` command and the `.xcpurgeignore` line that would hide it:
 
-```
+```text
 - id=unused-asset-ab15ed7993 high Legacy/LegacyAssets.xcassets/legacy_unused.imageset name=legacy_unused reasons=no-ref
   remove: xcpurge remove --yes /path/to/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset
   ignore: asset:legacy_unused
 ```
 
-`xcpurge explain . <id or name>` shows the evidence for one finding: which modules were checked, every place the
-name appears (`reference sites`), runtime-built names that could match (`dynamic patterns`), and how the
-confidence was decided.
+`/path/to/MixedApp` is where this test project was; you will see your own folder. The `remove:` line has `--yes`
+because an agent has no terminal to answer the question.
+
+`xcpurge explain . ID-OR-NAME` shows the evidence for one finding. It lists the modules it checked, every place the
+name appears (`reference sites`) and runtime-built names that could match (`dynamic patterns`). It also shows how
+the confidence was decided.
 
 [skills/xcpurge/SKILL.md](skills/xcpurge/SKILL.md) is a ready agent skill. Copy the `skills/xcpurge` folder into
 your agent's skills folder. Or paste these 8 lines into your `AGENTS.md` or `CLAUDE.md`:
@@ -365,19 +462,22 @@ your agent's skills folder. Or paste these 8 lines into your `AGENTS.md` or `CLA
 ## Unused resources (xcpurge)
 - Scan with `xcpurge scan . --format agent --output /tmp/xcpurge.txt`; read the legend first.
 - `high`: run the printed `remove:` command, then build and run tests. Rescan afterwards.
-- `medium`/`low` are leads, not verdicts: run `xcpurge explain . <id>` and check every reference site
+- `medium`/`low` are leads, not verdicts: run `xcpurge explain . ID` and check every reference site
   and dynamic pattern before removing anything.
 - Undo with `xcpurge restore .`. Keep removals in their own commit on a clean branch.
 - Never add `.xcpurgeignore` entries or `// xcpurge:ignore` markers to make a scan green; an ignore
-  needs a `# reason` comment above it explaining where the thing is used.
+  needs a `# reason` comment on the line above it explaining where the thing is used.
 ```
 
 ### Multi-module projects
 
 **When:** your app is split into Swift packages, frameworks or several projects in one workspace.
 
+```sh
+xcpurge modules .
 ```
-$ xcpurge modules .
+
+```text
 Modules (5)
   App  [app]  App/App.xcodeproj  files: 23
     depends on: AppWidget, Core, DesignSystem
@@ -392,8 +492,8 @@ Modules (5)
 ```
 
 How visibility works: a use of a name only counts if the file that uses it can see the module that owns the
-resource, which means it is in that module or in a module that depends on or embeds it. So if only `Core` names an image in
-`DesignSystem`, and `Core` does not depend on `DesignSystem`, the image is still unused.
+resource, which means it is in that module or in a module that depends on or embeds it. So if only `Core` names an
+image in `DesignSystem`, and `Core` does not depend on `DesignSystem`, the image is still unused.
 
 - `--targets App,DesignSystem` reports findings in those modules only.
 - Scan the folder that holds the whole workspace (or pass `--workspace`), so every project is read.
@@ -421,20 +521,31 @@ of the package bundle, use only from SwiftUI previews, or public API of a librar
 **`.xcpurgeignore`** sits in the project folder. It works like `.gitignore`: the last matching rule wins, and `!`
 brings a path back. `xcpurge init` writes a commented starter file.
 
+```text
+# every path under Vendor
+Vendor/**
+# the top-level Scripts folder only
+/Scripts/
+# but still report this file
+!Vendor/Keep.swift
+# assets loaded by name from the server
+asset:server_driven_*
+# localization keys sent in push payloads
+string:push.*
+# every finding in one module
+module:LegacyKit
+# every dead-source finding
+kind:dead-source
 ```
-Vendor/**                 # every path under Vendor
-/Scripts/                 # the top-level Scripts folder only
-!Vendor/Keep.swift        # but still report this file
-asset:server_driven_*     # assets loaded by name from the server
-string:push.*             # localization keys sent in push payloads
-module:LegacyKit          # every finding in one module
-```
+
+A `#` only starts a comment at the beginning of a line, so put each comment on its own line above the rule.
+`kind:` hides a whole kind of finding; use the kind names from the report, such as `kind:dead-source`.
 
 **Inline:** put `// xcpurge:ignore - reason` on a line of code, or alone on the line above a declaration. It hides
 findings on that line. Always write the reason.
 
 **`xcpurge.json`** sets defaults for a project. Command-line flags win over it. Comments and trailing commas are
-allowed. `xcpurge init` writes a starter file next to `.xcpurgeignore`.
+allowed, and `xcpurge init` writes a starter file next to `.xcpurgeignore`.
 
 | Key | What it does | Default |
 |---|---|---|
@@ -462,8 +573,10 @@ still counts as used. That makes it safe to exclude generated or vendored code.
 
 ## Command reference
 
-`xcpurge <command> --help` prints the same flags. `scan` is the default command, so `xcpurge` alone means
-`xcpurge scan .`. `<path>` is the project folder and defaults to `.`. Every command takes these two flags:
+`xcpurge COMMAND --help` prints the same flags. `scan` is the default command, so `xcpurge` alone means
+`xcpurge scan .`. `PATH` is the project folder and defaults to `.`; uppercase words are placeholders.
+
+Every command takes these two flags:
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -472,58 +585,58 @@ still counts as used. That makes it safe to exclude generated or vendored code.
 
 ### scan
 
-`xcpurge scan [<path>]` reports unused assets, strings and files. It never changes anything. The same flags work on
+`xcpurge scan [PATH]` reports unused assets, strings and files. It never changes anything. The same flags work on
 `assets`, `strings`, `files`, `baseline`, `explain`, `size` and `modules`.
 
 | Flag | What it does | Default |
 |---|---|---|
-| `--project <file>` | Scan only this `.xcodeproj`. | all found |
-| `--workspace <file>` | Scan the projects and packages of this `.xcworkspace`. | all found |
-| `--package <path>` | Scan only this Swift package (folder or `Package.swift`). | all found |
-| `--targets <names>` | Only report findings in these modules. | all modules |
-| `--format <format>` | Output format: `text`, `json`, `xcode`, `github`, `html`, `agent`. | `text` |
-| `--output <file>` | Write the report to this file instead of the terminal. | stdout; html: `.xcpurge/report-<time>.html` |
+| `--project FILE` | Scan only this `.xcodeproj`. | all found |
+| `--workspace FILE` | Scan the projects and packages of this `.xcworkspace`. | all found |
+| `--package PATH` | Scan only this Swift package (folder or `Package.swift`). | all found |
+| `--targets NAMES` | Only report findings in these modules (comma-separated). | all modules |
+| `--format FORMAT` | Output format: `text`, `json`, `xcode`, `github`, `html`, `agent`. | `text` |
+| `--output FILE` | Write the report to this file instead of the terminal. | terminal; html: `.xcpurge/report-TIME.html` |
 | `--open` | Open the HTML report when it is written. | off |
-| `--browser <app>` | App for `--open`, for example `"Google Chrome"`. | default browser |
-| `--fail-on <what>` | Exit 1 when findings match: `any`, `assets`, `strings`, `files`, `duplicates`, `unused-<category>` or a kind. | off |
-| `--min-confidence <level>` | Hide findings below `low`, `medium` or `high`. | `low` |
-| `--exclude <glob>` | Never report paths matching this glob; they are still read for uses. Repeatable. | none |
-| `--config <file>` | Config file to read. | `<path>/xcpurge.json` |
-| `--derived-data <folder>` | DerivedData folder to read Xcode's generated asset names from. | newest match |
-| `--localization-macro <name>` | Treat this function as a localization call. Repeatable. | none |
+| `--browser APP` | App for `--open`, for example `"Google Chrome"`. | default browser |
+| `--fail-on WHAT` | Exit 1 when findings match: `any`, `assets`, `strings`, `files`, `duplicates`, `unused-CATEGORY` or a kind. | off |
+| `--min-confidence LEVEL` | Hide findings below `low`, `medium` or `high`. | `low` |
+| `--exclude GLOB` | Never report paths matching this glob; they are still read for uses. Repeatable. | none |
+| `--config FILE` | Config file to read. | `PATH/xcpurge.json` |
+| `--derived-data FOLDER` | DerivedData folder to read Xcode's generated asset names from. | newest match |
+| `--localization-macro NAME` | Treat this function as a localization call. Repeatable. | none |
 | `--include-pods` | Scan `Pods/` too. | off |
 | `--ignore-test-references` | Do not count uses from test targets. | off |
 | `--retain-public` | Never report public code of libraries as dead source. | off |
 | `--no-swift` | Read `Package.swift` as text instead of running `swift`. | off |
 | `-v`, `--verbose` | Print more detail: reasons, info messages, which file went to which module. | off |
 | `-q`, `--quiet` | No progress, summary or hints (warnings and errors still print). | off |
-| `--max-warnings <n>` | Show at most this many `--format xcode` warnings, then a summary line. | no cap |
-| `--agent-limit <n>` | Rows per kind in `--format agent`; `0` shows all. | `30` |
-| `--baseline <file>` | Hide findings listed in this baseline and report fixed ones. | none |
+| `--max-warnings N` | Show at most this many `--format xcode` warnings, then a summary line. | no cap |
+| `--agent-limit N` | Rows per kind in `--format agent`; `0` shows all. | `30` |
+| `--baseline FILE` | Hide findings listed in this baseline and report fixed ones. | none |
 | `--strict-baseline` | Exit 1 when the baseline lists findings that are fixed. | off |
-| `--baseline-max-age <days>` | Warn when the baseline is older than this; `0` never warns. | `90` |
+| `--baseline-max-age DAYS` | Warn when the baseline is older than this; `0` never warns. | `90` |
 | `--no-stale-ignore` | Do not report ignore rules that hide nothing. | reported |
 | `--fail-on-stale-ignore` | Exit 1 on an ignore rule that hides nothing. | off |
 | `--git` | Add each finding's last commit: author, date and age. | off |
 | `--git-emails` | With `--git`: also show author emails (JSON only). | names only |
 | `--git-dead-since` | With `--git`: guess the commit that removed the last use (slower). | off |
-| `--git-recent-days <n>` | With `--git`: paths added within this many days count as "recently added". | `30` |
+| `--git-recent-days N` | With `--git`: paths added within this many days count as "recently added". | `30` |
 
 ### assets
 
-`xcpurge assets [<path>]` reports unused assets, fonts and duplicates. All `scan` flags, plus:
+`xcpurge assets [PATH]` reports unused assets, fonts and duplicates. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
 | `--delete` | Move unused assets to `.xcpurge-trash` (high confidence unless `--min-confidence` is given). | off |
 | `-y`, `--yes` | Do not ask for confirmation. | asks |
-| `--verify <command>` | Build before and after the removal; put back what the build needs. | off |
-| `--verify-timeout <seconds>` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
-| `--verify-max-builds <n>` | Most builds `--verify` may run after the removal (the preflight is extra). | `8` |
+| `--verify COMMAND` | Build before and after the removal; put back what the build needs. | off |
+| `--verify-timeout SECONDS` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
+| `--verify-max-builds N` | Most builds `--verify` may run after the removal (the preflight is extra). | `8` |
 
 ### strings
 
-`xcpurge strings [<path>]` reports unused and stale localized strings. All `scan` flags, plus:
+`xcpurge strings [PATH]` reports unused and stale localized strings. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -532,88 +645,92 @@ still counts as used. That makes it safe to exclude generated or vendored code.
 
 ### files
 
-`xcpurge files [<path>]` reports orphan, ghost, dead-source and unused resource files. All `scan` flags, plus:
+`xcpurge files [PATH]` reports orphan, ghost, dead-source and unused resource files. All `scan` flags, plus:
 
 | Flag | What it does | Default |
 |---|---|---|
 | `--delete` | Move reported files to the trash and drop their project references (high unless `--min-confidence`). | off |
 | `-y`, `--yes` | Do not ask for confirmation. | asks |
-| `--verify <command>` | Build before and after the removal; put back what the build needs. | off |
-| `--verify-timeout <seconds>` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
-| `--verify-max-builds <n>` | Most builds `--verify` may run after the removal. | `8` |
+| `--verify COMMAND` | Build before and after the removal; put back what the build needs. | off |
+| `--verify-timeout SECONDS` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
+| `--verify-max-builds N` | Most builds `--verify` may run after the removal. | `8` |
 
 ### remove
 
-`xcpurge remove <root> <paths>...` moves exactly these files or asset sets to the trash and drops their project
-references. It ignores kind and confidence. Plain folders are refused: pass the files inside.
+`xcpurge remove . PATHS` moves exactly these files or asset sets to the trash and drops their project references.
+The first argument is the project root folder and is required (`.` for the current folder). It ignores kind and
+confidence. Plain folders are refused: pass the files inside.
 
 | Flag | What it does | Default |
 |---|---|---|
 | `-y`, `--yes` | Do not ask for confirmation. | asks |
 | `-q`, `--quiet` | No progress or hints. | off |
-| `--verify <command>` | Build before and after the removal; put back what the build needs. | off |
-| `--verify-timeout <seconds>` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
-| `--verify-max-builds <n>` | Most builds `--verify` may run after the removal. | `8` |
+| `--verify COMMAND` | Build before and after the removal; put back what the build needs. | off |
+| `--verify-timeout SECONDS` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
+| `--verify-max-builds N` | Most builds `--verify` may run after the removal. | `8` |
 
 ### restore
 
-`xcpurge restore [<path>]` undoes a delete, prune or remove from `.xcpurge-trash`.
+`xcpurge restore [PATH]` undoes a delete, prune or remove from `.xcpurge-trash`.
 
 | Flag | What it does | Default |
 |---|---|---|
-| `--session <id>` | Restore this trash session. | newest |
-| `--path <path>` | Restore only this file or asset set and leave the rest in the trash. Repeatable. | whole session |
+| `--session ID` | Restore this trash session. | newest |
+| `--path PATH` | Restore only this file or asset set and leave the rest in the trash. Repeatable. | whole session |
 | `--list` | List trash sessions instead of restoring. | off |
 
 ### baseline
 
-`xcpurge baseline [<path>]` writes today's findings to `.xcpurge-baseline.json`. It takes the `scan` flags;
-`--output` picks another file. `--format`, `--open` and `--browser` are rejected. No extra flags.
+`xcpurge baseline [PATH]` writes today's findings to `.xcpurge-baseline.json`. It takes the `scan` flags, and
+`--output` picks another file. `--format`, `--open` and `--browser` are rejected; there are no extra flags.
 
 ### explain
 
-`xcpurge explain [<path>] <subject>` explains one finding. The subject is a finding id, a path or a name. It takes
-the `scan` flags; `--format` is `text` or `json`. No extra flags. It exits 2 when nothing matches and suggests
-close names.
+`xcpurge explain [PATH] SUBJECT` explains one finding. The subject is a finding id, a path or a name. It takes the
+`scan` flags; `--format` is `text` or `json`.
+
+It has no extra flags. It stops with exit code 2 when nothing matches and suggests close names.
 
 ### size
 
-`xcpurge size [<path>]` measures the project by category and module, and estimates what a cleanup saves. All
-`scan` flags (plus `--format markdown`), and:
+`xcpurge size [PATH]` measures the project by category and module, and estimates what a cleanup saves. All `scan`
+flags (plus `--format markdown`), and:
 
 | Flag | What it does | Default |
 |---|---|---|
-| `--app <bundle>` | Also measure a built `.app` or `.ipa` (nothing is built). | off |
-| `--save <file>` | Write a JSON snapshot to this file. | off |
-| `--compare <file>` | Compare with a saved snapshot. | off |
-| `--fail-if-grows <limit>` | Exit 1 when the total grew by more than this: bytes (`100KB`, `2MB`) or a share (`2%`). | off |
-| `--comment-threshold <bytes>` | markdown/github: print nothing (and write no file) when the change is smaller. | off |
-| `--top <n>` | markdown/github: how many changed paths to list. | `20` |
-| `--min-path-delta <bytes>` | markdown/github: hide paths that changed by less than this. | `500` |
+| `--app BUNDLE` | Also measure a built `.app` or `.ipa` (nothing is built). | off |
+| `--save FILE` | Write a JSON snapshot to this file. | off |
+| `--compare FILE` | Compare with a saved snapshot. | off |
+| `--fail-if-grows LIMIT` | Exit 1 when the total grew by more than this: bytes (`100KB`, `2MB`) or a share (`2%`). | off |
+| `--comment-threshold BYTES` | markdown/github: print nothing (and write no file) when the change is smaller. | off |
+| `--top N` | markdown/github: how many changed paths to list. | `20` |
+| `--min-path-delta BYTES` | markdown/github: hide paths that changed by less than this. | `500` |
 | `--allow-missing-compare` | A missing `--compare` file is a note, not an error. | error |
 
 ### modules
 
-`xcpurge modules [<path>]` shows the modules it found, what each depends on, and which module can see which. It
+`xcpurge modules [PATH]` shows the modules it found, what each depends on, and which module can see which. It
 takes the `scan` flags; `--verbose` lists which file went to which module. No extra flags.
 
 ### init
 
-`xcpurge init [<path>]` writes a starter `xcpurge.json` and `.xcpurgeignore`.
+`xcpurge init [PATH]` writes a starter `xcpurge.json` and `.xcpurgeignore`.
 
 | Flag | What it does | Default |
 |---|---|---|
 | `--force` | Overwrite files that already exist. | off |
 | `--xcode-phase` | Print a Run Script phase that shows findings as Xcode warnings; writes nothing. | off |
-| `--configuration <Release\|any>` | With `--xcode-phase`: run only for this build configuration, or `any`. | `Release` |
-| `--max-warnings <n>` | With `--xcode-phase`: show at most this many warnings. | `50` |
+| `--configuration CONFIG` | With `--xcode-phase`: run only for this build configuration (`Release`), or `any`. | `Release` |
+| `--max-warnings N` | With `--xcode-phase`: show at most this many warnings. | `50` |
 
 ### doctor
 
-`xcpurge doctor [<path>]` prints the Xcode and Swift versions it found and the project formats in the folder. It
-has no flags beyond `--version` and `--help`.
+`xcpurge doctor [PATH]` prints the Xcode and Swift versions it found and the project formats in the folder. It has
+no flags beyond `--version` and `--help`.
 
 ### Exit codes
+
+The exit code is the number a command hands back to the shell or CI when it ends. `0` means success.
 
 | Code | Meaning |
 |---|---|
@@ -633,11 +750,11 @@ has no flags beyond `--version` and `--help`.
 | `github` | GitHub Actions annotations on the pull request. |
 | `html` | One self-contained report file with search, filters, charts and the module graph. |
 | `agent` | Plain text for AI coding agents, with ids and ready commands. |
-| `markdown` | Pull-request comments; `size` only. |
+| `markdown` | Pull-request comments. Meant for `xcpurge size`; other commands reject it. |
 
 ## Troubleshooting / FAQ
 
-**It says something is unused, but I use it.** Run `xcpurge explain . <name>` to see every place the name appears
+**It says something is unused, but I use it.** Run `xcpurge explain . NAME` to see every place the name appears
 and why none counted. Names built at runtime, sent by a server or used only from Kotlin or Dart are invisible: add an
 `.xcpurgeignore` rule with a reason. If the use is in Swift, Objective-C, a storyboard or a plist, it is a bug:
 please [file an issue](https://github.com/iasaeed/xcpurge/issues) with a small example project.
@@ -652,17 +769,21 @@ mapped back to the real names. Xcode's own generated symbols (`Image(.logo)`) ar
 **Show Pods** box.
 
 **Synchronized folders (Xcode 16+)?** Supported. A synchronized folder is one Xcode mirrors into a target without
-listing each file. A file excluded from every target is reported as an orphan, at medium, since that may be on purpose.
+listing each file. A file excluded from every target is reported as an orphan, at medium, since that may be on
+purpose.
 
 **Xcode 27 JSON projects (`project.xcproj`)?** Read on a best-effort basis while the format settles. Removing files
 from a `project.xcproj` is not supported yet; those files are skipped and listed. `xcpurge doctor` shows the format.
 
 **It found nothing. Is it broken?** Maybe the project is clean. Run `xcpurge modules .` and check that your targets
-have files. Then run `xcpurge doctor`. If you scanned a folder of several repositories, scan one project instead.
+have files. Then run `xcpurge doctor`; if you scanned a folder of several repositories, scan one project instead.
 
-**The scan is slow.** Scans usually take seconds. Scan the project folder, not your home folder. `DerivedData`,
-`node_modules`, `.build`, hidden folders and build output are already skipped. `--git-dead-since` and `--verify` are
-the slow options.
+**The scan is slow.** Scans usually take seconds. Scan the project folder, not your home folder: `DerivedData`,
+`node_modules`, `.build`, hidden folders and build output are already skipped. `--git-dead-since` and `--verify`
+are the slow options.
+
+**`command not found: xcpurge`.** Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and open a new Terminal
+window. With Homebrew, run `brew doctor`.
 
 **How do I update?** `brew update && brew upgrade xcpurge`, then `xcpurge --version`. In CI, change
 `XCPURGE_VERSION` in the workflow.
@@ -683,11 +804,13 @@ format are in the deep-dive guide: [docs/guide.md](docs/guide.md). Changes per v
 ## Contributing
 
 - `make build`, `make test`, and `make template` after editing the HTML report template.
-- Fixtures live in `Tests/Fixtures/<Name>`. Expected findings live in
-  `Tests/Goldens/<Name>/expected-<category>.json`, outside the fixtures so scans never read them.
+- `make package` (it runs `Scripts/package-release.sh`) builds the release archive and checksum into
+  `.build/package/`.
+- Fixtures live in `Tests/Fixtures/NAME`. Expected findings live in
+  `Tests/Goldens/NAME/expected-CATEGORY.json`, outside the fixtures so scans never read them.
 - Rewrite goldens with `XCPURGE_UPDATE_EXPECTED=1 swift test` and review the diff.
 - `make corpus` runs read-only scans over real projects listed in `CORPUS`.
-- `docs/examples/capture.sh` regenerates the README's example output.
+- `docs/examples/capture.sh` regenerates the example output quoted here and in the guide.
 
 When something is reported wrongly, the most useful issue includes a minimal fixture that reproduces it.
 
