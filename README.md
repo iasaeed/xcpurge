@@ -582,8 +582,9 @@ What you see instead of dates:
 
 - **Shallow clone** (`actions/checkout` defaults to `fetch-depth: 1`): every finding gets `status: shallow` and the
   note `n/a (shallow clone; use fetch-depth: 0)`. xcpurge never reports the checkout commit as "last changed".
-- **Not committed**: a tracked-nowhere path gets `status: untracked` (`n/a (not committed)`). Ghost references are
-  always untracked: there is no file.
+- **Not tracked**: a path the index does not know (never committed, ignored, or a ghost reference whose file was
+  deleted) gets `status: untracked` and `n/a (not tracked: never committed, ignored or deleted)`. Such paths are
+  settled from `git ls-files` up front, so they never hold the history walk up.
 - **Not a repository** (or no `git`): `status: not-git` and one info diagnostic; nothing else changes.
 
 `--git-dead-since` runs `git log -S<name> -1` over source-like files (`*.swift`, `*.m`, `*.h`, storyboards,
@@ -915,7 +916,14 @@ What happens:
    and built, until each culprit is isolated. `--verify-max-builds` (default 8, after the removal) caps this;
    at the cap, what was not proven is restored and listed as *restored unverified*. The tree is always left in
    the last state that built.
-5. **Timeout** (`--verify-timeout`, default 1800 s per build): everything is restored, exit code **4**.
+5. **Timeout** (`--verify-timeout`, default 1800 s per build), **Ctrl-C / SIGTERM** (the build's process group is
+   stopped, not just xcpurge), or a red build that **no removed file can be blamed for** (only project edits
+   left): everything is restored, the session manifest records `verify.outcome: restoredAll` with the reason,
+   exit code **4**. A path that cannot go back (something now sits at its place) is reported and stays in the
+   session, which is then kept.
+
+A build command that leaves background children behind (`cmd &`) ends when the shell exits; stragglers get one
+second to finish writing, then the group is killed.
 
 The stderr report lists what was removed and build-verified, what was blocked (with the diagnostic line), what
 was restored unverified, the builds used, and always this line:

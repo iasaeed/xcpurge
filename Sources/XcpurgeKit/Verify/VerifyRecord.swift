@@ -7,7 +7,7 @@ public struct VerifyRecord: Codable, Hashable, Sendable {
         case passed
         /// Some units were restored (blocked or unverified); the rest stayed removed and build.
         case partial
-        /// Everything was restored (timeout, or no removal built).
+        /// Everything was restored (timeout, interrupt, or no removal built).
         case restoredAll
         /// The command failed before any change; nothing was removed.
         case preflightFailed
@@ -33,12 +33,15 @@ public struct VerifyRecord: Codable, Hashable, Sendable {
     public var builds: Int
     public var outcome: Outcome
     public var blocked: [Blocked]
+    /// Why everything was restored (`timed out`, `interrupted`, `unresolved`), when it was.
+    public var reason: String?
 
-    public init(command: String, startedAt: Date, builds: Int, outcome: Outcome, blocked: [Blocked] = []) {
+    public init(command: String, startedAt: Date, builds: Int, outcome: Outcome, blocked: [Blocked] = [], reason: String? = nil) {
         self.command = command
         self.startedAt = startedAt
         self.builds = builds
         self.outcome = outcome
         self.blocked = blocked
+        self.reason = reason
     }
 }

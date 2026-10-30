@@ -33,17 +33,18 @@ enum VerifyStep {
         guard let runner = options.runnerOptions else { return }
         do {
             try VerifyRunner.preflight(runner, root: root) { if !quiet { ScanRunner.stderr($0 + "\n") } }
-        } catch VerifyRunner.Failure.preflightFailed(let tail, let timedOut) {
+        } catch VerifyRunner.Failure.preflightFailed(let tail, let timedOut, let interrupted) {
             var text = tail.joined(separator: "\n")
             if !text.isEmpty { text += "\n" }
-            text += "error: --verify: build fails before any change\(timedOut ? " (timed out after \(options.verifyTimeout) s)" : ""); nothing was removed\n"
+            let why = timedOut ? " (timed out after \(options.verifyTimeout) s)" : interrupted ? " (interrupted)" : ""
+            text += "error: --verify: build fails before any change\(why); nothing was removed\n"
             ScanRunner.stderr(text)
             throw XcpurgeExit.verifyFailed.exitCode
         }
     }
 
-    /// Verifies the session after the action; returns the action report as it stands afterwards. A timeout
-    /// (everything restored) exits 4.
+    /// Verifies the session after the action; returns the action report as it stands afterwards. A timeout,
+    /// an interrupt (Ctrl-C, SIGTERM) or a red build nothing can be blamed for restores everything and exits 4.
     static func verify(_ options: VerifyOptions, store: TrashStore, context: ScanContext, action: ActionReport,
                        quiet: Bool) throws -> ActionReport {
         guard let runner = options.runnerOptions else { return action }
@@ -54,9 +55,21 @@ enum VerifyStep {
             }
             ScanRunner.stderr(report.lines.joined(separator: "\n") + "\n")
             return report.adjust(action, store: store)
-        } catch VerifyRunner.Failure.timedOut(let builds) {
-            ScanRunner.stderr("error: --verify: build timed out after \(options.verifyTimeout) s (\(builds) build(s) after the removal); "
-                + "everything was restored\n")
+        } catch VerifyRunner.Failure.aborted(let reason, let builds, let failures) {
+            let what: String
+            switch reason {
+            case .timedOut: what = "build timed out after \(options.verifyTimeout) s"
+            case .interrupted: what = "interrupted; the build was stopped"
+            case .unresolved: what = "the build fails and no removed file can be blamed"
+            }
+            var text = "error: --verify: \(what) (\(builds) build(s) after the removal); "
+            if failures.isEmpty {
+                text += "everything was restored\n"
+            } else {
+                text += "restored all but \(failures.count) path(s); the session \(store.sessionID) keeps them:\n"
+                for f in failures { text += "  could not restore \(f.path): \(f.reason)\n" }
+            }
+            ScanRunner.stderr(text)
             throw XcpurgeExit.verifyFailed.exitCode
         }
     }
