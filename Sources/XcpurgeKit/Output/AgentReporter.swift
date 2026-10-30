@@ -26,8 +26,10 @@ public struct AgentReporter: Reporter {
             + "This output is a lead, not a verdict.")
         lines.append("commands: remove `xcpurge remove --yes <root> <path>` · undo `xcpurge restore <root>` · "
             + "explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it")
-        lines.append("values: paths, names and ignore entries with spaces, quotes or control characters are double-quoted "
-            + "with \\n \\r \\t \\\" \\\\ \\u{XX} escapes; everything else is literal.")
+        lines.append("values: paths and names with spaces, quotes or control characters are double-quoted "
+            + "with \\n \\r \\t \\\" \\\\ \\u{XX} escapes; everything else is literal. "
+            + "ignore: lines are verbatim .xcpurgeignore entries (paste as is); only control characters or leading/trailing "
+            + "whitespace get the same quoting.")
         lines.append("after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.")
         lines.append("reasons: " + ReasonCodes.codes.joined(separator: ", "))
         lines.append("## Summary")
@@ -58,7 +60,7 @@ public struct AgentReporter: Reporter {
                 lines.append("### \(Self.fieldValue(module))")
                 for f in byModule[module]! {
                     lines.append(Self.row(f))
-                    if let actions = Self.actions(f, quotedRoot: quotedRoot) { lines.append(actions) }
+                    lines += Self.actions(f, quotedRoot: quotedRoot)
                 }
             }
             let hidden = all.count - shown.count
@@ -96,16 +98,25 @@ public struct AgentReporter: Reporter {
         return out
     }
 
-    /// The second row line: a `remove:` command for kinds `xcpurge remove` acts on (with `--yes`, because an agent
-    /// has no terminal to answer the prompt), and the `.xcpurgeignore` entry that would hide the finding. Nil when
-    /// neither applies (dynamic lookups, stale ignores).
-    static func actions(_ f: Finding, quotedRoot: String) -> String? {
-        var parts: [String] = []
+    /// The action lines after a row, one each: a `remove:` command for kinds `xcpurge remove` acts on (with `--yes`,
+    /// because an agent has no terminal to answer the prompt; alone on its line so it can be piped to a shell), then
+    /// the `.xcpurgeignore` entry that would hide the finding. Empty when neither applies (dynamic lookups, stale ignores).
+    static func actions(_ f: Finding, quotedRoot: String) -> [String] {
+        var lines: [String] = []
         if Trash.deletableKinds.contains(f.kind) || f.kind == .ghostReference {
-            parts.append("remove: xcpurge remove --yes \(quotedRoot) \(shellArgument(f.path))")
+            lines.append("  remove: xcpurge remove --yes \(quotedRoot) \(shellArgument(f.path))")
         }
-        if let entry = ignoreEntry(f) { parts.append("ignore: \(fieldValue(entry))") }
-        return parts.isEmpty ? nil : "  " + parts.joined(separator: "   ")
+        if let entry = ignoreEntry(f) { lines.append("  ignore: \(ignoreValue(entry))") }
+        return lines
+    }
+
+    /// An `.xcpurgeignore` entry as the agent should paste it: verbatim, spaces and quotes included (a quoted rule
+    /// would never match). Only a control character or leading/trailing whitespace, which a paste would lose or
+    /// which could add a line, forces `fieldValue` quoting.
+    public static func ignoreValue(_ entry: String) -> String {
+        let edgeSpace = entry.first?.isWhitespace == true || entry.last?.isWhitespace == true
+        let control = entry.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F }
+        return edgeSpace || control ? fieldValue(entry) : entry
     }
 
     /// A project-supplied value as one token on one line: literal when it has no space, quote, backslash or

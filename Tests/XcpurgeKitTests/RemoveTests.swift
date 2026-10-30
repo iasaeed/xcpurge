@@ -299,6 +299,24 @@ final class RemoveTests: XCTestCase {
         XCTAssertTrue(climbed.stderr.contains("Move 1 path(s) to .xcpurge-trash? Not a terminal"), climbed.stderr)
     }
 
+    /// `assets --delete` without a terminal and without `--yes`: the report is still written (here to `--output`),
+    /// nothing is trashed, and the exit code is 2 so CI cannot mistake the no-op for success.
+    func testCLIDeleteWithoutTerminalWritesReportThenExitsTwo() throws {
+        let root = try FixtureSupport.copyToTemp("AssetsEdgeCases")
+        // The report goes outside the root: inside it, the next scan would read it as a reference to every asset.
+        let out = try FixtureSupport.tempTree([:]).appendingPathComponent("report.json")
+        let run = try CLISupport.run(["assets", root.path, "--delete", "--no-swift", "--format", "json", "--output", out.path, "--quiet"])
+        XCTAssertEqual(run.status, 2, run.stderr)
+        XCTAssertTrue(run.stderr.contains("to .xcpurge-trash? Not a terminal; pass --yes to confirm."), run.stderr)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: out)) as? [String: Any])
+        XCTAssertGreaterThan((json["findings"] as? [Any])?.count ?? 0, 0, "the report lists the findings it would have acted on")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("Edge/Images/loose_unused.png").path), "nothing moved")
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+        let stdout = try CLISupport.run(["assets", root.path, "--delete", "--no-swift", "--format", "json", "--quiet"])
+        XCTAssertEqual(stdout.status, 2)
+        XCTAssertTrue(stdout.stdout.hasPrefix("{"), "report on stdout as well")
+    }
+
     /// A set inside a catalog has no inventory entry of its own: its spelling comes from the directory listing,
     /// so a mis-cased argument never renames the set through the manifest and restore.
     func testMiscasedCatalogSetKeepsOnDiskSpelling() async throws {

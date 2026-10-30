@@ -76,8 +76,8 @@ enum ScanRunner {
         let file = outputURL(format: format, root: result.context.root, options: options)
         let colors = format == .text && file == nil && isatty(STDOUT_FILENO) != 0
             && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
-        let reporterOptions = ReporterOptions(colors: colors, verbose: config.verbose, maxWarnings: options?.maxWarnings,
-                                              agentLimit: options?.agentLimit ?? 30)
+        let reporterOptions = ReporterOptions(colors: colors, verbose: config.verbose, quiet: options?.quiet == true,
+                                              maxWarnings: options?.maxWarnings, agentLimit: options?.agentLimit ?? 30)
         let text = format.reporter(reporterOptions).render(result)
         guard let file else { print(text, terminator: ""); return }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -90,11 +90,15 @@ Each GitHub release carries `xcpurge-macos.tar.gz` (a universal arm64 + x86_64 `
 its `.sha256`. The sample CI workflows download it pinned to a version instead of brewing:
 
 ```sh
-curl -fsSL https://github.com/iasaeed/xcpurge/releases/download/v0.4.0/xcpurge-macos.tar.gz | tar -xz -C ~/.local/bin
+base=https://github.com/iasaeed/xcpurge/releases/download/v0.4.0
+curl -fsSLO "$base/xcpurge-macos.tar.gz" && curl -fsSLO "$base/xcpurge-macos.tar.gz.sha256"
+shasum -a 256 -c xcpurge-macos.tar.gz.sha256 && tar -xzf xcpurge-macos.tar.gz -C ~/.local/bin
 ```
 
-`make package` (`Scripts/package-release.sh`) builds that archive and checksum into `.build/package/`; it falls
-back to the host architecture when a universal build is not possible and says so.
+`make package` (`Scripts/package-release.sh`) builds that archive and checksum into `.build/package/`
+(`XCPURGE_PACKAGE_DIR` picks another folder inside `.build/`). The archive is reproducible for the same binary
+(fixed owner, mode and mtime from `SOURCE_DATE_EPOCH` or the HEAD commit date, `gzip -n`). A universal build
+that fails stops the script; `ALLOW_HOST_ONLY=1` accepts a host-only archive for local testing.
 
 The everyday commands:
 
@@ -873,7 +877,10 @@ xcpurge restore [--session ID]     # undo (newest by default), byte-identical
 Why it is safe:
 
 - Actions ask for confirmation (`--yes` skips it) and touch only **high** findings unless you pass
-  `--min-confidence` explicitly.
+  `--min-confidence` explicitly. When stdin is not a terminal and `--yes` is missing (CI, an agent, a pipe),
+  nothing can answer: `assets --delete`, `files --delete` and `strings --prune` still write their report
+  (stdout or `--output`), `remove` prints what it would have done, and all four exit 2 with
+  `Not a terminal; pass --yes to confirm.` on stderr, so a silent no-op never looks like success.
 - Everything moved or rewritten goes into `.xcpurge-trash/<session>/` with a manifest. There is never a `.bak`
   next to the file, which would ship inside a synchronized folder or `.lproj`. Add `.xcpurge-trash/` to
   `.gitignore`.
@@ -1074,7 +1081,7 @@ $ xcpurge scan Tests/Fixtures/MixedApp --format agent
 ## Legend
 confidence: high = no reference from any module that can see it; remove, then build. medium/low = NOT proven unused: run `xcpurge explain <root> <id>` and check runtime/dynamic use first. This output is a lead, not a verdict.
 commands: remove `xcpurge remove --yes <root> <path>` · undo `xcpurge restore <root>` · explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it
-values: paths, names and ignore entries with spaces, quotes or control characters are double-quoted with \n \r \t \" \\ \u{XX} escapes; everything else is literal.
+values: paths and names with spaces, quotes or control characters are double-quoted with \n \r \t \" \\ \u{XX} escapes; everything else is literal. ignore: lines are verbatim .xcpurgeignore entries (paste as is); only control characters or leading/trailing whitespace get the same quoting.
 after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.
 reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bundle, preview-only, public-api, test-only, extension-only, app-icon, odr, numbered-sibling, font-declared, xcode-stale, ib-stale, duplicate, ghost-ref, target-member, excluded, unattributed, folder-ref, convention, stale-ignore, no-ref, generated, other
 ## Summary
@@ -1082,9 +1089,11 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
 ## unused-asset (2)
 ### MixedApp
 - id=unused-asset-ab15ed7993 high Legacy/LegacyAssets.xcassets/legacy_unused.imageset name=legacy_unused reasons=no-ref
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset   ignore: asset:legacy_unused
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Legacy/LegacyAssets.xcassets/legacy_unused.imageset
+  ignore: asset:legacy_unused
 - id=unused-asset-bdd3de6eeb high Modern/ModernAssets.xcassets/modern_unused.imageset name=modern_unused reasons=no-ref
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/ModernAssets.xcassets/modern_unused.imageset   ignore: asset:modern_unused
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/ModernAssets.xcassets/modern_unused.imageset
+  ignore: asset:modern_unused
 ## dynamic-lookup (1)
 ### MixedApp
 - id=dynamic-lookup-d5820de9f2 low Modern/MixedAppApp.swift:12 reasons=dyn-pattern
@@ -1095,16 +1104,20 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
 ## orphan-file (2)
 ### MixedApp
 - id=orphan-file-787d8461b8 medium Modern/Excluded.swift reasons=excluded
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/Excluded.swift   ignore: Modern/Excluded.swift
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Modern/Excluded.swift
+  ignore: Modern/Excluded.swift
 ### unknown
 - id=orphan-file-449b7ad154 low Stray/Stray.swift reasons=unattributed
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Stray/Stray.swift   ignore: Stray/Stray.swift
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Stray/Stray.swift
+  ignore: Stray/Stray.swift
 ## unused-resource (2)
 ### MixedApp
 - id=unused-resource-1ae80990f6 low Content/a.json reasons=no-ref,folder-ref
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/a.json   ignore: Content/a.json
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/a.json
+  ignore: Content/a.json
 - id=unused-resource-d760612b46 low Content/b.json reasons=no-ref,folder-ref
-  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/b.json   ignore: Content/b.json
+  remove: xcpurge remove --yes /path/to/xcpurge/Tests/Fixtures/MixedApp Content/b.json
+  ignore: Content/b.json
 ```
 
 - Rows are grouped by kind, then module, sorted by confidence (high first) then report order. Each kind shows
@@ -1112,12 +1125,14 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
   `… 12 more unused-asset not shown: narrow with --targets <module>, --min-confidence high, or --agent-limit 0`.
 - The `remove:` line appears for kinds `xcpurge remove` acts on (assets, fonts, orphan, resource and interface
   files, ghost references). It carries `--yes` because an agent has no terminal to answer the prompt (without
-  it, a non-interactive `remove` does nothing and exits 2). The `ignore:` line follows the HTML report's rules:
+  it, a non-interactive `remove` does nothing and exits 2), and it is alone on its line, so everything after
+  `remove: ` can be piped to a shell. The `ignore:` line follows on its own line with the HTML report's rules:
   `asset:<name>`, `string:<key>`, otherwise the path. Dynamic lookups and stale ignores get neither.
-- Values that come from the project (path, name, module, ignore entry) are one token each: literal unless they
-  contain a space, quote, backslash or control character, then double-quoted with `\n \r \t \" \\ \u{XX}`
-  escapes. A string key containing a newline therefore cannot forge a `remove:` line; a path containing one is
-  shell-quoted as `$'…'`.
+- Values that come from the project (path, name, module) are one token each: literal unless they contain a
+  space, quote, backslash or control character, then double-quoted with `\n \r \t \" \\ \u{XX}` escapes. A
+  string key containing a newline therefore cannot forge a `remove:` line; a path containing one is shell-quoted
+  as `$'…'`. The `ignore:` value is the `.xcpurgeignore` entry verbatim (spaces and quotes included, since a
+  quoted rule would match nothing); only a control character or leading/trailing whitespace gets the quoting.
 - `reasons=` are codes for the free-text reasons (one per distinct code, in order). `no-ref` is the normal high
   case; `dyn-pattern`, `string-literal`, `main-bundle`, `convention`, `folder-ref` and friends mark the hints
   that lower a finding to medium or low and need a look. `skipped-source` means a source could not be read and

@@ -1,13 +1,19 @@
 /// Human-readable report grouped by category, kind and module, with confidence, sizes and totals. A baseline
-/// (`--baseline`) adds a header line; git history (`--git`) adds `· age, author` after each finding.
-/// ANSI colors only when `colors` is set (the CLI enables it for terminals).
+/// (`--baseline`) adds a header line; git history (`--git`) adds `· age, author` after each finding. Warnings
+/// close the report; info diagnostics follow as dimmed `note:` lines (at most `noteLimit`, else a count) unless
+/// `quiet`. ANSI colors only when `colors` is set (the CLI enables it for terminals).
 public struct TextReporter: Reporter {
+    /// More info diagnostics than this collapse into one `N notes (use --format json to see them)` line.
+    public static let noteLimit = 3
+
     public let colors: Bool
     public let verbose: Bool
+    public let quiet: Bool
 
-    public init(colors: Bool = false, verbose: Bool = false) {
+    public init(colors: Bool = false, verbose: Bool = false, quiet: Bool = false) {
         self.colors = colors
         self.verbose = verbose
+        self.quiet = quiet
     }
 
     private func paint(_ s: String, _ code: String) -> String { colors ? "\u{1B}[\(code)m\(s)\u{1B}[0m" : s }
@@ -62,12 +68,18 @@ public struct TextReporter: Reporter {
         let counts = Confidence.allCases.reversed().map { c in "\(findings.filter { $0.confidence == c }.count) \(c.rawValue)" }
         lines.append(findings.isEmpty ? "No findings."
             : "Total: \(findings.count) findings (\(counts.joined(separator: ", ")))\(total > 0 ? ", " + ByteFormatter.string(total) + " reclaimable" : "")")
-        let diagnostics = result.context.diagnostics.entries.filter { verbose || $0.level != .info }
-        if !diagnostics.isEmpty {
-            lines.append("")
-            for d in diagnostics {
-                lines.append(paint("\(d.level.rawValue): \(d.path.map { $0 + ": " } ?? "")\(d.message)", d.level == .info ? "2" : "33"))
-            }
+        let entries = result.context.diagnostics.entries
+        let diagnostics = entries.filter { verbose || $0.level != .info }
+        // `--verbose` lists info entries above as `info:`; otherwise they become notes, dropped under `--quiet`.
+        let notes = verbose || quiet ? [] : entries.filter { $0.level == .info }
+        if !diagnostics.isEmpty || !notes.isEmpty { lines.append("") }
+        for d in diagnostics {
+            lines.append(paint("\(d.level.rawValue): \(d.path.map { $0 + ": " } ?? "")\(d.message)", d.level == .info ? "2" : "33"))
+        }
+        if notes.count > Self.noteLimit {
+            lines.append(paint("\(notes.count) notes (use --format json to see them)", "2"))
+        } else {
+            for n in notes { lines.append(paint("note: \(n.path.map { $0 + ": " } ?? "")\(n.message)", "2")) }
         }
         return lines.joined(separator: "\n") + "\n"
     }

@@ -33,11 +33,15 @@ jobs:
 
       - name: Install xcpurge
         # Pinned release binary: the `xcpurge-macos.tar.gz` asset of the tagged release (built with
-        # `make package` / Scripts/package-release.sh, a universal arm64 + x86_64 binary at the archive root).
+        # `make package` / Scripts/package-release.sh, a universal arm64 + x86_64 binary at the archive root),
+        # verified against its `.sha256` before extraction.
         # `brew install iasaeed/tap/xcpurge` works too but is slower and floats to the newest version.
         run: |
-          curl -fsSL "https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}/xcpurge-macos.tar.gz" -o xcpurge.tar.gz
-          mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge.tar.gz -C "$HOME/.local/bin"
+          base="https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}"
+          curl -fsSL "$base/xcpurge-macos.tar.gz" -o xcpurge-macos.tar.gz
+          curl -fsSL "$base/xcpurge-macos.tar.gz.sha256" -o xcpurge-macos.tar.gz.sha256
+          shasum -a 256 -c xcpurge-macos.tar.gz.sha256   # the archive is extracted only when the checksum matches
+          mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge-macos.tar.gz -C "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/xcpurge" --version
 

@@ -104,7 +104,8 @@ struct RemoveCommand: AsyncParsableCommand {
         if !acting.isEmpty {
             var question = ["Move \(acting.count - ghosts.count) path(s) to \(TrashStore.directoryName)"]
             if !ghosts.isEmpty { question.append("drop \(ghosts.count) reference(s) to missing file(s)") }
-            guard ConfirmPrompt.confirm(question.joined(separator: " and ") + "?", details: details, assumeYes: yes) else { return }
+            let answer = ConfirmPrompt.confirm(question.joined(separator: " and ") + "?", details: details, assumeYes: yes)
+            guard answer == .yes else { return try answer.exitIfNotATerminal() }
         }
 
         VerifyStep.warnBlocked(acting, root: context.root)
