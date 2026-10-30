@@ -132,6 +132,127 @@ final class StaleIgnoreTests: XCTestCase {
         XCTAssertEqual(found7, [])
     }
 
+    func testScopedRunsKeepOnlyGlobAndKindChecks() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try write("module:AppWidget\nmodule:Nope\nasset:never_there\nstring:nope.*\nVendor/**\nkind:deadSorce\n", to: root, Ignore.fileName)
+        let app = root.appendingPathComponent("App/App/ModularApp.swift")
+        try Data((try String(contentsOf: app, encoding: .utf8) + "\nlet marked = 1 // xcpurge:ignore\n").utf8).write(to: app)
+
+        let full = try await ScanEngine(root: root, config: Config()).run()
+        let fullStale = full.findings.filter { $0.kind == .staleIgnore }
+        XCTAssertEqual(rules(fullStale).sorted(), ["Vendor/**", "asset:never_there", "kind:deadSorce", "module:Nope", "string:nope.*"])
+        XCTAssertEqual(markers(fullStale), ["App/App/ModularApp.swift:12"])
+        XCTAssertFalse(full.context.diagnostics.entries.contains { $0.message.contains("stale-ignore checks limited") })
+
+        var scoped = Config()
+        scoped.package = root.appendingPathComponent("Packages/Core").path
+        let partial = try await ScanEngine(root: root, config: scoped).run()
+        let partialStale = partial.findings.filter { $0.kind == .staleIgnore }
+        XCTAssertEqual(rules(partialStale).sorted(), ["Vendor/**", "kind:deadSorce"],
+                       "AppWidget is outside the scoped graph; module/asset/string rules are not judged")
+        XCTAssertEqual(markers(partialStale), [], "sources outside the scope are not judged")
+        XCTAssertTrue(partial.context.diagnostics.entries.contains {
+            $0.level == .info && $0.message.contains("stale-ignore checks limited") && $0.message.contains("scoped run")
+        }, "\(partial.context.diagnostics.entries)")
+
+        var project = Config()
+        project.project = root.appendingPathComponent("App/App.xcodeproj").path
+        let byProject = try await ScanEngine(root: root, config: project).run()
+        XCTAssertEqual(markers(byProject.findings.filter { $0.kind == .staleIgnore }), [])
+        let quiet = try await ScanEngine(root: try FixtureSupport.copyToTemp("ModularWorkspace"), config: scoped).run()
+        XCTAssertFalse(quiet.context.diagnostics.entries.contains { $0.message.contains("stale-ignore checks limited") },
+                       "no note when there is nothing to check")
+    }
+
+    func testLooseImageAssetRuleMatchesWithAndWithoutExtension() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        try write("asset:unused_loose\n", to: root, Ignore.fileName)
+        let result = try await ScanEngine(root: root, config: Config()).run()
+        XCTAssertFalse(result.findings.contains { $0.kind == .unusedAsset && $0.name == "unused_loose.png" }, "the rule suppresses")
+        XCTAssertEqual(result.findings.filter { $0.kind == .staleIgnore }, [], "so it is not stale")
+        try write("asset:unused_loose.png\nasset:unused_*\nasset:unused\n", to: root, Ignore.fileName)
+        let found = try await stale(root)
+        XCTAssertEqual(rules(found), ["asset:unused"])
+        XCTAssertEqual(found.first?.confidence, .medium)
+        XCTAssertEqual(found.first?.reasons, ["no asset named like this"])
+    }
+
+    // MARK: - Lazy disk walk
+
+    private func pathRules(_ contents: String) -> [StaleIgnoreDetector.PathRule] {
+        Ignore(contents: contents).rules.compactMap { rule in
+            guard case let .path(glob, directoryOnly) = rule.matcher else { return nil }
+            return StaleIgnoreDetector.PathRule(rule: rule, glob: glob, directoryOnly: directoryOnly)
+        }
+    }
+
+    func testDiskWalkNeverEntersDirectoriesNoRuleCanMatchUnder() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Src/A.swift": "struct A {}\n",
+            "Other/deep/a/b/c.txt": "x", "Other/deep/a/d.txt": "x", "Other/e.txt": "x",
+            "Vendorish/f.txt": "x",
+            ".hidden/Vendor/g.txt": "x",
+        ])
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        let rules = pathRules("Vendor/**\nSrc/Nope/*.swift\n/Other/deep/a/b/*.md\n")
+        var visited: [String] = []
+        let verdict = StaleIgnoreDetector.stalePathRules(rules, ctx) { visited.append($0) }
+        XCTAssertEqual(verdict.stale.map(\.text), ["Vendor/**", "Src/Nope/*.swift", "/Other/deep/a/b/*.md"])
+        XCTAssertEqual(verdict.undecided, [])
+        // Directories are pruned, not files: a descended directory lists its files, but no directory off every
+        // rule's chain is entered (`Vendorish/`, `.hidden/`, `Src/` is listed but its children are files).
+        XCTAssertFalse(visited.contains { $0.hasPrefix("Vendorish/") || $0.hasPrefix(".hidden/") },
+                       "only directories some rule can match under are entered: \(visited)")
+        XCTAssertTrue(visited.contains("Other/deep/a/b/c.txt"), "the anchored rule's directory chain is walked: \(visited)")
+        XCTAssertTrue(visited.contains("Vendorish") && visited.contains(".hidden"), "pruned directories are still tested themselves")
+
+        let anchoredOnly = pathRules("Vendor/**\n")
+        visited = []
+        _ = StaleIgnoreDetector.stalePathRules(anchoredOnly, ctx) { visited.append($0) }
+        XCTAssertEqual(visited.filter { $0.contains("/") }, [], "nothing below the top level is entered for Vendor/**: \(visited)")
+
+        let unanchored = pathRules("*.md\n")
+        visited = []
+        let open = StaleIgnoreDetector.stalePathRules(unanchored, ctx) { visited.append($0) }
+        XCTAssertEqual(open.stale.map(\.text), ["*.md"])
+        XCTAssertTrue(visited.contains("Other/deep/a/b/c.txt"), "an unanchored rule can match anywhere, so everything is walked")
+    }
+
+    func testDiskWalkCapAndBuildOutputGiveUndecidedNotStale() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Src/A.swift": "struct A {}\n",
+            "node_modules/pkg/index.js": "x",
+            "Big/a.txt": "x", "Big/b.txt": "x", "Big/c.txt": "x",
+        ])
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        XCTAssertNil(ctx.inventory.index(of: "node_modules/pkg/index.js"), "the main walk skips node_modules")
+        let verdict = StaleIgnoreDetector.stalePathRules(pathRules("node_modules/pkg/*.js\nnode_modules/**\nNope/**\n"), ctx)
+        XCTAssertEqual(verdict.stale.map(\.text), ["Nope/**"])
+        XCTAssertEqual(verdict.undecided.map(\.text), ["node_modules/pkg/*.js"], "could only match inside skipped build output")
+
+        let capped = StaleIgnoreDetector.stalePathRules(pathRules("Big/*.md\nNope/**\n"), ctx, walkCap: 2)
+        XCTAssertEqual(capped.stale, [])
+        XCTAssertEqual(Set(capped.undecided.map(\.text)), ["Big/*.md", "Nope/**"])
+
+        try write("node_modules/pkg/*.js\nNope/**\n", to: root, Ignore.fileName)
+        let found = try await stale(root)
+        XCTAssertEqual(found.map(\.name), ["Nope/**", "node_modules/pkg/*.js"])
+        XCTAssertEqual(found.map(\.confidence), [.medium, .low])
+        XCTAssertTrue(found[1].reasons[0].hasPrefix("could not evaluate"), found[1].reasons[0])
+    }
+
+    func testTwoStaleMarkersInOneFileHaveDistinctIdentities() async throws {
+        let root = try FixtureSupport.tempTree([
+            "A.swift": "struct A { func f() { B().g() } } // xcpurge:ignore\n\nlet x = 1 // xcpurge:ignore\n",
+            "B.swift": "struct B { func g() { A().f() } }\n",
+        ])
+        let found = try await stale(root)
+        XCTAssertEqual(found.map { "\($0.line ?? 0) \($0.name ?? "")" }, ["1 xcpurge:ignore", "3 xcpurge:ignore #2"])
+        XCTAssertEqual(Set(found.map(\.key)).count, 2)
+        XCTAssertEqual(Set(found.map(\.id)).count, 2)
+        XCTAssertEqual(found.map(\.key), ["staleIgnore|A.swift|xcpurge:ignore", "staleIgnore|A.swift|xcpurge:ignore #2"])
+    }
+
     // MARK: - Inline markers
 
     func testInlineMarkersAreStaleOnlyWhenTheySuppressNothing() async throws {
@@ -162,7 +283,7 @@ final class StaleIgnoreTests: XCTestCase {
         \(found.map { "\($0.path):\($0.line ?? 0) \($0.reasons)" })
         """)
         let plain = found.first { $0.line == plainLine }!
-        XCTAssertEqual(plain.name, "xcpurge:ignore")
+        XCTAssertEqual(plain.name, "xcpurge:ignore #2", "second line-style marker of the file; the first (line 12) is used")
         XCTAssertEqual(plain.module, "MixedApp")
         XCTAssertEqual(plain.confidence, .medium)
         XCTAssertEqual(plain.category, .ignores)

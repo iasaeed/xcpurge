@@ -5,7 +5,9 @@ public enum FindingIdentity {
     /// - `unusedAsset` with a name: `kind|module|name`
     /// - `unusedString` / `staleString`: `kind|module|<table stem>|name` (locales collapse; counts handle multiples)
     /// - `dynamicLookup`: `kind|module|path|name`
-    /// - `staleIgnore`: `kind|path|name`
+    /// - `staleIgnore`: `kind|path|name`, where `name` is the `.xcpurgeignore` rule text or, for an inline marker,
+    ///   `xcpurge:ignore` plus its ordinal among the file's markers (`xcpurge:ignore #2`), so several stale markers
+    ///   in one file stay distinct without a line number
     /// - everything else (file kinds, `unusedFont`, `duplicate`): `kind|module|path`
     public static func key(_ f: Finding) -> String {
         let kind = f.kind.rawValue

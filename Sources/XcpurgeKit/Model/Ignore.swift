@@ -117,7 +117,7 @@ public struct Ignore: Sendable {
             let ext = (RelPath.lastComponent(f.path) as NSString).pathExtension.lowercased()
             return glob.matches(RelPath.parent(f.path)) || (folderExtensions.contains(ext) && glob.matches(f.path))
         case .asset(let p):
-            return f.category == .assets && f.kind != .duplicate && nameMatches(p, f.name)
+            return f.category == .assets && f.kind != .duplicate && assetNameMatches(p, f.name)
         case .string(let p):
             return f.category == .strings && nameMatches(p, f.name)
         case .module(let p):
@@ -135,5 +135,15 @@ public struct Ignore: Sendable {
     static func nameMatches(_ pattern: String, _ name: String?) -> Bool {
         guard let name, !pattern.isEmpty else { return false }
         return Glob.matchSegment(Array(pattern), Array(name))
+    }
+
+    /// `asset:` rules match the finding's name as reported and, for loose images and fonts (`unused_loose.png`,
+    /// `Brand.ttf`), the name without its extension. `StaleIgnoreDetector` uses the same test, so a rule that
+    /// suppresses something is never stale.
+    static func assetNameMatches(_ pattern: String, _ name: String?) -> Bool {
+        guard let name else { return false }
+        if nameMatches(pattern, name) { return true }
+        let stem = RelPath.stem(name)
+        return stem != name && nameMatches(pattern, stem)
     }
 }

@@ -134,6 +134,17 @@ final class BaselineTests: XCTestCase {
         XCTAssertEqual(oneNew.report.baselinedCount, 2)
     }
 
+    /// SwiftLint #6871, the known limitation of count-only matching: a fixed finding and a new one with the same
+    /// identity (here the `en` copy of a key removed and a `de` copy added) cancel out and nothing is reported.
+    func testFixedAndNewWithTheSameKeyCancelOut() {
+        let baseline = file([string("k", locale: "en")])
+        let out = apply([string("k", locale: "de")], baseline)
+        XCTAssertEqual(out.kept, [])
+        XCTAssertEqual(out.report.fixed, [])
+        XCTAssertEqual(out.report.baselinedCount, 1)
+        XCTAssertEqual(out.report.newCount, 0)
+    }
+
     func testAssetRenamedIntoAnotherCatalogStaysBaselined() {
         let baseline = file([asset("old_icon", catalog: "App/Assets.xcassets")])
         let moved = asset("old_icon", catalog: "App/Resources/Media.xcassets")
@@ -371,6 +382,16 @@ final class BaselineTests: XCTestCase {
         let silenced = try CLISupport.run(["scan", root.path, "--quiet", "--baseline-max-age", "0"])
         XCTAssertFalse(silenced.stderr.contains("days old"), silenced.stderr)
         XCTAssertFalse(silenced.stderr.contains("Baseline "), "--quiet hides the summary line")
+    }
+
+    func testBaselineCommandRejectsReportOnlyOptions() throws {
+        let root = try FixtureSupport.copyToTemp("MixedApp")
+        for flags in [["--format", "json"], ["--open"], ["--browser", "Safari"]] {
+            let run = try CLISupport.run(["baseline", root.path, "--quiet"] + flags)
+            XCTAssertEqual(run.status, 2, flags.joined(separator: " "))
+            XCTAssertTrue(run.stderr.contains("do not apply to `xcpurge baseline`"), run.stderr)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent(BaselineFile.defaultName).path))
+        }
     }
 
     func testBaselineCommandDiff() {

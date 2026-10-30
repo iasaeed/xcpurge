@@ -712,15 +712,17 @@ deliberately conservative, so a rule that is still policy is never flagged:
 
 | Rule | Reported as stale when | Confidence |
 |---|---|---|
-| path glob (`Vendor/**`, `Docs/`, `!Keep.swift`) | it matches **no path on disk** (not just none in the scan: `Pods/`, hidden folders and `--exclude`d trees still count) | medium |
+| path glob (`Vendor/**`, `Docs/`, `!Keep.swift`) | it matches **no path on disk** (not just none in the scan: `Pods/`, hidden folders and `--exclude`d trees still count). The disk check walks only directories the glob could match under, skips build output like the scan does and stops after 200k entries; a rule it could not settle is reported low with "could not evaluate" | medium |
 | `kind:X` | `X` is not a finding kind (a typo); a known kind with zero findings is policy | high |
 | `module:X` | no module in the project graph has such a name | high |
-| `asset:X` | no asset finding matches (only when assets were scanned); "no asset named like this" or "asset exists but is used" | medium / low |
+| `asset:X` | no asset finding matches by name, with or without extension for loose images and fonts (only when assets were scanned); "no asset named like this" or "asset exists but is used" | medium / low |
 | `string:X` | no string finding matches (only when strings were scanned) | low |
 | `// xcpurge:ignore` | a second detector pass with markers switched off still finds nothing on its lines, no dynamic name is built there, and the file would not be a dead source without it (only on full scans) | medium |
 
 Block-comment markers (`/* xcpurge:ignore */`) and markers in JSON, HTML, CSS or xcconfig files are honoured but
-never reported. A reason after the marker (`// xcpurge:ignore - loaded by name from the server`) is fine.
+never reported. A reason after the marker (`// xcpurge:ignore - loaded by name from the server`) is fine. A run
+scoped with `--project`, `--package` or `--workspace` sees only part of the modules and sources, so it keeps the
+glob and `kind:` checks only and says so in an info diagnostic.
 
 ```
 Ignores (2)
@@ -787,8 +789,12 @@ running it twice on an unchanged tree on the same day produces a byte-identical 
 Rerunning regenerates the file in full and prints `+N added, -M removed`. On a merge conflict, regenerate instead of
 merging by hand.
 
+`xcpurge baseline` takes the scan options for scope and config; `--format`, `--open` and `--browser` are rejected.
+
 `--baseline FILE` (or `"baseline"` in `xcpurge.json`, relative to the root) on `scan`, `assets`, `strings` and
-`files` hides the listed findings as a multiset (two findings with one identity need two counts) and prints
+`files` hides the listed findings as a multiset (two findings with one identity need two counts; by design, a fixed
+finding and a new one that share an identity, such as one locale copy of a key replaced by another, cancel out and
+are not reported) and prints
 
 ```
 Baseline .xcpurge-baseline.json (12 days): 140 baselined, 3 new, 2 fixed

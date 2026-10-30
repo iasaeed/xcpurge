@@ -76,6 +76,19 @@ final class IgnoreTests: XCTestCase {
         XCTAssertFalse(ignore.suppresses(file("App/a.swift", kind: .orphanFile)))
     }
 
+    /// Loose images and fonts are named with their extension; `asset:` rules match with or without it.
+    func testAssetRulesMatchLooseFileNamesWithoutExtension() {
+        let loose = Finding(kind: .unusedAsset, category: .assets, path: "App/unused_loose.png", name: "unused_loose.png",
+                            module: "App", confidence: .high)
+        XCTAssertTrue(Ignore(contents: "asset:unused_loose").suppresses(loose))
+        XCTAssertTrue(Ignore(contents: "asset:unused_loose.png").suppresses(loose))
+        XCTAssertTrue(Ignore(contents: "asset:unused_*").suppresses(loose))
+        XCTAssertFalse(Ignore(contents: "asset:unused").suppresses(loose))
+        XCTAssertFalse(Ignore(contents: "asset:unused_loose").suppresses(string("unused_loose.png")), "still assets only")
+        XCTAssertTrue(Ignore(contents: "asset:icon").suppresses(asset("icon")), "catalog names unchanged")
+        XCTAssertFalse(Ignore(contents: "asset:icon").suppresses(asset("icon.v2")) == false, "a dotted catalog name also matches its stem")
+    }
+
     func testEscapesAndBlankLines() {
         let ignore = Ignore(contents: "  \n\\#hash.swift\n\\!bang.swift\n   # indented comment\n")
         XCTAssertTrue(ignore.suppresses(file("#hash.swift")))
