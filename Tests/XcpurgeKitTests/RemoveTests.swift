@@ -280,12 +280,12 @@ final class RemoveTests: XCTestCase {
     }
 
     /// The confirmation counts paths after climbing and dedupe, and labels ghosts separately. Without a
-    /// terminal it declines, so nothing moves.
+    /// terminal nobody can answer, so nothing moves and the exit code (2) says so instead of a silent 0.
     func testCLIConfirmationSummary() throws {
         let root = try FixtureSupport.copyToTemp("ClassicApp")
         let run = try CLISupport.run(["remove", root.path, "./ClassicApp/unused_loose.png", "ClassicApp/unused_loose.png",
                                       "ClassicApp/Ghost.swift", "--quiet"])
-        XCTAssertEqual(run.status, 0, run.stderr)
+        XCTAssertEqual(run.status, 2, run.stderr)
         XCTAssertTrue(run.stderr.contains("Move 1 path(s) to .xcpurge-trash and drop 1 reference(s) to missing file(s)? Not a terminal"),
                       run.stderr)
         XCTAssertFalse(run.stderr.contains("moved"), run.stderr)
@@ -294,7 +294,7 @@ final class RemoveTests: XCTestCase {
         let edge = try FixtureSupport.copyToTemp("AssetsEdgeCases")
         let set = "Edge/Assets.xcassets/truly_unused.imageset"
         let climbed = try CLISupport.run(["remove", edge.path, set + "/truly_unused.png", set + "/Contents.json", "--quiet"])
-        XCTAssertEqual(climbed.status, 0, climbed.stderr)
+        XCTAssertEqual(climbed.status, 2, climbed.stderr)
         XCTAssertTrue(climbed.stderr.contains("removing asset set truly_unused.imageset (asset sets are removed whole)"), climbed.stderr)
         XCTAssertTrue(climbed.stderr.contains("Move 1 path(s) to .xcpurge-trash? Not a terminal"), climbed.stderr)
     }
@@ -325,7 +325,7 @@ final class RemoveTests: XCTestCase {
     func testCLIConfirmationExcludesWhatWillBeSkipped() throws {
         let root = try FixtureSupport.copyToTemp("ClassicApp")
         let run = try CLISupport.run(["remove", root.path, "ClassicApp", "ClassicApp/never_was.png", "ClassicApp/unused_loose.png", "--quiet"])
-        XCTAssertEqual(run.status, 0, run.stderr)
+        XCTAssertEqual(run.status, 2, run.stderr)
         XCTAssertTrue(run.stderr.contains("Move 1 path(s) to .xcpurge-trash? Not a terminal"), run.stderr)
         XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
 

@@ -2,7 +2,7 @@ PREFIX ?= $(shell [ -w /usr/local/bin ] && echo /usr/local || echo $(HOME)/.loca
 CORPUS ?=
 CORPUS_OUT ?= .build/corpus
 
-.PHONY: build test install corpus template
+.PHONY: build test install corpus template package
 
 build:
 	swift build -c release
@@ -13,6 +13,10 @@ test:
 # Re-embed Sources/XcpurgeKit/Resources/report.html after editing it (ReportTemplateTests catches drift).
 template:
 	Scripts/embed-report-template.sh
+
+# Release archive for the GitHub release (what docs/ci/*.yml download): .build/package/xcpurge-macos.tar.gz + .sha256
+package:
+	Scripts/package-release.sh
 
 install: build
 	mkdir -p $(PREFIX)/bin

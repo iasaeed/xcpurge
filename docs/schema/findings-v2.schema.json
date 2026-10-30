@@ -2,15 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/iasaeed/xcpurge/docs/schema/findings-v2.schema.json",
   "title": "xcpurge scan report",
-  "description": "The document `xcpurge scan|assets|strings|files --format json` writes (schemaVersion 2). Optional fields may be added without a version bump; see docs/schema/README.md.",
+  "description": "The document `xcpurge scan|assets|strings|files --format json` writes (schemaVersion 2). Optional fields and enum values may be added without a version bump, so objects are open and consumers must ignore unknown keys and values; see docs/schema/README.md.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["schemaVersion", "tool", "root", "modules", "summary", "size", "findings", "diagnostics"],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 2 },
     "tool": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["name", "version"],
       "properties": {
         "name": { "type": "string", "const": "xcpurge" },
@@ -21,7 +19,6 @@
     "modules": { "type": "array", "items": { "$ref": "#/$defs/ModuleEntry" } },
     "summary": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["byKind", "count", "bytes"],
       "properties": {
         "byKind": {
@@ -54,7 +51,6 @@
     },
     "ModuleID": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["container", "name"],
       "properties": {
         "container": { "type": "string", "description": "Root-relative .xcodeproj or package directory; empty for files no project claims." },
@@ -63,7 +59,6 @@
     },
     "ModuleEntry": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["id", "kind", "dependsOn", "embeds"],
       "properties": {
         "id": { "$ref": "#/$defs/ModuleID" },
@@ -74,7 +69,6 @@
     },
     "Finding": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["id", "kind", "category", "path", "module", "confidence", "reasons"],
       "properties": {
         "id": {
@@ -98,7 +92,6 @@
     "FindingHistory": {
       "type": "object",
       "description": "Git history of the finding's path (--git). Never changes confidence or reasons.",
-      "additionalProperties": false,
       "required": ["status"],
       "properties": {
         "status": { "type": "string", "enum": ["ok", "shallow", "untracked", "not-git", "unavailable"] },
@@ -111,7 +104,6 @@
     },
     "Commit": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["sha", "date", "authorName", "subject"],
       "properties": {
         "sha": { "type": "string" },
@@ -123,7 +115,6 @@
     },
     "BaselineEntry": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["key", "kind", "category", "module", "path", "count"],
       "properties": {
         "key": { "type": "string", "description": "Identity key (`kind|module|name`, …); see FindingIdentity." },
@@ -137,7 +128,6 @@
     },
     "BaselineReport": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["file", "createdAt", "ageDays", "toolVersion", "baselinedCount", "newCount", "fixed", "warnings", "strict"],
       "properties": {
         "file": { "type": "string" },
@@ -153,7 +143,6 @@
     },
     "Diagnostic": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["level", "message"],
       "properties": {
         "level": { "type": "string", "enum": ["info", "warning", "error"] },
@@ -163,7 +152,6 @@
     },
     "SizeEntry": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["name", "files", "bytes"],
       "properties": {
         "name": { "type": "string" },
@@ -173,7 +161,6 @@
     },
     "ModuleSize": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["id", "files", "bytes"],
       "properties": {
         "id": { "type": "string", "description": "`container:name`, or `(unattributed)`." },
@@ -183,7 +170,6 @@
     },
     "TreeSize": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["total", "files", "categories", "modules"],
       "properties": {
         "total": { "type": "integer", "minimum": 0 },
@@ -196,7 +182,6 @@
     },
     "Reclaimable": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["high", "highMedium"],
       "properties": {
         "high": { "type": "integer", "minimum": 0 },
@@ -206,7 +191,6 @@
     },
     "SizeReport": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["tree", "reclaimable"],
       "properties": {
         "tree": { "$ref": "#/$defs/TreeSize" },

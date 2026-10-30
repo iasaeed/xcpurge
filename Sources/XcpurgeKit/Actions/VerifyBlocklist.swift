@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// `.xcpurge-trash/verify-blocked.json`: paths an earlier `--verify` had to put back because the build failed

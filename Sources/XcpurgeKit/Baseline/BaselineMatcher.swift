@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// Applies a `BaselineFile` to the findings of a scan: hides what the file lists (as a multiset, so two

@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// Tolerant reader and format-preserving writer for `.xcstrings` (plan §4.6 steps 1-2 and 6).

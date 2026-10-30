@@ -7,7 +7,13 @@
 #   pull_request      -> downloads the latest main artifact, compares, writes size.md when the change is at least
 #                        --comment-threshold, and posts/edits ONE sticky comment (deleted again when size.md is absent).
 #                        `--fail-if-grows 500KB` fails the job on growth above that, unless the PR carries the
-#                        `size-increase-ok` label (the escape hatch: no re-run needed, just add the label and re-run).
+#                        `size-increase-ok` label (the escape hatch). Adding or removing the label re-runs the job
+#                        (`labeled` / `unlabeled` below), so no manual re-run is needed.
+#   The comment is posted (or the stale one removed) before the gate's failure is reported: those steps run with
+#   `always()`, so a failing gate still leaves the numbers on the PR.
+#
+# Pull requests from forks run with a read-only GITHUB_TOKEN: the comparison and the gate still work, but the comment
+# steps cannot write to the PR, so they carry `continue-on-error: true` and the job passes or fails on the gate alone.
 #
 # No artifact? Compare against a worktree of the base branch instead (slower, no artifact plumbing):
 #   - run: git fetch origin "$BASE" && git worktree add ../base "origin/$BASE"
@@ -23,7 +29,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `labeled` / `unlabeled`: toggling `size-increase-ok` re-evaluates the gate without a new push.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
+# `pull-requests: write` lets the comment steps post; a fork PR gets a read-only token regardless (see above).
 permissions:
   contents: read
   pull-requests: write
@@ -39,8 +48,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install xcpurge
-        # Pinned release binary (asset name as on the GitHub release page); `brew install iasaeed/tap/xcpurge` works
-        # too but is slower and floats to the newest version.
+        # Pinned release binary: the `xcpurge-macos.tar.gz` asset of the tagged release (built with
+        # `make package` / Scripts/package-release.sh, a universal arm64 + x86_64 binary at the archive root).
+        # `brew install iasaeed/tap/xcpurge` works too but is slower and floats to the newest version.
         run: |
           curl -fsSL "https://github.com/iasaeed/xcpurge/releases/download/v${XCPURGE_VERSION}/xcpurge-macos.tar.gz" -o xcpurge.tar.gz
           mkdir -p "$HOME/.local/bin" && tar -xzf xcpurge.tar.gz -C "$HOME/.local/bin"
@@ -67,7 +77,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BASE: ${{ github.base_ref }}
         run: |
-          run_id=$(gh run list -b "$BASE" -w xcpurge-size.yml -s success -L1 --json databaseId -q '.[0].databaseId' || true)
+          # `-e push`: only runs of the push job write the artifact; a fork PR from a branch also named `main` does not.
+          run_id=$(gh run list -b "$BASE" -w xcpurge-size.yml -e push -s success -L1 --json databaseId -q '.[0].databaseId' || true)
           echo "run-id=${run_id}" >> "$GITHUB_OUTPUT"
           [ -n "$run_id" ] || echo "::notice::no successful xcpurge-size run on $BASE yet; the first comparison needs one push to $BASE"
 
@@ -83,21 +94,26 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           # Add the `size-increase-ok` label to a PR whose growth is intended: the gate is skipped, the comment stays.
-          GATE: ${{ contains(github.event.pull_request.labels.*.name, 'size-increase-ok') && '' || '--fail-if-grows 500KB' }}
+          # (`!contains(...) && flag || ''`: the flag is the truthy operand, so the label really yields an empty GATE.)
+          GATE: ${{ !contains(github.event.pull_request.labels.*.name, 'size-increase-ok') && '--fail-if-grows 500KB' || '' }}
         run: |
           # shellcheck disable=SC2086
           xcpurge size . --compare size-base.json --format markdown \
             --comment-threshold 100KB --allow-missing-compare --output size.md $GATE
 
+      # `always()`: the comment is written even when the gate above failed the job. `continue-on-error`: a fork PR's
+      # read-only token cannot comment; that must not hide the gate's result.
       - name: Comment
-        if: github.event_name == 'pull_request' && hashFiles('size.md') != ''
+        if: always() && github.event_name == 'pull_request' && hashFiles('size.md') != ''
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: xcpurge-size
           path: size.md
 
       - name: Remove stale comment
-        if: github.event_name == 'pull_request' && hashFiles('size.md') == ''
+        if: always() && github.event_name == 'pull_request' && hashFiles('size.md') == ''
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: xcpurge-size

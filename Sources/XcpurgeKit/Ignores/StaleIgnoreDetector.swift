@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// `.xcpurgeignore` rules and inline `xcpurge:ignore` markers that no longer suppress anything, reported as

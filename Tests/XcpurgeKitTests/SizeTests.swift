@@ -253,5 +253,34 @@ final class SizeTests: XCTestCase {
         let pct = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--fail-if-grows", "1%", "--format", "json"])
         XCTAssertEqual(pct.status, 1, pct.stderr)
         XCTAssertTrue(pct.stdout.hasPrefix("{"), "json is still printed before the gate fires")
+        for limit in ["99999999999999999999GB", "1e300%", "inf%"] {
+            let huge = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--fail-if-grows", limit])
+            XCTAssertEqual(huge.status, 2, "\(limit): usage error, not a trap: \(huge.stderr)")
+            XCTAssertTrue(huge.stderr.contains("--fail-if-grows"), huge.stderr)
+        }
+        let threshold = try CLISupport.run(["size", fixture, "--no-swift", "--compare", saved.path, "--comment-threshold", "99999999999999999999GB"])
+        XCTAssertEqual(threshold.status, 2, threshold.stderr)
+    }
+
+    /// `size` measures the tree as it is: no baseline hides findings from the reclaimable estimate, and a baseline
+    /// file that does not exist is not its concern (scan would exit 2).
+    func testSizeIgnoresBaselineAndGit() throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try "{ \"baseline\": \"missing.json\" }\n".write(to: root.appendingPathComponent(Config.fileName), atomically: true, encoding: .utf8)
+        let size = try CLISupport.run(["size", root.path, "--no-swift", "--format", "json"])
+        XCTAssertEqual(size.status, 0, size.stderr)
+        XCTAssertFalse(size.stderr.contains("baseline"), size.stderr)
+        let snapshot = try JSONDecoder().decode(SizeSnapshot.self, from: Data(size.stdout.utf8))
+        XCTAssertGreaterThan(snapshot.reclaimable.highMedium, 0)
+        let scan = try CLISupport.run(["scan", root.path, "--no-swift", "--format", "json", "--quiet"])
+        XCTAssertEqual(scan.status, 2, "scan still rejects the missing baseline: \(scan.stderr)")
+        // A real baseline that hides every finding changes nothing for size.
+        try FileManager.default.removeItem(at: root.appendingPathComponent(Config.fileName))
+        let written = try CLISupport.run(["baseline", root.path, "--no-swift", "--quiet"])
+        XCTAssertEqual(written.status, 0, written.stderr)
+        let gated = try CLISupport.run(["size", root.path, "--no-swift", "--format", "json", "--baseline", root.appendingPathComponent(".xcpurge-baseline.json").path, "--git"])
+        XCTAssertEqual(gated.status, 0, gated.stderr)
+        XCTAssertFalse(gated.stderr.contains("Baseline") || gated.stderr.contains("git history"), gated.stderr)
+        XCTAssertEqual(try JSONDecoder().decode(SizeSnapshot.self, from: Data(gated.stdout.utf8)).reclaimable, snapshot.reclaimable)
     }
 }

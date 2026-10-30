@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// Reads `.stringsdict` tables. Only top-level keys are localization keys; nested `NSStringLocalizedFormatKey`

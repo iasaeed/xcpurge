@@ -1,4 +1,3 @@
-// LANE: A
 extension ReferenceIndex {
     /// The same index with every `xcpurge:ignore` line forgotten, for the detector pass that decides which
     /// markers still suppress something (`StaleIgnoreDetector`). References, patterns and markers are unchanged.

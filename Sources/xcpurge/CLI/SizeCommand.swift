@@ -56,7 +56,8 @@ struct SizeCommand: AsyncParsableCommand {
         var opts = options
         opts.format = .text
         opts.output = nil
-        let result = try await ScanRunner.scan(opts, categories: XcpurgeKit.Category.scannable)
+        // No baseline or git step: reclaimable counts every finding, and a missing baseline file is not size's concern.
+        let result = try await ScanRunner.scan(opts, categories: XcpurgeKit.Category.scannable, applyGates: false)
         let snapshot = SizeMeasurer.snapshot(result, categories: XcpurgeKit.Category.scannable, app: appSize)
         if let save {
             let url = CommonOptions.absolute(save)

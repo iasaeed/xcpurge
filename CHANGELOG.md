@@ -2,6 +2,30 @@
 
 ## 0.4.0 - unreleased
 
+### Fixed (review round B/D)
+
+- `--format agent`: project-supplied values (path, name, module, ignore entry) are escaped, so a `.strings` key
+  or asset name containing a newline can no longer forge a `remove:` line; values with spaces, quotes or control
+  characters are double-quoted with `\n \r \t \" \\ \u{XX}` escapes (new `values:` legend line), and a path with
+  a control character is shell-quoted as `$'…'`. The `remove:` command now carries `--yes`: without a terminal
+  the confirmation cannot be answered, and such a declined confirmation now exits 2 instead of 0 with nothing done.
+- `xcpurge explain` takes its format from `--format` only; a `"format": "github"` in `xcpurge.json` no longer
+  breaks it. A folder or catalog subject (`App/Assets.xcassets`) lists every finding under it.
+- `xcpurge size` no longer applies the baseline or `--git`: the reclaimable estimate counts every finding and a
+  missing baseline file does not fail it. `--fail-if-grows` / `--comment-threshold` values that do not fit in
+  64 bits or are not finite (`99999999999999999999GB`, `1e300%`, `inf%`) are usage errors (exit 2), not traps.
+- `xcpurge init --xcode-phase`: `--configuration` accepts spaces (`"App Store"`) and rejects shell syntax; the
+  phase reports `warning: xcpurge exited N (run xcpurge --version to check the install)` instead of `|| true`.
+- The HTML report drops `authorEmail` from the embedded document (and so from Download JSON); it was never shown.
+- Sample workflows: the `size-increase-ok` label really skips the gate (the ternary was inverted), the comment
+  steps run with `always()` so a failed gate still posts the comment, label changes re-run the job, fork PRs
+  (read-only token) are documented and cannot hide the gate's result, and the base-snapshot lookup only considers
+  push runs. `docs/ci/xcpurge.yml` uses the default shallow checkout with a commented `fetch-depth: 0` + `--git`
+  variant. `make package` (`Scripts/package-release.sh`) builds the `xcpurge-macos.tar.gz` (universal) and
+  `.sha256` the workflows download.
+- `docs/schema/findings-v2.schema.json` no longer closes objects with `additionalProperties: false`, matching the
+  "additive changes keep v2" policy; `SchemaTests` still requires every emitted key to be declared.
+
 ### Added
 
 - `xcpurge baseline [root] [--output FILE]` writes `.xcpurge-baseline.json`: one sorted line per finding identity

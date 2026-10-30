@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// Reads `.strings` tables: `PropertyListSerialization` is the source of truth for keys; a light tokenizer

@@ -1,4 +1,3 @@
-// LANE: A
 import ArgumentParser
 
 /// `--baseline` and stale-ignore flags shared by the scanning commands (see `xcpurge baseline`).

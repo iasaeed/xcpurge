@@ -19,7 +19,9 @@ struct InitCommand: AsyncParsableCommand {
         if !xcodePhase, configuration != "Release" || maxWarnings != 50 {
             throw ValidationError("--configuration and --max-warnings apply to --xcode-phase")
         }
-        if configuration.isEmpty || configuration.contains(where: { $0.isWhitespace || $0 == "\"" }) {
+        // The name lands inside a double-quoted shell default: spaces ("App Store") are fine, shell syntax is not.
+        if configuration.trimmingCharacters(in: .whitespaces).isEmpty
+            || configuration.contains(where: { $0.isNewline || "\"$`\\}".contains($0) }) {
             throw ValidationError("--configuration: expected a build configuration name or `any`")
         }
         if maxWarnings < 0 { throw ValidationError("--max-warnings must be 0 or more") }
@@ -55,7 +57,7 @@ struct InitCommand: AsyncParsableCommand {
         WANT="${XCPURGE_CONFIGURATION:-\(configuration)}"
         if [ "$WANT" != any ] && [ "${CONFIGURATION:-}" != "$WANT" ]; then exit 0; fi
         command -v xcpurge >/dev/null 2>&1 || { echo "warning: xcpurge not installed"; exit 0; }
-        xcpurge scan "${SRCROOT}" --format xcode --min-confidence medium --quiet --max-warnings \(maxWarnings) || true
+        xcpurge scan "${SRCROOT}" --format xcode --min-confidence medium --quiet --max-warnings \(maxWarnings) || echo "warning: xcpurge exited $? (run xcpurge --version to check the install)"
         touch "${DERIVED_FILE_DIR}/xcpurge.stamp"
 
         """

@@ -39,6 +39,19 @@ final class ExplainTests: XCTestCase {
         XCTAssertEqual(byFileName.matches.first?.finding?.kind, .orphanFile)
     }
 
+    /// A folder or catalog subject lists every finding under it.
+    func testFolderSubjectListsContainedFindings() async throws {
+        let catalog = try await explain("Legacy/LegacyAssets.xcassets")
+        XCTAssertEqual(catalog.matches.map { $0.finding?.id }, ["unused-asset-ab15ed7993"])
+        XCTAssertEqual(catalog.matches.first?.status, .reported)
+        let folder = try await explain("./Content/")
+        XCTAssertEqual(folder.matches.compactMap { $0.finding?.path }.sorted(), ["Content/a.json", "Content/b.json"])
+        let absolute = try await explain(root.appendingPathComponent("Content").path)
+        XCTAssertEqual(absolute.matches.count, 2, "absolute folder path inside the root")
+        let byFileName = try await explain("Stray.swift")
+        XCTAssertEqual(byFileName.matches.count, 1, "a file name is not a folder prefix")
+    }
+
     func testUsedAssetIsNotReportedAndListsSites() async throws {
         let report = try await explain("legacy_used")
         let e = try XCTUnwrap(report.matches.first)
@@ -164,5 +177,18 @@ final class ExplainTests: XCTestCase {
         let html = try CLISupport.run(["explain", root, "legacy_unused", "--format", "html"])
         XCTAssertEqual(html.status, 2)
         XCTAssertTrue(html.stderr.contains("text or json"), html.stderr)
+    }
+
+    /// `"format"` in xcpurge.json is for scan reports; explain ignores it and takes only its own `--format`.
+    func testCLIIgnoresConfigFormat() throws {
+        let copy = try FixtureSupport.copyToTemp("MixedApp")
+        defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+        try "{ \"format\": \"github\" }\n".write(to: copy.appendingPathComponent(Config.fileName), atomically: true, encoding: .utf8)
+        let text = try CLISupport.run(["explain", copy.path, "legacy_unused"])
+        XCTAssertEqual(text.status, 0, text.stderr)
+        XCTAssertTrue(text.stdout.hasPrefix("legacy_unused: 1 match\n"), text.stdout)
+        let json = try CLISupport.run(["explain", copy.path, "legacy_unused", "--format", "json"])
+        XCTAssertEqual(json.status, 0, json.stderr)
+        XCTAssertNoThrow(try JSONDecoder().decode(ExplainReport.self, from: Data(json.stdout.utf8)))
     }
 }

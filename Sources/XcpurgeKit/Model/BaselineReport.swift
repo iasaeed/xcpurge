@@ -1,4 +1,4 @@
-// LANE: A (optional-field additions only; the fields below are a frozen contract)
+// Optional-field additions only; the fields below are a frozen contract.
 /// One entry of a baseline file: a finding identity (`FindingIdentity.key`) with the display fields needed to
 /// report it as fixed without re-reading sources, and how many findings share the key.
 public struct BaselineEntry: Codable, Hashable, Sendable, Comparable {

@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// `--verify "<cmd>"`: runs the build before any change (preflight), again after the trash action, and when it

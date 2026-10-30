@@ -152,7 +152,12 @@ final class HTMLReporterTests: XCTestCase {
         let findings = try XCTUnwrap(object["findings"] as? [[String: Any]])
         XCTAssertEqual(findings.filter { $0["history"] != nil }.count, 200)
         XCTAssertTrue(findings.allSatisfy { $0["id"] is String })
-        XCTAssertTrue(html.contains("hidden@example.com"), "the JSON carries the email when --git-emails was used...")
+        XCTAssertFalse(html.contains("hidden@example.com"), "--git-emails data never reaches the page")
+        XCTAssertFalse(try dataBlock(html).contains("authorEmail"), "the embedded payload (and so Download JSON) drops the key")
+        XCTAssertTrue(JSONReporter().render(rich).contains("hidden@example.com"), "the JSON report itself keeps it")
+        let commits = findings.compactMap { ($0["history"] as? [String: Any])?["lastCommit"] as? [String: Any] }
+        XCTAssertEqual(commits.count, 100)
+        XCTAssertTrue(commits.allSatisfy { $0["authorName"] is String && $0["sha"] is String }, "the rest of the commit survives")
         let bytes = html.utf8.count
         XCTAssertLessThan(bytes, 2_000_000)
 

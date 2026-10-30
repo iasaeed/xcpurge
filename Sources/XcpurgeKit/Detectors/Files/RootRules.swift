@@ -1,4 +1,3 @@
-// LANE: C
 /// Entry points that make a source file live without any by-name reference (plan §4.5 step 3): attributes the
 /// runtime or compiler consumes, system-instantiated conformances, and class names Interface Builder or an
 /// Info.plist instantiates.

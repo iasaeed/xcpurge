@@ -1,4 +1,3 @@
-// LANE: C
 import Foundation
 
 /// What `--verify` did in one trash session; stored in the session manifest.

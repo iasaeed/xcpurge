@@ -1,4 +1,3 @@
-// LANE: B
 import Foundation
 
 /// Unused and stale localized strings in `.xcstrings` / `.strings` / `.stringsdict` (plan §4.6, §4.7).

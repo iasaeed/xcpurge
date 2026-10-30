@@ -1,4 +1,3 @@
-// LANE: A
 import Foundation
 
 /// `.xcpurgeignore` rules, one per line, gitignore style: root-relative path globs (`**`, `*`, `?`, leading `/`
