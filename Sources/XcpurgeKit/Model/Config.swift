@@ -25,13 +25,18 @@ public struct Config: Codable, Sendable, Equatable {
     public var baselineMaxAgeDays = 90
     /// Report `.xcpurgeignore` rules and inline markers that suppress nothing (`--no-stale-ignore` turns it off).
     public var staleIgnores = true
+    /// Folder names holding snapshot-test reference images (swift-snapshot-testing, FBSnapshotTestCase). Files
+    /// under them are loaded by test name, so they are never reported as unused or orphaned.
+    public var testFixtureDirectories = Config.defaultTestFixtureDirectories
+
+    public static let defaultTestFixtureDirectories = ["__Snapshots__", "ReferenceImages", "ReferenceImages_64", "FailureDiffs"]
 
     public init() {}
 
     enum CodingKeys: String, CodingKey {
         case project, workspace, package, targets, format, failOn, minConfidence, exclude, derivedData,
              includePods, ignoreTestReferences, retainPublic, noSwift, verbose, localizationMacros,
-             baseline, baselineMaxAgeDays, staleIgnores
+             baseline, baselineMaxAgeDays, staleIgnores, testFixtureDirectories
     }
 
     /// Tolerant decoding: every key optional, unknown keys ignored.
@@ -55,6 +60,8 @@ public struct Config: Codable, Sendable, Equatable {
         baseline = try c.decodeIfPresent(String.self, forKey: .baseline)
         baselineMaxAgeDays = try c.decodeIfPresent(Int.self, forKey: .baselineMaxAgeDays) ?? 90
         staleIgnores = try c.decodeIfPresent(Bool.self, forKey: .staleIgnores) ?? true
+        testFixtureDirectories = try c.decodeIfPresent([String].self, forKey: .testFixtureDirectories)
+            ?? Config.defaultTestFixtureDirectories
     }
 
     public static let fileName = "xcpurge.json"

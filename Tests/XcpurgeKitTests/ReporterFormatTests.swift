@@ -30,7 +30,7 @@ final class ReporterFormatTests: XCTestCase {
                 + "line one line two (high)",
             "\(root)/SyncedApp/Excluded/Legacy.swift:1: warning: [xcpurge] orphan-file: 'Legacy.swift': "
                 + "excluded from every target (medium)",
-            "note: [xcpurge] 4 findings (1 high, 2 medium, 1 low)",
+            "note: [xcpurge] 3 findings (1 high, 2 medium, 0 low) + 1 dynamic lookup",
         ])
         XCTAssertEqual(XcodeReporter().render(r), XcodeReporter().render(r), "deterministic")
     }
@@ -45,7 +45,7 @@ final class ReporterFormatTests: XCTestCase {
             "\(root)/SyncedApp/Assets.xcassets/AppIcon.appiconset/Contents.json:1: warning: [xcpurge] unused-asset: "
                 + "'AppIcon' in SyncedApp: no APPICON setting names it (medium)",
             "warning: [xcpurge] 2 more findings not shown (run xcpurge scan for all)",
-            "note: [xcpurge] 4 findings (1 high, 2 medium, 1 low)",
+            "note: [xcpurge] 3 findings (1 high, 2 medium, 0 low) + 1 dynamic lookup",
         ])
         let one = XcodeReporter(maxWarnings: 3).render(r)
         XCTAssertTrue(one.contains("warning: [xcpurge] 1 more finding not shown"), one)
@@ -53,7 +53,7 @@ final class ReporterFormatTests: XCTestCase {
         XCTAssertEqual(uncapped, XcodeReporter().render(r), "a cap above the count changes nothing")
         XCTAssertFalse(uncapped.contains("more finding"))
         let zero = XcodeReporter(maxWarnings: 0).render(r)
-        XCTAssertEqual(zero, "warning: [xcpurge] 4 more findings not shown (run xcpurge scan for all)\nnote: [xcpurge] 4 findings (1 high, 2 medium, 1 low)\n")
+        XCTAssertEqual(zero, "warning: [xcpurge] 4 more findings not shown (run xcpurge scan for all)\nnote: [xcpurge] 3 findings (1 high, 2 medium, 0 low) + 1 dynamic lookup\n")
         XCTAssertEqual(XcodeReporter(maxWarnings: 0).render(ScanResult(context: r.context, findings: [])), "", "no findings, no summary")
     }
 
@@ -68,7 +68,7 @@ final class ReporterFormatTests: XCTestCase {
                 + "'Odd, name: 100%25.swift' in SyncedApp: line one%0Aline two (high)",
             "::warning file=SyncedApp/Excluded/Legacy.swift,line=1,title=xcpurge orphan-file::"
                 + "'Legacy.swift': excluded from every target (medium)",
-            "::notice::xcpurge: 4 findings (1 high, 2 medium, 1 low)",
+            "::notice::xcpurge: 3 findings (1 high, 2 medium, 0 low) + 1 dynamic lookup",
         ])
         // Scanning a subfolder of the checkout: paths stay relative to the checkout, not the scan root.
         let parent = RelPath.parent(r.context.root.path)
@@ -103,7 +103,7 @@ final class ReporterFormatTests: XCTestCase {
         XCTAssertEqual(lines.count, 6)
         XCTAssertEqual(lines[4], "::notice title=xcpurge baseline::2 fixed baseline entries (regenerate with xcpurge baseline): "
                        + "dead-source App App/Gone.swift; unused-asset App old_icon")
-        XCTAssertEqual(lines[5], "::notice::xcpurge: 4 findings (1 high, 2 medium, 1 low); baseline: 140 baselined, 4 new, 2 fixed")
+        XCTAssertEqual(lines[5], "::notice::xcpurge: 3 findings (1 high, 2 medium, 0 low) + 1 dynamic lookup; baseline: 140 baselined, 4 new, 2 fixed")
         withBaseline.baseline?.fixed = []
         let none = GitHubReporter(base: r.context.root.path).render(withBaseline)
         XCTAssertFalse(none.contains("title=xcpurge baseline"), "no fixed entries, no extra notice")

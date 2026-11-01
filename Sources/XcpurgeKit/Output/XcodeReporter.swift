@@ -25,8 +25,8 @@ public struct XcodeReporter: Reporter {
         }.joined()
         let hidden = findings.count - shown.count
         if hidden > 0 { out += "warning: [xcpurge] \(hidden) more finding\(hidden == 1 ? "" : "s") not shown (run xcpurge scan for all)\n" }
-        let counts = Confidence.allCases.reversed().map { c in "\(findings.filter { $0.confidence == c }.count) \(c.rawValue)" }
-        out += "note: [xcpurge] \(findings.count) finding\(findings.count == 1 ? "" : "s") (\(counts.joined(separator: ", ")))\n"
+        let tally = FindingTally(findings)
+        out += "note: [xcpurge] \(tally.headline)\(tally.informationalText.map { " + " + $0 } ?? "")\n"
         return out
     }
 

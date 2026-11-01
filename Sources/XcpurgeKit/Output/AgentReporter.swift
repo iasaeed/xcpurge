@@ -72,10 +72,10 @@ public struct AgentReporter: Reporter {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    /// `42 findings (10 high, 20 medium, 12 low) · unused-asset 12 · dead-source 5 [· baseline: 140 hidden, 2 fixed]`.
+    /// `42 findings (10 high, 20 medium, 12 low) + 3 dynamic lookups · unused-asset 12 · dead-source 5 [· baseline: 140 hidden, 2 fixed]`.
     static func summary(_ findings: [Finding], baseline: BaselineReport?) -> String {
-        let counts = Confidence.allCases.reversed().map { c in "\(findings.filter { $0.confidence == c }.count) \(c.rawValue)" }
-        var parts = ["\(findings.count) finding\(findings.count == 1 ? "" : "s") (\(counts.joined(separator: ", ")))"]
+        let tally = FindingTally(findings)
+        var parts = [tally.headline + (tally.informationalText.map { " + " + $0 } ?? "")]
         var kindOrder: [FindingKind] = [], byKind: [FindingKind: Int] = [:]
         for f in findings {
             if byKind[f.kind] == nil { kindOrder.append(f.kind) }

@@ -1,19 +1,31 @@
 import Foundation
 
-/// Loads Swift packages via `swift package dump-package` (concurrently, 30 s timeout, private scratch path),
-/// falling back to `PackageManifestRegexFallback` when `--no-swift` / `XCPURGE_NO_SWIFT=1` is set or swift fails.
+/// Loads Swift packages via `swift package dump-package` (concurrently, in its own process group, 60 s timeout per
+/// manifest, private scratch path), falling back to `PackageManifestRegexFallback` when `--no-swift` /
+/// `XCPURGE_NO_SWIFT=1` is set or swift fails or times out. Note that dump-package compiles and runs the manifest.
 public enum PackageManifest {
-    /// - Parameter packageDirs: root-relative package directories (`""` for the root).
-    public static func load(packageDirs: [String], root: URL, useSwift: Bool, diagnostics: Diagnostics) async -> [ProjectModel] {
+    /// Longest a single `dump-package` may run before its manifest is read as text instead.
+    public static let dumpTimeout: TimeInterval = 60
+    public static let swiftCommand = ["/usr/bin/env", "swift"]
+
+    /// - Parameters:
+    ///   - packageDirs: root-relative package directories (`""` for the root).
+    ///   - timeout: per-manifest limit for `dump-package` (tests shorten it).
+    ///   - swift: the command that runs swift (tests substitute a fake that hangs).
+    public static func load(packageDirs: [String], root: URL, useSwift: Bool, diagnostics: Diagnostics,
+                            timeout: TimeInterval = dumpTimeout, swift: [String] = swiftCommand) async -> [ProjectModel] {
         let rootPath = root.standardizedFileURL.path
         let swiftAllowed = useSwift && ProcessInfo.processInfo.environment["XCPURGE_NO_SWIFT"] != "1"
+        // Ctrl-C or SIGTERM must take the swift-package / swift-frontend children with it.
+        let interrupts = swiftAllowed ? ProcessRunner.InterruptGuard() : nil
+        defer { interrupts?.dispose() }
         return await withTaskGroup(of: (Int, ProjectModel?).self) { group in
             for (i, dir) in packageDirs.enumerated() {
                 group.addTask {
                     let abs = RelPath.join(rootPath, dir)
                     if swiftAllowed {
                         do {
-                            let data = try await dumpPackage(at: abs)
+                            let data = try await dumpPackage(at: abs, timeout: timeout, swift: swift)
                             return (i, try model(fromDump: data, packageDir: dir, rootPath: rootPath))
                         } catch {
                             diagnostics.warn("swift package dump-package failed (\(error)); using manifest text fallback",
@@ -37,14 +49,14 @@ public enum PackageManifest {
     }
 
     /// Runs `swift package dump-package` with a per-package scratch directory under `$TMPDIR/xcpurge`.
-    static func dumpPackage(at dir: String) async throws -> Data {
+    static func dumpPackage(at dir: String, timeout: TimeInterval = dumpTimeout, swift: [String] = swiftCommand) async throws -> Data {
         let scratch = FileManager.default.temporaryDirectory
             .appendingPathComponent("xcpurge/\(stableHash(dir))").path
         let result = try await ProcessRunner.runAsync(
-            "/usr/bin/env", ["swift", "package", "dump-package", "--package-path", dir, "--scratch-path", scratch],
-            timeout: 30)
+            swift[0], Array(swift.dropFirst()) + ["package", "dump-package", "--package-path", dir, "--scratch-path", scratch],
+            timeout: timeout)
         guard result.status == 0, !result.timedOut else {
-            throw XcpurgeError.invalidProject(dir, result.timedOut ? "timed out" : "exit status \(result.status)")
+            throw XcpurgeError.invalidProject(dir, result.timedOut ? "timed out after \(Int(timeout)) s" : "exit status \(result.status)")
         }
         return result.stdout
     }

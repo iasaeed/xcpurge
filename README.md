@@ -586,6 +586,7 @@ allowed, and `xcpurge init` writes a starter file next to `.xcpurgeignore`.
 | `baseline` | Baseline file whose findings are hidden (`--baseline`). | none |
 | `baselineMaxAgeDays` | Warn when the baseline is older than this many days; 0 never warns (`--baseline-max-age`). | `90` |
 | `staleIgnores` | Report ignore rules that hide nothing (`false` = `--no-stale-ignore`). | `true` |
+| `testFixtureDirectories` | Folder names of snapshot-test reference images; files inside are never reported as unused or orphaned (still counted by `xcpurge size`). | `["__Snapshots__", "ReferenceImages", "ReferenceImages_64", "FailureDiffs"]` |
 
 `exclude` is not the same as `.xcpurgeignore`. Excluded files are still read, so a name used only inside them
 still counts as used. That makes it safe to exclude generated or vendored code.

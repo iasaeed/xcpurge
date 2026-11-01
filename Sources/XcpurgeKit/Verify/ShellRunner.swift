@@ -30,7 +30,7 @@ public enum ShellRunner {
     static let drainGrace: TimeInterval = 1
 
     /// Process groups of the builds running right now, and whether an interrupt was requested.
-    private final class Registry: @unchecked Sendable {
+    final class Registry: @unchecked Sendable {
         private let lock = NSLock()
         private var groups = Set<pid_t>()
         private var interruptedFlag = false
@@ -42,7 +42,8 @@ public enum ShellRunner {
             set { lock.withLock { interruptedFlag = newValue } }
         }
     }
-    private static let registry = Registry()
+    /// Shared with `ProcessRunner`, so an interrupt reaches `swift package dump-package` children too.
+    static let registry = Registry()
 
     /// Called from a signal handler: SIGTERM every running build group (SIGKILL after the grace) and remember
     /// that the current operation was interrupted, so the caller can stop before the next build.

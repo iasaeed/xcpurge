@@ -65,9 +65,13 @@ public struct TextReporter: Reporter {
             lines.append("")
         }
         let total = findings.compactMap(\.sizeBytes).reduce(0, +)
-        let counts = Confidence.allCases.reversed().map { c in "\(findings.filter { $0.confidence == c }.count) \(c.rawValue)" }
+        // Dynamic lookups and duplicate sets are reported beside the total, not inside it.
+        let tally = FindingTally(findings)
+        let info = tally.informationalText.map { " + " + $0 } ?? ""
+        let size = total > 0 ? ", " + ByteFormatter.string(total) + " reclaimable" : ""
         lines.append(findings.isEmpty ? "No findings."
-            : "Total: \(findings.count) findings (\(counts.joined(separator: ", ")))\(total > 0 ? ", " + ByteFormatter.string(total) + " reclaimable" : "")")
+            : tally.actionable == 0 ? "No findings\(info)."
+            : "Total: \(tally.headline)\(size)\(info)")
         let entries = result.context.diagnostics.entries
         let diagnostics = entries.filter { verbose || $0.level != .info }
         // `--verbose` lists info entries above as `info:`; otherwise they become notes, dropped under `--quiet`.

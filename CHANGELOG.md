@@ -2,7 +2,45 @@
 
 ## Unreleased
 
+### Added
+
+- New `xcpurge.json` key `testFixtureDirectories` (default `["__Snapshots__", "ReferenceImages", "ReferenceImages_64",
+  "FailureDiffs"]`, an empty list turns it off): snapshot-test reference images (swift-snapshot-testing,
+  FBSnapshotTestCase) are loaded by test name, so `unused-asset`, `unused-font`, `unused-resource` and
+  `orphan-file` findings under those folders are no longer reported, and their files are left out of `duplicate`
+  sets. The files still count in `xcpurge size` tree
+  totals. A non-default list changes the baseline `configHash`; the default does not. README table row:
+  `| testFixtureDirectories | Folder names of snapshot-test reference images; files inside are never reported as unused or orphaned (still counted by xcpurge size). | ["__Snapshots__", "ReferenceImages", "ReferenceImages_64", "FailureDiffs"] |`
+
+### Changed
+
+- The headline counts only actionable findings. The text `Total:` line, the scan summary line and the HTML header
+  card exclude `dynamic-lookup` records and `duplicate` members and name them beside the total instead, e.g.
+  `Total: 4,500 findings (900 high, 2,000 medium, 1,600 low) + 392 dynamic lookups, 88 duplicate sets`. The JSON
+  `summary` gains `actionable` and `informational` (`dynamicLookups`, `duplicateSets`); `summary.count` keeps
+  counting every finding, as the schema's version policy requires, so use `summary.actionable` for the headline
+  number. `docs/schema/findings-v2.schema.json` declares both new keys (optional; reports from 0.4.0 lack them).
+  `byKind` is unchanged. The `agent`, `github` and `xcode` summary lines use the same split.
+
 ### Fixed
+
+- `xcpurge explain --format json` no longer prints `"line": 0` for a reference inside a file with no line
+  structure (a value in a `.json` file): `line` is omitted from that reference site, and the text report shows the
+  bare path. The `line` key of `referenceSites` is optional.
+
+- `swift package dump-package` (the default for `Package.swift`; use `--no-swift` for untrusted code, since it
+  compiles and runs the manifest) now runs in a process group of its own. A timeout or Ctrl-C/SIGTERM kills it with
+  `swift-frontend` and the compiled manifest, which used to be left running for minutes. Each manifest gets 60 s
+  (was 30 s) before it is read as text instead, with a `warning: ... timed out after 60 s; using manifest text
+  fallback`.
+
+- `ghost-reference` findings under an uninitialised git submodule (a `.gitmodules` path that is missing or an empty
+  folder) or under missing CocoaPods output (a `Podfile` with no `Pods/Pods.xcodeproj` beside it) are no longer
+  reported, and neither are the `cannot read xcconfig` and `no project.pbxproj` warnings for those paths. One note
+  per folder says what to run: `uninitialised git submodule <path>; run git submodule update --init` or
+  `CocoaPods output missing; run pod install`.
+- A 0-byte `.strings`, `.stringsdict` or `.xcstrings` file warns `empty strings file` instead of `cannot parse
+  strings file`. Every diagnostic path is root-relative; `cannot read xcconfig` used to print an absolute path.
 
 - Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,
   a `size --save` snapshot such as `size-base.json`, including ones saved by 0.4.0, or an `explain --format json`

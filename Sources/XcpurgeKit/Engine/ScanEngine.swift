@@ -26,8 +26,8 @@ public struct ScanEngine: Sendable {
     }
 
     private func buildContext(indexingReferences: Bool) async throws -> ScanContext {
-        let diagnostics = Diagnostics()
         let rootPath = root.path
+        let diagnostics = Diagnostics(rootPath: rootPath)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: rootPath, isDirectory: &isDir), isDir.boolValue else {
             throw XcpurgeError.notFound(rootPath)
@@ -38,6 +38,9 @@ public struct ScanEngine: Sendable {
         // A baseline inside the root names every finding, so it must never be read as a reference source.
         if let baseline = Self.baselinePath(config, rootPath: rootPath) { walk.files.removeAll { $0.path == baseline } }
         progress.report(.walking(files: walk.files.count))
+        let missing = MissingCheckouts.detect(root: root, files: walk.files)
+        for m in missing { diagnostics.info(m.message, path: m.kind == .pods ? m.path : nil) }
+        diagnostics.suppressWarnings(under: missing.map(\.path))
         let located = try ProjectLocator.locate(root: root, walk: walk, config: config)
         progress.report(.discovering(projects: located.xcodeprojs.count, packages: located.packages.count))
         let projects = await parseProjects(located, diagnostics: diagnostics)
@@ -63,7 +66,8 @@ public struct ScanEngine: Sendable {
             ignore = Ignore()
         }
         return ScanContext(root: root, config: config, inventory: inventory, graph: graph, refs: refs,
-                           projects: projects, derivedData: derivedData, diagnostics: diagnostics, ignore: ignore)
+                           projects: projects, derivedData: derivedData, diagnostics: diagnostics, ignore: ignore,
+                           missingCheckouts: missing)
     }
 
     /// Root-relative path of `config.baseline` (absolute from the command line, root-relative from `xcpurge.json`),
@@ -72,6 +76,20 @@ public struct ScanEngine: Sendable {
         guard let baseline = config.baseline else { return nil }
         let rel = RelPath.relative(RelPath.join(rootPath, baseline), to: rootPath)
         return rel.isEmpty || rel.hasPrefix("..") ? nil : rel
+    }
+
+    /// Kinds that say "nothing uses this file", which snapshot-test reference images never satisfy by name.
+    static let fixtureKinds: Set<FindingKind> = [.unusedAsset, .unusedFont, .orphanFile, .unusedResource]
+
+    /// True for an unused-style finding inside a snapshot-test fixture folder (`testFixtureDirectories`).
+    static func isTestFixture(_ f: Finding, directories: [String]) -> Bool {
+        guard !directories.isEmpty, fixtureKinds.contains(f.kind) else { return false }
+        return inTestFixtureDirectory(f.path, directories: directories)
+    }
+
+    static func inTestFixtureDirectory(_ path: String, directories: [String]) -> Bool {
+        let names = Set(directories)
+        return path.split(separator: "/").dropLast().contains { names.contains(String($0)) }
     }
 
     /// Full scan for the given categories.
@@ -128,6 +146,7 @@ public struct ScanEngine: Sendable {
         let targets = Set(config.targets)
         return Array(Set(findings)).filter { f in
             f.confidence >= config.minConfidence
+                && !Self.isTestFixture(f, directories: config.testFixtureDirectories)
                 && !context.ignore.suppresses(f, refs: context.refs, inventory: context.inventory)
                 && (targets.isEmpty || targets.contains(f.module))
                 && !excludes.contains { $0.matches(f.path) }

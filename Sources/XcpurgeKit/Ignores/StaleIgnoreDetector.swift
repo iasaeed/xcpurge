@@ -251,7 +251,8 @@ enum StaleIgnoreDetector {
         let patternLines = Set(refs.dynamicPatterns.map { FileLine(file: $0.file, line: $0.line) })
         let noIgnores = ScanContext(root: ctx.root, config: ctx.config, inventory: ctx.inventory, graph: ctx.graph,
                                     refs: refs.withoutIgnores(), projects: ctx.projects, derivedData: ctx.derivedData,
-                                    diagnostics: Diagnostics(), ignore: ctx.ignore)
+                                    diagnostics: Diagnostics(), ignore: ctx.ignore,
+                                    missingCheckouts: ctx.missingCheckouts)
         // Duplicates never consult markers, so that detector is not rerun.
         let detectors = DetectorRegistry.detectors(for: categories.intersection([.assets, .strings, .files]))
         var findingLines = Set<FileLine>(), deadFiles = Set<String>()

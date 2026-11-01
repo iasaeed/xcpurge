@@ -39,6 +39,9 @@ public struct DuplicatesDetector: Detector {
         // `--exclude`d files are never findable, so they cannot make another file a duplicate either.
         let excludes = ctx.config.exclude.map(Glob.init)
         items.removeAll { item in excludes.contains { $0.matches(item.path) } }
+        // Snapshot reference images are often byte-identical across test classes and cannot be merged.
+        let fixtureDirs = ctx.config.testFixtureDirectories
+        items.removeAll { ScanEngine.inTestFixtureDirectory($0.path, directories: fixtureDirs) }
 
         var findings: [Finding] = []
         let bySize = Dictionary(grouping: items.filter { $0.size > 0 }, by: \.size)

@@ -69,6 +69,32 @@ final class ExplainTests: XCTestCase {
         XCTAssertNil(e.confidence)
     }
 
+    /// A value found inside a `.json` file has no line to point at: the JSON omits `line` instead of printing 0.
+    func testReferenceInJSONFileHasNoLine() async throws {
+        let dir = try FixtureSupport.tempTree([
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+            let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+            """,
+            "Sources/Kit/Kit.swift": "public struct Kit {}\nlet name = \"zebra_icon\"\n",
+            "Sources/Kit/data.json": #"{ "trackers": [ { "icon": "zebra_icon" } ] }"#,
+        ])
+        var config = Config()
+        config.noSwift = true
+        let report = try await explain("zebra_icon", root: dir, config: config)
+        let e = try XCTUnwrap(report.matches.first)
+        let inJSON = try XCTUnwrap(e.referenceSites.first { $0.path == "Sources/Kit/data.json" })
+        XCTAssertNil(inJSON.line)
+        XCTAssertEqual(try XCTUnwrap(e.referenceSites.first { $0.path == "Sources/Kit/Kit.swift" }).line, 2)
+        let json = Explainer.renderJSON(report)
+        XCTAssertFalse(json.contains("\"line\" : 0"), json)
+        let decoded = try JSONDecoder().decode(ExplainReport.self, from: Data(json.utf8))
+        XCTAssertNil(decoded.matches.first?.referenceSites.first { $0.path == "Sources/Kit/data.json" }?.line)
+        let text = Explainer.renderText(report)
+        XCTAssertTrue(text.contains("  - Sources/Kit/data.json "), "no :0 in the text report either")
+    }
+
     func testSuppressedByIgnoreFileLine() async throws {
         let copy = try FixtureSupport.copyToTemp("MixedApp")
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }

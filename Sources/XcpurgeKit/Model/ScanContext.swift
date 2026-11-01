@@ -13,9 +13,12 @@ public struct ScanContext: Sendable {
     public let derivedData: URL?
     public let diagnostics: Diagnostics
     public let ignore: Ignore
+    /// Uninitialised submodules and missing CocoaPods output: references into them dangle by design.
+    public let missingCheckouts: [MissingCheckout]
 
     public init(root: URL, config: Config, inventory: FileInventory, graph: ModuleGraph, refs: ReferenceIndex,
-                projects: [ProjectModel], derivedData: URL?, diagnostics: Diagnostics, ignore: Ignore) {
+                projects: [ProjectModel], derivedData: URL?, diagnostics: Diagnostics, ignore: Ignore,
+                missingCheckouts: [MissingCheckout] = []) {
         self.root = root
         self.config = config
         self.inventory = inventory
@@ -25,6 +28,7 @@ public struct ScanContext: Sendable {
         self.derivedData = derivedData
         self.diagnostics = diagnostics
         self.ignore = ignore
+        self.missingCheckouts = missingCheckouts
     }
 
     /// Absolute URL of a root-relative path.

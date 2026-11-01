@@ -99,6 +99,8 @@ public enum Explainer {
                 e.note = "hidden by --targets (module \(f.module))"
             } else if config.exclude.contains(where: { Glob($0).matches(f.path) }) {
                 e.note = "hidden by --exclude"
+            } else if ScanEngine.isTestFixture(f, directories: config.testFixtureDirectories) {
+                e.note = "snapshot-test fixture folder (testFixtureDirectories); files there are loaded by test name"
             } else {
                 e.note = "filtered out of the report"
             }
@@ -175,13 +177,13 @@ public enum Explainer {
             }
         }
         let sorted = out.sorted { a, b in
-            (a.path, a.line, a.value, a.kind) < (b.path, b.line, b.value, b.kind)
+            (a.path, a.line ?? 0, a.value, a.kind) < (b.path, b.line ?? 0, b.value, b.kind)
         }
         return (Array(sorted.prefix(siteCap)), max(0, sorted.count - siteCap))
     }
 
     static func site(_ r: Reference, exact: Bool, visible: Set<ModuleID>, refs: ReferenceIndex) -> Explanation.ReferenceSite {
-        Explanation.ReferenceSite(path: refs.path(of: r.file), line: Int(r.line),
+        Explanation.ReferenceSite(path: refs.path(of: r.file), line: r.line > 0 ? Int(r.line) : nil,
                                   module: refs.modules(of: r.file).sorted().first?.description ?? ModuleID.unknown.name,
                                   visible: refs.isVisible(r.file, visible), kind: describe(r.kind), exact: exact,
                                   value: r.value)
@@ -377,7 +379,7 @@ public enum Explainer {
             let total = e.referenceSites.count + e.referenceSitesTruncated
             lines.append("reference sites (\(total)):" + (total == 0 ? " none" : ""))
             for s in e.referenceSites {
-                lines.append("  - \(s.path):\(s.line) \(s.module) \(s.visible ? "visible" : "not visible") \(s.kind) "
+                lines.append("  - \(s.path)\(s.line.map { ":\($0)" } ?? "") \(s.module) \(s.visible ? "visible" : "not visible") \(s.kind) "
                     + "\"\(s.value)\"" + (s.exact ? "" : " (case differs)"))
             }
             if e.referenceSitesTruncated > 0 { lines.append("  … \(e.referenceSitesTruncated) more") }
