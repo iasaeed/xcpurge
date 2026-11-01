@@ -123,6 +123,26 @@ final class AssetsDetectorTests: XCTestCase {
         XCTAssertEqual(byName["flag_fr"]?.confidence, .low)
     }
 
+    /// Several names that mangle to one symbol: only the byte-order-first asset owns it, so `.icWallet` keeps
+    /// `Ic Wallet` and not `ic-wallet` / `ic_wallet` (not even through the loose member match).
+    func testGeneratedSymbolBelongsToTheCollisionWinnerOnly() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Assets.xcassets/Contents.json": "{}",
+            "Assets.xcassets/Ic Wallet.imageset/Contents.json": "{}",
+            "Assets.xcassets/ic-wallet.imageset/Contents.json": "{}",
+            "Assets.xcassets/ic_wallet.imageset/Contents.json": "{}",
+            "Assets.xcassets/IMG_0042.imageset/Contents.json": "{}",
+            "V.swift": """
+            import SwiftUI
+            let a = Image(.icWallet)
+            let b = Image(.IMG_0042)
+            """,
+        ])
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        let names = Set(AssetsDetector().run(ctx).filter { $0.kind == .unusedAsset }.compactMap(\.name))
+        XCTAssertEqual(names, ["ic-wallet", "ic_wallet"])
+    }
+
     // MARK: - Building blocks
 
     func testCatalogReader() throws {
