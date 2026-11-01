@@ -34,9 +34,20 @@ struct TokenReferenceExtractor {
     /// `enum Name: String` (OSS scan #3c): its name once declared, then with the frame id of its `{ … }` body.
     private var pendingRawEnum: String?
     private var rawEnum: (name: String, frame: Int)?
-    /// Names bound to a string expression in this file (`let themeName = "theme_" + mode`): passing one to a lookup is
-    /// already covered by the literal's own dynamic pattern, so it is no keyless lookup.
+    /// Names bound to an expression with literal text anywhere in this file (`let themeName = "theme_" + mode`,
+    /// `let name = isSaved ? "a" : "b"`): the literals are indexed themselves, so passing one is no keyless lookup.
     private var stringBound = Set<String>()
+    /// OSS scan #3e: locals of the current outermost declaration body computed without literal text (`let name =
+    /// model.icon()`, `for name in names`). Only these make a keyless asset lookup: parameters (forwarding wrappers,
+    /// whose callers' literals are indexed) and stored properties never do.
+    private var computedLocals = Set<String>()
+    /// A computed local and the token index where its initializer ends: `let image = UIImage(named: image)` still
+    /// reads the parameter `image` inside its own initializer.
+    private var pendingLocals: [(name: String, from: Int)] = []
+    /// Computed local -> the same-file function its initializer calls (`let iconName = sectionIconName(for: s)`), and
+    /// keyless pattern index -> that function: a function whose body holds literals returns names already indexed.
+    private var localCallee: [String: String] = [:]
+    private var keylessCallee: [Int: String] = [:]
 
     static let declarationKeywords: Set<String> = ["var", "let", "func"]
     /// Keywords that end a pending `var`/`let`/`func` without a body (protocol requirements, new scopes).
@@ -67,6 +78,11 @@ struct TokenReferenceExtractor {
     private mutating func run() {
         for t in tokens.indices { visit(t) }
         while !frames.isEmpty { popFrame() }
+        if !keylessCallee.isEmpty {
+            let returnsLiterals = Set(out.enclosingDeclarations.values)
+            let drop = Set(keylessCallee.filter { returnsLiterals.contains($0.value) }.keys)
+            out.patterns = out.patterns.enumerated().filter { !drop.contains($0.offset) }.map(\.element)
+        }
     }
 
     private func token(_ t: Int) -> SwiftToken? { tokens.indices.contains(t) ? tokens[t] : nil }
@@ -76,11 +92,11 @@ struct TokenReferenceExtractor {
         if dialect == .swift {
             trackDeclaration(t, tok)
             trackRawValueEnum(t, tok)
-            if tok.kind == .identifier, tok.text == "let" || tok.text == "var", let name = token(t + 1),
-               name.kind == .identifier, let eq = token(t + 2), eq.isPunct("="),
-               tokens[(t + 3)..<min(tokens.count, t + 40)].prefix(while: { $0.line == eq.line }).contains(where: { $0.kind == .string }) {
-                stringBound.insert(name.text)
+            if !pendingLocals.isEmpty {
+                for local in pendingLocals where local.from <= t { computedLocals.insert(local.name) }
+                pendingLocals.removeAll { $0.from <= t }
             }
+            trackLocalBinding(t, tok)
         }
         if tok.kind == .punct {
             switch tok.text {
@@ -136,12 +152,12 @@ struct TokenReferenceExtractor {
                    context(for: f).isLocalization(extraMacros: localizationMacros) {
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
                 }
-                // OSS scan #3e: an asset name passed as a bare variable (`UIImage(named: entityName)`): keyless asset
-                // lookup. Not a member chain, a ternary of literals or a variable bound to a string on its line.
-                if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
-                   !Self.literalKeywords.contains(tok.text), !stringBound.contains(tok.text),
-                   let after = token(t + 1), after.isPunct(",") || after.isPunct(")") || after.isPunct("]"),
-                   Self.isNameArgument(context(for: f)) {
+                // OSS scan #3e: an asset name computed locally (`UIImage(named: name)` after `let name = f(x)`, or
+                // `name.lowercased()`): keyless asset lookup. Never for parameters, properties, literal-bound names,
+                // a plain property read (`model.iconName`) or an argument holding literal text (interpolation, ternary).
+                if tok.kind == .identifier, computedLocals.contains(tok.text), !stringBound.contains(tok.text),
+                   Self.isNameArgument(context(for: f)), !argumentHasLiteral(t), !isPropertyRead(t) {
+                    if let callee = localCallee[tok.text] { keylessCallee[out.patterns.count] = callee }
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
                 }
             }
@@ -229,6 +245,80 @@ struct TokenReferenceExtractor {
         return c.callee == "Image" && c.argIndex == 0
     }
 
+    /// True when a string token with literal text appears in `tokens[range]` (`"x"`, `"icon_\(n)"`; not `"\(a)"`).
+    private func hasLiteralText(_ range: Range<Int>) -> Bool {
+        tokens[range].contains { $0.kind == .string && (!$0.interpolated || $0.segments.contains { !$0.isEmpty }) }
+    }
+
+    /// True when the call argument starting at `t` holds a string token: an interpolation (the tokenizer emits `code`
+    /// of `"flag_\(code)"` before the string itself) or literals (`flag ? "on" : "off"`).
+    private func argumentHasLiteral(_ t: Int) -> Bool {
+        var k = t, depth = 0
+        while let next = token(k), k < t + 64 {
+            if next.isPunct("(") || next.isPunct("[") || next.isPunct("{") { depth += 1 }
+            else if next.isPunct(")") || next.isPunct("]") || next.isPunct("}") { if depth == 0 { return false }; depth -= 1 }
+            else if depth == 0, next.isPunct(",") { return false }
+            else if next.kind == .string { return true }
+            k += 1
+        }
+        return false
+    }
+
+    /// True when the tokens in `range` only read a value (`a`, `a.b?.c`): forwarding, not computing a name.
+    private func isPlainChain(_ range: Range<Int>) -> Bool {
+        !range.isEmpty && tokens[range].allSatisfy { $0.isName || $0.isPunct(".") || $0.isPunct("?") || $0.isPunct("!") }
+    }
+
+    /// True when the call argument starting at `t` is a member read of two or more names (`model.iconName`).
+    private func isPropertyRead(_ t: Int) -> Bool {
+        var k = t
+        while let next = token(k), next.isName || next.isPunct(".") || next.isPunct("?") || next.isPunct("!") { k += 1 }
+        guard let end = token(k), end.isPunct(",") || end.isPunct(")") || end.isPunct("]") else { return false }
+        return k - t > 1
+    }
+
+    /// Records `let`/`var x = …` (also `if let`, `guard let`, `let x: T = …`) and `for x in …` bindings for keyless
+    /// asset lookups: literal text on the initializer's line binds the name to literals for the whole file; otherwise a
+    /// binding inside a declaration body is a computed local of that body, unless it only reads a value
+    /// (`if let name = model.iconName`, `let name = other`).
+    private mutating func trackLocalBinding(_ t: Int, _ tok: SwiftToken) {
+        guard tok.kind == .identifier, let name = token(t + 1), name.kind == .identifier else { return }
+        if tok.text == "for", token(t + 2)?.kind == .identifier, token(t + 2)?.text == "in" {
+            if bodyDecl != nil, token(t + 3)?.isPunct("[") != true { pendingLocals.append((name.text, t + 4)) }
+            return
+        }
+        guard tok.text == "let" || tok.text == "var" else { return }
+        var eq = t + 2
+        if token(eq)?.isPunct(":") == true {
+            while let next = token(eq), !next.isPunct("="), next.line == name.line, eq < t + 10 { eq += 1 }
+        }
+        guard let equals = token(eq), equals.isPunct("="), equals.line == name.line else { return }
+        // The initializer: brackets are followed across lines (`let name: String = { switch … }()`); at depth 0 it
+        // ends at a new line, a `,` (the next `if let` clause) or a `{` that is not the initializer itself (the body
+        // of `if let x = y {`).
+        var end = eq + 1, depth = 0
+        while end < min(tokens.count, eq + 400) {
+            let x = tokens[end]
+            if depth == 0, x.line != equals.line || x.isPunct(",") || (x.isPunct("{") && end > eq + 1) { break }
+            if x.isPunct("(") || x.isPunct("[") || x.isPunct("{") { depth += 1 }
+            if x.isPunct(")") || x.isPunct("]") || x.isPunct("}") { depth -= 1 }
+            end += 1
+        }
+        let value = (eq + 1)..<end
+        if hasLiteralText(value) {
+            stringBound.insert(name.text)
+        } else if bodyDecl != nil, !isPlainChain(value) {
+            pendingLocals.append((name.text, end))
+            var c = eq + 1
+            if token(c)?.text == "self", token(c + 1)?.isPunct(".") == true { c += 2 }
+            if let callee = token(c), callee.isName, token(c + 1)?.isPunct("(") == true {
+                localCallee[name.text] = callee.text
+            } else {
+                localCallee[name.text] = nil
+            }
+        }
+    }
+
     /// Emits each case of an `enum Name: String` without an explicit raw value as an implicit raw value: the case name
     /// is the string `rawValue` returns (`Bundle.main.url(forResource: effect.rawValue, …)` with `case pull`).
     private mutating func trackRawValueEnum(_ t: Int, _ tok: SwiftToken) {
@@ -301,7 +391,11 @@ struct TokenReferenceExtractor {
     /// Pops the innermost frame and back-fills its table / bundle arguments into the references it produced.
     private mutating func popFrame() {
         guard let f = frames.popLast() else { return }
-        if bodyDecl?.frame == f.id { bodyDecl = nil }
+        if bodyDecl?.frame == f.id {
+            bodyDecl = nil
+            computedLocals.removeAll()
+            pendingLocals.removeAll()
+        }
         if rawEnum?.frame == f.id { rawEnum = nil }
         guard !f.isBarrier else { return }
         let bundle = f.bundleTokens.isEmpty ? nil : f.bundleTokens.prefix(4).joined()

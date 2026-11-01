@@ -1085,7 +1085,7 @@ confidence: high = no reference from any module that can see it; remove, then bu
 commands: remove `xcpurge remove --yes <root> <path>` · undo `xcpurge restore <root>` · explain `xcpurge explain <root> <id>` · ignore: add the line to .xcpurgeignore with a `# reason` comment above it
 values: paths and names with spaces, quotes or control characters are double-quoted with \n \r \t \" \\ \u{XX} escapes; everything else is literal. ignore: lines are verbatim .xcpurgeignore entries (paste as is); only control characters or leading/trailing whitespace get the same quoting.
 after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.
-reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bundle, preview-only, public-api, test-only, extension-only, app-icon, odr, numbered-sibling, font-declared, xcode-stale, ib-stale, duplicate, ghost-ref, target-member, excluded, unattributed, folder-ref, convention, stale-ignore, no-ref, generated, other
+reasons: skipped-source, case-only-match, dyn-pattern, not-visible, enum-raw-value, string-literal, main-bundle-lookup, main-bundle, preview-only, public-api, test-only, extension-only, app-icon, odr, numbered-sibling, font-declared, xcode-stale, ib-stale, duplicate, ghost-ref, target-member, excluded, unattributed, folder-ref, convention, stale-ignore, no-ref, generated, other
 ## Summary
 8 findings (3 high, 1 medium, 4 low) · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2
 ## unused-asset (2)
@@ -1137,7 +1137,9 @@ reasons: skipped-source, case-only-match, dyn-pattern, string-literal, main-bund
   quoted rule would match nothing); only a control character or leading/trailing whitespace gets the quoting.
 - `reasons=` are codes for the free-text reasons (one per distinct code, in order). `no-ref` is the normal high
   case; `dyn-pattern`, `string-literal`, `main-bundle`, `convention`, `folder-ref` and friends mark the hints
-  that lower a finding to medium or low and need a look. `skipped-source` means a source could not be read and
+  that lower a finding to medium or low and need a look. `not-visible` is an exact name in a module that cannot see
+  the resource (medium), `main-bundle-lookup` the same name passed to a main-bundle lookup such as `UIImage(named:)`
+  or `NSLocalizedString` (low), `enum-raw-value` a case of a `String` enum without an explicit raw value (medium). `skipped-source` means a source could not be read and
   everything was capped at medium. `explain` prints the full text behind each code.
 - The id (`unused-asset-ab15ed7993`) is stable across runs for the same tree: the kind plus a hash of the
   finding's identity (module and name, or path) and path, never a line number. It is the same `id` the JSON

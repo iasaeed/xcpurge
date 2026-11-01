@@ -116,9 +116,9 @@ final class RuntimeNameTests: XCTestCase {
         XCTAssertNil(findings.first { $0.name == "Athens" })
     }
 
-    /// duckduckgo-ios `UIImage(named: entityName, in: nil, compatibleWith: trait)`: every catalog of that module is at
-    /// most medium, other modules' catalogs are untouched, and a variable bound to a literal is not keyless.
-    func testVariableAssetNameLowersSameModuleCatalogsToMedium() async throws {
+    /// A locally computed asset name lowers that module's catalogs to medium; a forwarded parameter
+    /// (duckduckgo-ios `UIImage(named: entityName, …)` inside `func load(for entityName:)`) does not.
+    func testLocallyComputedAssetNameLowersSameModuleCatalogsToMedium() async throws {
         let root = try FixtureSupport.copyToTemp("ModularWorkspace")
         try addImageSet("tracker_logo", in: root)
         try write("""
@@ -127,25 +127,58 @@ final class RuntimeNameTests: XCTestCase {
             UIImage(named: entityName, in: nil, compatibleWith: nil)
         }
         """, to: "App/App/TrackerImages.swift", in: root)
-        let findings = try await assets(root)
-        let logo = try XCTUnwrap(findings.first { $0.name == "tracker_logo" })
-        XCTAssertEqual(logo.confidence, .medium)
-        XCTAssertTrue(logo.reasons.contains { $0.contains("TrackerImages.swift:3 (name passed as a variable)") }, "\(logo.reasons)")
-        XCTAssertTrue(findings.contains { $0.kind == .dynamicLookup && $0.path == "App/App/TrackerImages.swift" })
+        let forwarded = try await assets(root)
+        XCTAssertEqual(forwarded.first { $0.name == "tracker_logo" }?.confidence, .high, "a forwarding wrapper is no lookup")
 
+        try write("""
+        import UIKit
+        func logo(for entity: Entity) -> UIImage? {
+            let entityName = entity.displayName.lowercased()
+            return UIImage(named: entityName, in: nil, compatibleWith: nil)
+        }
+        """, to: "App/App/TrackerImages.swift", in: root)
+        let computed = try await assets(root)
+        let logo = try XCTUnwrap(computed.first { $0.name == "tracker_logo" })
+        XCTAssertEqual(logo.confidence, .medium)
+        XCTAssertTrue(logo.reasons.contains { $0.contains("TrackerImages.swift:4 (name passed as a variable)") }, "\(logo.reasons)")
+        XCTAssertTrue(computed.contains { $0.kind == .dynamicLookup && $0.path == "App/App/TrackerImages.swift" })
+    }
+
+    func testKeylessLookupNeedsALocallyComputedName() {
         let tokens = SwiftTokenizer.tokenize("""
-        let themeName = "theme_" + mode
-        let a = UIImage(named: themeName)
-        let b = UIImage(named: "flag_\\(code)")
-        let c = UIImage(systemName: symbol)
-        let d = Image(icon)
-        let e = UIImage(named: entityName)
-        let assetName = isSaved ? "save-filled" : "save"
-        let f = UIImage(named: assetName)
-        let g = UIImage(named: state.imageName)
-        let h = Image(model.atBottom ? "down" : "up")
+        struct Cell {
+            var iconName: String
+            func forwarded(_ name: String) -> UIImage? { UIImage(named: name) }
+            func shadowed(_ image: String) -> UIImage? { let image = UIImage(named: image); return image }
+            func property() -> UIImage? { UIImage(named: iconName) }
+            func computed(_ model: Model) {
+                let picked = model.icon()
+                _ = UIImage(named: picked)
+                _ = UIImage(named: picked.lowercased())
+                let themeName = "theme_" + mode
+                _ = UIImage(named: themeName)
+                let saved = isSaved ? "save-filled" : "save"
+                _ = UIImage(named: saved)
+                _ = UIImage(named: "flag_\\(picked)")
+                _ = UIImage(systemName: picked)
+                for each in model.names { _ = Image(each) }
+                for fixed in ["a", "b"] { _ = Image(fixed) }
+                items.forEach { item in _ = UIImage(named: item) }
+                if let unwrapped = model.iconName, let other = model.alt { _ = UIImage(named: unwrapped) }
+                _ = UIImage(named: picked.iconName)
+                let switched: String = {
+                    switch mode { case .a: return "group"; case .b: return "lock" }
+                }()
+                _ = UIImage(named: switched)
+                let fromHelper = statusIcon(for: mode)
+                _ = UIImage(named: fromHelper)
+            }
+            func statusIcon(for mode: Mode) -> String { mode == .a ? "status_a" : "status_b" }
+            func other() -> UIImage? { UIImage(named: picked) }
+        }
         """)
         let out = TokenReferenceExtractor.extract(tokens, file: 0, dialect: .swift, localizationMacros: [])
-        XCTAssertEqual(out.patterns.filter(\.isKeyless).map(\.line), [5, 6], "bare variables only")
+        XCTAssertEqual(out.patterns.filter(\.isKeyless).map(\.line), [8, 9, 16],
+                       "computed locals and loop variables only; not parameters, properties or literal-bound names")
     }
 }

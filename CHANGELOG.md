@@ -21,9 +21,12 @@
 - Cases of `enum E: String` without an explicit raw value are indexed as implicit raw values (new reference kind
   `implicitRawValue` in `explain`), so `Bundle.main.url(forResource: effect.rawValue, …)` with `case pull` keeps
   `pull.wav` at medium (reason code `enum-raw-value`).
-- An asset name passed as a bare variable (`UIImage(named: entityName)`, `Image(name)`, `NSDataAsset(name:)`) is
-  a keyless lookup: the catalogs and loose images of that module drop to medium, with a `dynamic-lookup` record.
-  Member chains, ternaries of literals and variables bound to a string literal on their line do not count.
+- An asset name computed locally and passed to a lookup (`let name = entity.displayName.lowercased()` then
+  `UIImage(named: name)`, `for name in names { Image(name) }`, `Image(name.lowercased())`) is a keyless lookup: the
+  catalogs and loose images of that module drop to medium, with a `dynamic-lookup` record. Parameters (forwarding
+  wrappers, whose callers' literals are indexed), stored properties, plain value reads (`model.iconName`,
+  `if let name = model.iconName`), names bound to literal text anywhere in the file, and calls to a same-file
+  function whose body holds literals never count.
   References inside `#if FLAG` blocks keep counting whatever the flag (now covered by a test).
 
 ### Fixed
