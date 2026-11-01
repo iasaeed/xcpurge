@@ -242,7 +242,7 @@ public struct StringsDetector: Detector {
                 guard let c = r.context, isLookup(c) else { return false }
                 return (c.table ?? "Localizable") != table.stem
             }
-            guard let match = ctx.refs.unseenMatch([key], visible: visibleModules, isLookup: isLookup,
+            guard let match = ctx.refs.unseenMatch([key], visible: visibleModules, graph: ctx.graph, isLookup: isLookup,
                                                    accept: { !otherTable($0) }),
                   match.confidence < f.confidence else { return }
             f.confidence = match.confidence

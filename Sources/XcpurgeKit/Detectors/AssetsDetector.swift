@@ -239,7 +239,8 @@ public struct AssetsDetector: Detector {
             c.used = true
             return
         }
-        guard let match = resolver.refs.unseenMatch(c.names, visible: c.visible, isLookup: isLookup, accept: accept),
+        guard let match = resolver.refs.unseenMatch(c.names, visible: c.visible, graph: resolver.graph,
+                                                    isLookup: isLookup, accept: accept),
               match.confidence < c.confidence else { return }
         c.confidence = match.confidence
         c.reasons.append(resolver.refs.reason(for: match, owner: c.module))

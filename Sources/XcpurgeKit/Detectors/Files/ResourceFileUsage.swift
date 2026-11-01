@@ -67,7 +67,8 @@ enum ResourceFileUsage {
             // OSS scan #1: `Bundle.main.url(forResource:)` (low) or another exact match (medium) in a module that
             // cannot see the file. Heuristic: the receiver of `url(forResource:)` is not tracked, only `bundle:`.
             let accept = { (r: Reference) in r.file != Int32(i) && isUser(r.file) && !isUserText(r) }
-            if let match = ctx.refs.unseenMatch(names, visible: visible, isLookup: \.isResourceLookup, accept: accept),
+            if let match = ctx.refs.unseenMatch(names, visible: visible, graph: ctx.graph, isLookup: \.isResourceLookup,
+                                                accept: accept),
                match.confidence < confidence {
                 confidence = match.confidence
                 reasons.append(ctx.refs.reason(for: match, owner: ctx.moduleName(for: file.path)))

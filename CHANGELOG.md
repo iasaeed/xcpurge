@@ -20,7 +20,8 @@
   `UIColor(named:)`, `NSDataAsset`, `NSLocalizedString`, `String(localized:)`, `Text("key")`,
   `Bundle.main.url(forResource:)`; reason code `main-bundle-lookup`). Bundle-less lookups in dependencies of the
   owning app were medium and are now low too. Lookups that pass `.module`/`#bundle`, and localization calls naming
-  another table, still never count. `bundle: nil` / `in: nil` now reads as the main bundle.
+  another table, still never count. `bundle: nil` / `in: nil` now reads as the main bundle. With
+  `--ignore-test-references`, names found only in test targets do not count as such a match either.
 - A visible use of an accessor whose body in another module holds the name (`CommonStrings.attachmentTypeAnimated`
   wrapping `"ATTACHMENT_TYPE_ANIMATED"`) counts as a reference, for declarations whose name is declared only once.
   Heuristic, without type checking.

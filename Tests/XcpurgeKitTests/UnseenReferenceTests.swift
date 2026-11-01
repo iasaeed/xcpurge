@@ -142,4 +142,25 @@ final class UnseenReferenceTests: XCTestCase {
         XCTAssertEqual(findings.first { $0.path.hasSuffix("ding.json") }?.confidence, .medium)
         XCTAssertEqual(findings.first { $0.path.hasSuffix("unused.json") }?.confidence, .high)
     }
+
+    /// `--ignore-test-references` puts test targets outside the visible modules on purpose; a name used only in tests
+    /// must stay high instead of counting as an exact match elsewhere.
+    func testIgnoredTestReferencesDoNotCountAsUnseenMatches() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("test_only_art", in: root)
+        try appendLegacyKeys(["test_only_key"], in: root)
+        try write("""
+        import UIKit
+        let art = UIImage(named: "test_only_art")
+        let key = NSLocalizedString("test_only_key", tableName: "Legacy", comment: "")
+        """, to: "App/AppTests/TestOnlyUse.swift", in: root)
+
+        var ignoring = config
+        ignoring.ignoreTestReferences = true
+        let findings = try await ScanEngine(root: root, config: ignoring).run(categories: [.assets, .strings]).findings
+        XCTAssertEqual(findings.first { $0.name == "test_only_art" }?.confidence, .high)
+        XCTAssertEqual(findings.first { $0.name == "test_only_key" }?.confidence, .high)
+        let counted = try await ScanEngine(root: root, config: config).run(categories: [.assets, .strings]).findings
+        XCTAssertNil(counted.first { $0.name == "test_only_art" }, "tests count by default")
+    }
 }

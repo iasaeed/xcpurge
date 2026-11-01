@@ -18,15 +18,19 @@ public struct UnseenMatch: Sendable {
 extension ReferenceIndex {
     /// The strongest exact match of any name outside `visible`: a main-bundle lookup first, else the first other match,
     /// else an implicit enum raw value anywhere (medium). Lookups that pass another bundle (`.module`, `#bundle`)
-    /// target that module's own resources and never count.
+    /// target that module's own resources and never count. With `--ignore-test-references`, files of test modules are
+    /// outside `visible` by choice and never count here either.
     /// - Parameters:
     ///   - isLookup: true when a literal's call context is the lookup API for this kind of resource.
     ///   - accept: references that may count (e.g. not the resource's own file, not a declaration).
-    func unseenMatch(_ names: [String], kinds: RefKindMask = .names, visible: Set<ModuleID>,
+    func unseenMatch(_ names: [String], kinds: RefKindMask = .names, visible: Set<ModuleID>, graph: ModuleGraph,
                      isLookup: (CallContext) -> Bool, accept: (Reference) -> Bool = { _ in true }) -> UnseenMatch? {
+        func counts(_ r: Reference) -> Bool {
+            accept(r) && !(graph.ignoresTestReferences && isTestOnly(r.file, graph: graph))
+        }
         var plain: Reference?
         for name in names {
-            for r in sites(name, kinds: kinds) where !isVisible(r.file, visible) && accept(r) {
+            for r in sites(name, kinds: kinds) where !isVisible(r.file, visible) && counts(r) {
                 if r.kind == .stringLiteral, let context = r.context, isLookup(context) {
                     switch LocalizationCallClassifier.bundle(context) {
                     case .none, .main: return UnseenMatch(reference: r, isMainBundleLookup: true)
@@ -38,9 +42,15 @@ extension ReferenceIndex {
             }
         }
         for name in names where plain == nil {
-            plain = sites(name, kinds: .implicitRawValue).first(where: accept)
+            plain = sites(name, kinds: .implicitRawValue).first(where: counts)
         }
         return plain.map { UnseenMatch(reference: $0, isMainBundleLookup: false) }
+    }
+
+    /// True when every module of `file` is a test target.
+    func isTestOnly(_ file: Int32, graph: ModuleGraph) -> Bool {
+        let owners = modules(of: file)
+        return !owners.isEmpty && owners.allSatisfy { graph.module($0)?.kind.isTest == true }
     }
 
     /// The finding reason for a match; `owner` names the module whose resource it is.
