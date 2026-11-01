@@ -23,6 +23,10 @@
 
 ### Fixed
 
+- `xcpurge explain --format json` no longer prints `"line": 0` for a reference inside a file with no line
+  structure (a value in a `.json` file): `line` is omitted from that reference site, and the text report shows the
+  bare path. The `line` key of `referenceSites` is optional.
+
 - `swift package dump-package` (the default for `Package.swift`; use `--no-swift` for untrusted code, since it
   compiles and runs the manifest) now runs in a process group of its own. A timeout or Ctrl-C/SIGTERM kills it with
   `swift-frontend` and the compiled manifest, which used to be left running for minutes. Each manifest gets 60 s

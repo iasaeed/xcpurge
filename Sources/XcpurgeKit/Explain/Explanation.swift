@@ -17,7 +17,8 @@ public struct Explanation: Codable, Sendable {
     /// One place the name (or a symbol derived from it) appears.
     public struct ReferenceSite: Codable, Hashable, Sendable {
         public var path: String
-        public var line: Int
+        /// Omitted from the JSON when the file has no line structure to point at (a value inside a `.json` file).
+        public var line: Int?
         public var module: String
         /// True when the site's module can see the subject's owners (the visibility rule), so it counts.
         public var visible: Bool
@@ -28,7 +29,7 @@ public struct Explanation: Codable, Sendable {
         /// The token as written at the site.
         public var value: String
 
-        public init(path: String, line: Int, module: String, visible: Bool, kind: String, exact: Bool, value: String) {
+        public init(path: String, line: Int?, module: String, visible: Bool, kind: String, exact: Bool, value: String) {
             self.path = path
             self.line = line
             self.module = module
