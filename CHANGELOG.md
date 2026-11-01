@@ -50,6 +50,22 @@
 
 ### Fixed
 
+- Predicted Xcode asset symbols (used when no `GeneratedAssetSymbols-Index.plist` is available) now match `actool`
+  name for name (Xcode 26 and 27): digit-letter boundaries (`2fa_icon` → `._2FaIcon`, `e2e_test` → `.e2ETest`),
+  all-caps names kept verbatim (`IMG_0042` → `.IMG_0042`, `FOO BAR` → `.FOO_BAR`, ObjC `ACImageName_IMG_0042`),
+  `Color`/`Image` suffixes dropped whatever the set type and on namespace folders (`Brand Color/tint` →
+  `.Brand.tint`), keyword backticks only where Xcode adds them (`` `Type` `` folders, bare `type`/`async`/`await`
+  leaves), symbol sets with image symbols, and no symbols for data sets, app icons or sprite atlases. ObjC constants
+  include the namespace (`ACImageNameIconsMyTabsHome`) and drop non-ASCII letters. When several assets of one
+  target map to one symbol, only the first name in byte order owns it: `.icWallet` keeps `Ic Wallet` and no longer
+  hides `ic-wallet` and `ic_wallet`.
+- Predicted string catalog symbols now match `xcstringstool generate-symbols` for every probed key: `type` and
+  `TYPE` are `.type`, `protocol`/`Self`/`Any` are backticked, apostrophes vanish (`don't` → `.dont`), `$` and
+  emoji are kept, named placeholders are dropped (`%1$(friendsPosts)lld posts` → `.posts(friendsPosts:)`),
+  `%#@files@` → `._1$Files`, and keys Xcode refuses (`self`, `Type`, `Protocol`, `%@`, unsupported specifiers such
+  as `%x`) get none. A `manual` key with `"generatesSymbol": false` no longer counts as used through a symbol,
+  table names starting with a digit get an `_` (`2fa` → `_2Fa`), and backticked symbols (`` .`default` ``) match.
+
 - `xcpurge explain --format json` no longer prints `"line": 0` for a reference inside a file with no line
   structure (a value in a `.json` file): `line` is omitted from that reference site, and the text report shows the
   bare path. The `line` key of `referenceSites` is optional.

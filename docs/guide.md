@@ -618,10 +618,12 @@ Privacy: author **names** only by default (`.mailmap` is honoured). Emails appea
   sources themselves.
 - **Xcode's generated symbols**: `GeneratedAssetSymbols.swift`, or with `--derived-data` the exact
   `GeneratedAssetSymbols-Index.plist` from DerivedData. Without them, xcpurge applies Xcode's own name mangling:
-  asset `my-icon_2` → `.myIcon2`, `japan-street` → `.japanStreet`, `2fa` → `._2fa`, color `brandColor` →
-  `.brandColor` or `.brand`, and in Objective-C `brand-tint` → `ACColorNameBrandTint`. Manually managed string
-  catalog keys get symbols too: `onboarding.step.title` → `.onboardingStepTitle`, and tables other than
-  `Localizable` add a namespace (`Feature-Strings` → `FeatureStrings`).
+  asset `my-icon_2` → `.myIcon2`, `japan-street` → `.japanStreet`, `2fa` → `._2Fa`, `IMG_0042` → `.IMG_0042`,
+  color `brandColor` → `.brand`, and in Objective-C `brand-tint` → `ACColorNameBrandTint`; when several assets give
+  one symbol, only the first name in byte order owns it (`Ic Wallet`, not `ic_wallet`). Manually managed string
+  catalog keys get symbols too, unless `generatesSymbol` is `false`: `onboarding.step.title` →
+  `.onboardingStepTitle`, `Hello %@` → `.hello(_:)`, and tables other than `Localizable` add a namespace
+  (`Feature-Strings` → `FeatureStrings`). The rules are checked name by name against `actool` and `xcstringstool`.
 - **Fonts**: a font counts as used when its file name, stem, PostScript name, family or full name appears.
 
 ## Project formats

@@ -141,6 +141,35 @@ final class StringsDetectorTests: XCTestCase {
         XCTAssertFalse(result.findings.contains { $0.kind == .dynamicLookup }, "matched interpolations are not dynamic lookups")
     }
 
+    /// Generated string symbols: placeholder keys are functions (`.landmarks(count:)`), non-default tables are
+    /// namespaces (`.Discover.title`), keywords are backticked, and only `manual` keys without
+    /// `"generatesSymbol": false` have a symbol.
+    func testGeneratedStringSymbols() async throws {
+        func entry(_ value: String, _ extra: String = "") -> String {
+            #"{"extractionState":"manual"\#(extra),"localizations":{"en":{"stringUnit":{"state":"translated","value":"\#(value)"}}}}"#
+        }
+        let root = try FixtureSupport.tempTree([
+            "Localizable.xcstrings": """
+            {"sourceLanguage":"en","version":"1.0","strings":{
+             "Landmarks":\(entry("%(count)lld landmarks")), "default":\(entry("Default")),
+             "hidden_key":\(entry("Hidden", #","generatesSymbol":false"#)),
+             "auto_key":{"extractionState":"extracted_with_value","localizations":{"en":{"stringUnit":{"state":"translated","value":"A"}}}}}}
+            """,
+            "Discover.xcstrings": #"{"sourceLanguage":"en","version":"1.0","strings":{"title":\#(entry("Discover"))}}"#,
+            "V.swift": """
+            import SwiftUI
+            struct V: View { var body: some View { VStack {
+                Text(.landmarks(count: 3)); Text(.Discover.title); Text(.`default`); Text(.hiddenKey); Text(.autoKey)
+            } } }
+            """,
+        ])
+        var config = Config()
+        config.noSwift = true
+        let result = try await ScanEngine(root: root, config: config).run(categories: [.strings])
+        let names = Set(result.findings.filter { $0.kind == .unusedString }.compactMap(\.name))
+        XCTAssertEqual(names, ["hidden_key", "auto_key"])
+    }
+
     /// Review #6: a dotted code key in a table named like a xib is not an object ID; code evidence decides.
     func testCodeKeysInInterfaceNamedTable() async throws {
         let root = try FixtureSupport.tempTree([
