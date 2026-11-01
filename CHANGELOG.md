@@ -13,6 +13,12 @@
 
 ### Fixed
 
+- `swift package dump-package` (the default for `Package.swift`; use `--no-swift` for untrusted code, since it
+  compiles and runs the manifest) now runs in a process group of its own. A timeout or Ctrl-C/SIGTERM kills it with
+  `swift-frontend` and the compiled manifest, which used to be left running for minutes. Each manifest gets 60 s
+  (was 30 s) before it is read as text instead, with a `warning: ... timed out after 60 s; using manifest text
+  fallback`.
+
 - `ghost-reference` findings under an uninitialised git submodule (a `.gitmodules` path that is missing or an empty
   folder) or under missing CocoaPods output (a `Podfile` with no `Pods/Pods.xcodeproj` beside it) are no longer
   reported, and neither are the `cannot read xcconfig` and `no project.pbxproj` warnings for those paths. One note
