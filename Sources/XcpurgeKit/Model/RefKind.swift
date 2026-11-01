@@ -14,6 +14,9 @@ public enum RefKind: Sendable, Hashable {
     case buildSetting(String)
     /// A generated accessor use (SwiftGen/R.swift); associated value is the accessor path. `value` is the raw name.
     case accessorUse(String)
+    /// A case of `enum E: String` with no explicit raw value; its name is the raw value. Associated value: the enum.
+    /// Weak (medium) evidence only: never part of `RefKindMask.names`.
+    case implicitRawValue(String)
 
     public var mask: RefKindMask {
         switch self {
@@ -24,6 +27,7 @@ public enum RefKind: Sendable, Hashable {
         case .plistValue: .plistValue
         case .buildSetting: .buildSetting
         case .accessorUse: .accessorUse
+        case .implicitRawValue: .implicitRawValue
         }
     }
 }

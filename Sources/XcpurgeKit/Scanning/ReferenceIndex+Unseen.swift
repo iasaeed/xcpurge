@@ -7,11 +7,18 @@ public struct UnseenMatch: Sendable {
     public var isMainBundleLookup: Bool
 
     public var confidence: Confidence { isMainBundleLookup ? .low : .medium }
+
+    /// OSS scan #3c: a case of `enum E: String` without an explicit raw value, visible or not.
+    public var isImplicitRawValue: Bool {
+        if case .implicitRawValue = reference.kind { return true }
+        return false
+    }
 }
 
 extension ReferenceIndex {
-    /// The strongest exact match of any name outside `visible`: a main-bundle lookup first, else the first other match.
-    /// Lookups that pass another bundle (`.module`, `#bundle`) target that module's own resources and never count.
+    /// The strongest exact match of any name outside `visible`: a main-bundle lookup first, else the first other match,
+    /// else an implicit enum raw value anywhere (medium). Lookups that pass another bundle (`.module`, `#bundle`)
+    /// target that module's own resources and never count.
     /// - Parameters:
     ///   - isLookup: true when a literal's call context is the lookup API for this kind of resource.
     ///   - accept: references that may count (e.g. not the resource's own file, not a declaration).
@@ -30,6 +37,9 @@ extension ReferenceIndex {
                 if plain == nil { plain = r }
             }
         }
+        for name in names where plain == nil {
+            plain = sites(name, kinds: .implicitRawValue).first(where: accept)
+        }
         return plain.map { UnseenMatch(reference: $0, isMainBundleLookup: false) }
     }
 
@@ -38,6 +48,9 @@ extension ReferenceIndex {
         let r = match.reference
         let site = r.line > 0 ? "\(path(of: r.file)):\(r.line)" : path(of: r.file)
         let module = modules(of: r.file).sorted().first?.name ?? ModuleID.unknown.name
+        if case .implicitRawValue(let type) = r.kind {
+            return "may be the implicit raw value of case \"\(r.value)\" in enum \(type) at \(site)"
+        }
         guard match.isMainBundleLookup else {
             return "exact match \"\(r.value)\" at \(site) in \(module), a module that cannot see \(owner)"
         }

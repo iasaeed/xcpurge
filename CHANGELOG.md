@@ -14,6 +14,17 @@
 - A visible use of an accessor whose body in another module holds the name (`CommonStrings.attachmentTypeAnimated`
   wrapping `"ATTACHMENT_TYPE_ANIMATED"`) counts as a reference, for declarations whose name is declared only once.
   Heuristic, without type checking.
+- Runtime-built names count from any module, not only visible ones: a constant prefix before an interpolation or
+  concatenation (`"avatar_\(rawValue)"`, three characters for untyped strings) and a string literal ending in `-`,
+  `_` or `.` that is a proper prefix of a name (`"pause-animation-"`) make matching assets and resource files low,
+  with a `dynamic-lookup` record. A visible untyped prefix was medium before.
+- Cases of `enum E: String` without an explicit raw value are indexed as implicit raw values (new reference kind
+  `implicitRawValue` in `explain`), so `Bundle.main.url(forResource: effect.rawValue, …)` with `case pull` keeps
+  `pull.wav` at medium (reason code `enum-raw-value`).
+- An asset name passed as a bare variable (`UIImage(named: entityName)`, `Image(name)`, `NSDataAsset(name:)`) is
+  a keyless lookup: the catalogs and loose images of that module drop to medium, with a `dynamic-lookup` record.
+  Member chains, ternaries of literals and variables bound to a string literal on their line do not count.
+  References inside `#if FLAG` blocks keep counting whatever the flag (now covered by a test).
 
 ### Fixed
 

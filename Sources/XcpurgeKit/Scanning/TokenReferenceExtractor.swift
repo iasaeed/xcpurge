@@ -31,6 +31,12 @@ struct TokenReferenceExtractor {
     private var pendingDecl: (name: String, depth: Int)?
     private var bodyDecl: (name: String, frame: Int)?
     private var initDecl: (name: String, depth: Int, line: Int32)?
+    /// `enum Name: String` (OSS scan #3c): its name once declared, then with the frame id of its `{ … }` body.
+    private var pendingRawEnum: String?
+    private var rawEnum: (name: String, frame: Int)?
+    /// Names bound to a string expression in this file (`let themeName = "theme_" + mode`): passing one to a lookup is
+    /// already covered by the literal's own dynamic pattern, so it is no keyless lookup.
+    private var stringBound = Set<String>()
 
     static let declarationKeywords: Set<String> = ["var", "let", "func"]
     /// Keywords that end a pending `var`/`let`/`func` without a body (protocol requirements, new scopes).
@@ -67,7 +73,15 @@ struct TokenReferenceExtractor {
 
     private mutating func visit(_ t: Int) {
         let tok = tokens[t]
-        if dialect == .swift { trackDeclaration(t, tok) }
+        if dialect == .swift {
+            trackDeclaration(t, tok)
+            trackRawValueEnum(t, tok)
+            if tok.kind == .identifier, tok.text == "let" || tok.text == "var", let name = token(t + 1),
+               name.kind == .identifier, let eq = token(t + 2), eq.isPunct("="),
+               tokens[(t + 3)..<min(tokens.count, t + 40)].prefix(while: { $0.line == eq.line }).contains(where: { $0.kind == .string }) {
+                stringBound.insert(name.text)
+            }
+        }
         if tok.kind == .punct {
             switch tok.text {
             case "(":
@@ -120,6 +134,14 @@ struct TokenReferenceExtractor {
                 // name (`Text(Date(), …)`, `Text(String(localized: …))`, `Text(L10n.x)`) is not a variable key.
                 if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
                    context(for: f).isLocalization(extraMacros: localizationMacros) {
+                    addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
+                }
+                // OSS scan #3e: an asset name passed as a bare variable (`UIImage(named: entityName)`): keyless asset
+                // lookup. Not a member chain, a ternary of literals or a variable bound to a string on its line.
+                if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
+                   !Self.literalKeywords.contains(tok.text), !stringBound.contains(tok.text),
+                   let after = token(t + 1), after.isPunct(",") || after.isPunct(")") || after.isPunct("]"),
+                   Self.isNameArgument(context(for: f)) {
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
                 }
             }
@@ -196,6 +218,44 @@ struct TokenReferenceExtractor {
         }
     }
 
+    /// Lowercase keywords that are values, not variables.
+    static let literalKeywords: Set<String> = ["nil", "true", "false", "self", "super", "try", "await"]
+
+    /// True for the name argument of an asset lookup: `named:` / `name:` / `imageNamed:` / `colorNamed:`, or SwiftUI
+    /// `Image(name)`. Not `systemName:`, `decorative:` (also takes a `CGImage`), `contentsOfFile:` and the like.
+    static func isNameArgument(_ c: CallContext) -> Bool {
+        guard c.isAssetLookup else { return false }
+        if let label = c.label { return ["named", "name", "imageNamed", "colorNamed"].contains(label) }
+        return c.callee == "Image" && c.argIndex == 0
+    }
+
+    /// Emits each case of an `enum Name: String` without an explicit raw value as an implicit raw value: the case name
+    /// is the string `rawValue` returns (`Bundle.main.url(forResource: effect.rawValue, …)` with `case pull`).
+    private mutating func trackRawValueEnum(_ t: Int, _ tok: SwiftToken) {
+        if tok.kind == .identifier, tok.text == "enum", let name = token(t + 1), name.kind == .identifier,
+           token(t + 2)?.isPunct(":") == true, let raw = token(t + 3), raw.kind == .identifier, raw.text == "String" {
+            pendingRawEnum = name.text
+            return
+        }
+        if let name = pendingRawEnum, tok.isPunct("{") {
+            rawEnum = (name, nextFrameID + 1)  // the frame `visit` pushes next
+            pendingRawEnum = nil
+            return
+        }
+        guard let e = rawEnum, tok.kind == .identifier, tok.text == "case", frames.last?.id == e.frame else { return }
+        var k = t + 1
+        while let name = token(k), name.kind == .identifier {
+            var next = k + 1
+            if token(next)?.isPunct("=") == true {
+                next += 2  // explicit raw value: `case b = "bee"`
+            } else if token(next)?.isPunct("(") != true {
+                addRef(.implicitRawValue(e.name), name.text, name.line, nil)
+            }
+            guard token(next)?.isPunct(",") == true else { break }
+            k = next + 1
+        }
+    }
+
     /// Splits a format string at its first and last `%` specifiers; nil when there is none.
     static func formatParts(_ s: String) -> (String, String)? {
         let chars = Array(s)
@@ -242,6 +302,7 @@ struct TokenReferenceExtractor {
     private mutating func popFrame() {
         guard let f = frames.popLast() else { return }
         if bodyDecl?.frame == f.id { bodyDecl = nil }
+        if rawEnum?.frame == f.id { rawEnum = nil }
         guard !f.isBarrier else { return }
         let bundle = f.bundleTokens.isEmpty ? nil : f.bundleTokens.prefix(4).joined()
         guard f.table != nil || bundle != nil else { return }

@@ -54,7 +54,7 @@
     "name" : "swiftgen_unused"
   },
   {
-    "confidence" : "medium",
+    "confidence" : "low",
     "kind" : "unusedAsset",
     "module" : "Edge",
     "name" : "theme_dark"

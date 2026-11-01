@@ -26,6 +26,8 @@ public struct ReferenceIndex: Sendable {
     public let declarationCounts: [String: Int]
     private let byValue: [String: [Int32]]
     private let byLowercased: [String: [Int32]]
+    /// Lowercased string literals ending in `-`, `_` or `.` (`"pause-animation-"`) -> first reference index.
+    private let separatorPrefixes: [String: Int32]
 
     /// Generic text files (json, html, css, js, xcconfig) larger than this are streamed in chunks instead of
     /// loaded whole. Nothing is skipped by size; only unreadable files are.
@@ -55,11 +57,17 @@ public struct ReferenceIndex: Sendable {
         self.sourcePaths = sourcePaths
         self.sourceModules = sourceModules
         var byValue: [String: [Int32]] = [:], byLower: [String: [Int32]] = [:], idents: [Int32: Set<String>] = [:]
+        var prefixes: [String: Int32] = [:]
         for (i, r) in references.enumerated() {
             byValue[r.value, default: []].append(Int32(i))
             byLower[r.value.lowercased(), default: []].append(Int32(i))
             if r.kind == .identifier || r.kind == .memberSymbol { idents[r.file, default: []].insert(r.value) }
+            if r.kind == .stringLiteral, Self.isSeparatorPrefix(r.value) {
+                let key = r.value.lowercased()
+                if prefixes[key] == nil { prefixes[key] = Int32(i) }
+            }
         }
+        self.separatorPrefixes = prefixes
         self.byValue = byValue
         self.byLowercased = byLower
         self.identifiersByFile = idents
@@ -94,6 +102,29 @@ public struct ReferenceIndex: Sendable {
                     return (r, use)
                 }
             }
+        }
+        return nil
+    }
+
+    static let nameSeparators: Set<Character> = ["-", "_", "."]
+
+    /// A literal that reads as the start of a built name: one separator after a letter or digit (`"icon-"`, not
+    /// `"Loading..."`), two letters or digits in all, no spaces or slashes.
+    static func isSeparatorPrefix(_ s: String) -> Bool {
+        guard let last = s.last, nameSeparators.contains(last), s.count <= 128,
+              let beforeLast = s.dropLast().last, beforeLast.isLetter || beforeLast.isNumber,
+              !s.contains(where: { $0.isWhitespace || $0 == "/" }) else { return false }
+        return s.filter { $0.isLetter || $0.isNumber }.count >= 2
+    }
+
+    /// OSS scan #3b: a string literal ending in a separator that is a proper prefix of `name` (`"pause-animation-"` for
+    /// `pause-animation-3`), compared ignoring case, in any module: the rest is appended at runtime.
+    public func separatorPrefix(of name: String) -> Reference? {
+        var prefix = ""
+        for (n, c) in name.lowercased().enumerated() {
+            prefix.append(c)
+            guard Self.nameSeparators.contains(c), n < name.count - 1, let i = separatorPrefixes[prefix] else { continue }
+            return references[Int(i)]
         }
         return nil
     }

@@ -39,7 +39,7 @@ struct EdgeView: View {
         .onAppear {
             _ = NSDataAsset(name: "config_data")
             _ = SKTexture(imageNamed: "hero_run")                // inside Characters.spriteatlas
-            let themeName = "theme_" + mode                      // unknown lookup kind: theme_dark is medium
+            let themeName = "theme_" + mode                      // constant prefix: theme_dark is low
             _ = UIImage(named: themeName)
             _ = NSBundleResourceRequest(tags: ["level1"])        // odr_level.imageset is low
             _ = Bundle.main.url(forResource: "web_logo", withExtension: "svg")

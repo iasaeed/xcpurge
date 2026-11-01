@@ -88,7 +88,7 @@ final class AssetsDetectorTests: XCTestCase {
         let found = try await findings("AssetsEdgeCases")
         XCTAssertEqual(found["tile_7"]?.confidence, .low)
         XCTAssertTrue(found["tile_7"]?.reasons.contains { $0.contains("EdgeApp.swift:") } == true)
-        XCTAssertEqual(found["theme_dark"]?.confidence, .medium)
+        XCTAssertEqual(found["theme_dark"]?.confidence, .low, "a constant prefix builds names (OSS scan #3)")
         XCTAssertEqual(found["badge_2"]?.confidence, .medium)
         XCTAssertEqual(found["odr_level"]?.confidence, .low)
         XCTAssertEqual(found["Icons/Settings/unused_gear"]?.path, "Edge/Assets.xcassets/Icons/Settings/unused_gear.imageset")

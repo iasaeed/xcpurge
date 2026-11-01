@@ -24,6 +24,8 @@ struct AssetReferenceResolver: Sendable {
     private let pathTails: [String: [Int]]
     /// Non-keyless dynamic patterns not on an `xcpurge:ignore` line.
     let patterns: [DynamicPattern]
+    /// Asset lookups whose name is a variable (`UIImage(named: entityName)`), not on an `xcpurge:ignore` line.
+    let keylessLookups: [DynamicPattern]
 
     init(_ ctx: ScanContext) {
         let refs = ctx.refs
@@ -43,6 +45,9 @@ struct AssetReferenceResolver: Sendable {
         fuzzyMembers = fuzzy
         pathTails = tails
         patterns = refs.dynamicPatterns.filter { !$0.isKeyless && !refs.isIgnored(file: $0.file, line: $0.line) }
+        keylessLookups = refs.dynamicPatterns.filter {
+            $0.isKeyless && $0.domain == .asset && !refs.isIgnored(file: $0.file, line: $0.line)
+        }
     }
 
     /// Union of `consumers(of:)` over the owning modules (plan §4.2).
@@ -122,19 +127,33 @@ struct AssetReferenceResolver: Sendable {
         for p in patterns where domains.contains(p.domain) || p.domain == .any {
             let literal = p.prefix.count + p.suffix.count
             let matches = p.domain == .any ? literal >= 3 : literal >= 1
-            guard matches, counts(p.file, visible) else { continue }
+            // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in.
+            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
+            guard matches, prefixed || counts(p.file, visible) else { continue }
             let prefix = p.prefix.lowercased(), suffix = p.suffix.lowercased()
             guard names.contains(where: { n in
                 let l = n.lowercased()
                 return l.count > literal && l.hasPrefix(prefix) && l.hasSuffix(suffix)
             }) else { continue }
-            let confidence: Confidence = p.domain == .any ? .medium : .low
+            let confidence: Confidence = p.domain == .any && !prefixed ? .medium : .low
             if best == nil || confidence < best!.confidence {
                 best = Downgrade(confidence: confidence,
                                  reason: "may be built dynamically at \(location(p.file, p.line)) (\"\(p.prefix)…\(p.suffix)\")",
                                  pattern: p)
             }
         }
+        // OSS scan #3b: `generateAnimation(with: "pause-animation-", …)` appends the rest at runtime, in any module.
+        if best?.confidence != .low,
+           let r = names.lazy.compactMap({ refs.separatorPrefix(of: $0) }).first(where: { !refs.isIgnored(file: $0.file, line: $0.line) }) {
+            best = Downgrade(confidence: .low, reason: "may be built dynamically at \(location(r.file, r.line)) (\"\(r.value)…\")",
+                             pattern: DynamicPattern(prefix: r.value, suffix: "", file: r.file, line: r.line, domain: .any,
+                                                     context: r.context))
+        }
         return best
+    }
+
+    /// OSS scan #3e: an asset lookup whose name is a variable, in one of `owners` (same-module catalogs only).
+    func keylessLookup(in owners: Set<ModuleID>) -> DynamicPattern? {
+        keylessLookups.first { !refs.modules(of: $0.file).isDisjoint(with: owners) }
     }
 }

@@ -17,6 +17,8 @@ public struct AssetsDetector: Detector {
         var names: [String]
         var module: String
         var visible: Set<ModuleID>
+        /// Modules that own the resource (for same-module keyless lookups).
+        var owners: Set<ModuleID> = []
         /// Catalog or directory; numbered siblings are only compared within one group.
         var group: String
         var sizeBytes: Int64
@@ -44,6 +46,7 @@ public struct AssetsDetector: Detector {
                 var c = evaluate(asset, module: module, visible: visible, resolver: resolver,
                                  protection: protection, index: index, ctx: ctx)
                 Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: \.isAssetLookup)
+                c.owners = unit.effectiveModules
                 candidates.append(c)
             }
         }
@@ -54,6 +57,7 @@ public struct AssetsDetector: Detector {
         for file in ctx.inventory.files where file.kind == .image && !file.modules.isEmpty {
             var c = evaluateLooseImage(file, ctx: ctx, resolver: resolver, protection: protection, folderLoads: folderLoads)
             Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: { $0.isAssetLookup || $0.isResourceLookup })
+            c.owners = file.effectiveModules
             candidates.append(c)
         }
         for file in ctx.inventory.files where file.kind == .font && !file.modules.isEmpty {
@@ -73,6 +77,11 @@ public struct AssetsDetector: Detector {
                 c.reasons.append(d.reason)
                 if d.pattern.domain == .any { usedPatterns.insert(d.pattern) }
             }
+            if c.confidence > .medium, c.domains.contains(.asset), let p = resolver.keylessLookup(in: c.owners) {
+                c.confidence = .medium
+                c.reasons.append("may be built dynamically at \(resolver.location(p.file, p.line)) (name passed as a variable)")
+                usedPatterns.insert(p)
+            }
             if c.confidence > .medium, let sibling = Self.numberedSibling(of: c, used: siblings) {
                 c.confidence = .medium
                 c.reasons.append("numbered sibling of used \"\(sibling)\"")
@@ -81,7 +90,8 @@ public struct AssetsDetector: Detector {
                                     confidence: c.confidence, reasons: c.reasons, sizeBytes: c.sizeBytes))
         }
 
-        for p in resolver.patterns where p.domain == .asset || usedPatterns.contains(p) {
+        let derived = usedPatterns.subtracting(resolver.patterns).sorted { ($0.file, $0.line, $0.prefix) < ($1.file, $1.line, $1.prefix) }
+        for p in resolver.patterns.filter({ $0.domain == .asset || usedPatterns.contains($0) }) + derived {
             findings.append(Finding(
                 kind: .dynamicLookup, category: .assets, path: ctx.refs.path(of: p.file), line: Int(p.line),
                 name: p.prefix + "*" + p.suffix,

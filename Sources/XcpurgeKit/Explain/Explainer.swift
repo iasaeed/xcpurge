@@ -196,6 +196,7 @@ public enum Explainer {
         case .plistValue: "plistValue"
         case .buildSetting(let key): "buildSetting(\(key))"
         case .accessorUse(let path): "accessorUse(\(path))"
+        case .implicitRawValue(let type): "implicitRawValue(\(type))"
         }
     }
 

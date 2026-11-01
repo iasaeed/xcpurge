@@ -125,14 +125,19 @@ enum ResourceFileUsage {
         }.map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 
-    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce `name` (plan §4.7 step 3).
+    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce `name` (plan §4.7 step 3). OSS scan #3: a
+    /// constant prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that
+    /// starts the name (`"intro-"`) counts from any module, not only visible ones.
     static func dynamicMatch(_ name: String, domains: Set<DynamicPattern.Domain>, _ ctx: ScanContext,
                              canSee: (Int32) -> Bool) -> String? {
-        ctx.refs.dynamicPatterns.first { p in
+        let pattern = ctx.refs.dynamicPatterns.first { p in
             guard domains.contains(p.domain), !p.isKeyless, name.count > p.prefix.count + p.suffix.count,
                   name.hasPrefix(p.prefix), name.hasSuffix(p.suffix) else { return false }
             let literal = p.prefix.count + p.suffix.count
-            return (p.domain == .any ? literal >= 3 : literal >= 1) && canSee(p.file)
-        }.map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
+            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
+            return (p.domain == .any ? literal >= 3 : literal >= 1) && (prefixed || canSee(p.file))
+        }
+        if let p = pattern { return "\(ctx.refs.path(of: p.file)):\(p.line)" }
+        return ctx.refs.separatorPrefix(of: name).map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 }
