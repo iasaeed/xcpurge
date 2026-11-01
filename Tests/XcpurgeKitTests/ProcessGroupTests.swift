@@ -91,6 +91,8 @@ final class ProcessGroupTests: XCTestCase {
     }
 
     func testManifestThatHangsFallsBackToTheTextParser() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["XCPURGE_NO_SWIFT"] != nil,
+                      "XCPURGE_NO_SWIFT disables manifest execution, so nothing can time out")
         let root = FixtureSupport.fixtureURL("ModularWorkspace")
         let diagnostics = Diagnostics()
         let started = Date()

@@ -12,3 +12,4 @@ DerivedData/
 
 # Local example reports contain machine-specific paths.
 docs/example-*.html
+docs/launch-drafts/
