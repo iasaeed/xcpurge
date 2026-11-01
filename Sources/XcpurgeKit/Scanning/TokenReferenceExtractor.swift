@@ -33,7 +33,7 @@ struct TokenReferenceExtractor {
     private var initDecl: (name: String, depth: Int, line: Int32)?
     /// `enum Name: String` (OSS scan #3c): its name once declared, then with the frame id of its `{ … }` body.
     private var pendingRawEnum: String?
-    private var rawEnum: (name: String, frame: Int)?
+    private var rawEnums: [(name: String, frame: Int)] = []  // innermost last: `enum Inner: String` nests
     /// Names bound to an expression with literal text anywhere in this file (`let themeName = "theme_" + mode`,
     /// `let name = isSaved ? "a" : "b"`): the literals are indexed themselves, so passing one is no keyless lookup.
     private var stringBound = Set<String>()
@@ -284,6 +284,7 @@ struct TokenReferenceExtractor {
     private mutating func trackLocalBinding(_ t: Int, _ tok: SwiftToken) {
         guard tok.kind == .identifier, let name = token(t + 1), name.kind == .identifier else { return }
         if tok.text == "for", token(t + 2)?.kind == .identifier, token(t + 2)?.text == "in" {
+            localCallee[name.text] = nil  // a loop variable is not the earlier `let name = helper()`
             if bodyDecl != nil, token(t + 3)?.isPunct("[") != true { pendingLocals.append((name.text, t + 4)) }
             return
         }
@@ -305,6 +306,7 @@ struct TokenReferenceExtractor {
             end += 1
         }
         let value = (eq + 1)..<end
+        localCallee[name.text] = nil
         if hasLiteralText(value) {
             stringBound.insert(name.text)
         } else if bodyDecl != nil, !isPlainChain(value) {
@@ -313,8 +315,6 @@ struct TokenReferenceExtractor {
             if token(c)?.text == "self", token(c + 1)?.isPunct(".") == true { c += 2 }
             if let callee = token(c), callee.isName, token(c + 1)?.isPunct("(") == true {
                 localCallee[name.text] = callee.text
-            } else {
-                localCallee[name.text] = nil
             }
         }
     }
@@ -328,11 +328,11 @@ struct TokenReferenceExtractor {
             return
         }
         if let name = pendingRawEnum, tok.isPunct("{") {
-            rawEnum = (name, nextFrameID + 1)  // the frame `visit` pushes next
+            rawEnums.append((name, nextFrameID + 1))  // the frame `visit` pushes next
             pendingRawEnum = nil
             return
         }
-        guard let e = rawEnum, tok.kind == .identifier, tok.text == "case", frames.last?.id == e.frame else { return }
+        guard let e = rawEnums.last, tok.kind == .identifier, tok.text == "case", frames.last?.id == e.frame else { return }
         var k = t + 1
         while let name = token(k), name.kind == .identifier {
             var next = k + 1
@@ -395,8 +395,9 @@ struct TokenReferenceExtractor {
             bodyDecl = nil
             computedLocals.removeAll()
             pendingLocals.removeAll()
+            localCallee.removeAll()
         }
-        if rawEnum?.frame == f.id { rawEnum = nil }
+        if rawEnums.last?.frame == f.id { rawEnums.removeLast() }
         guard !f.isBarrier else { return }
         let bundle = f.bundleTokens.isEmpty ? nil : f.bundleTokens.prefix(4).joined()
         guard f.table != nil || bundle != nil else { return }

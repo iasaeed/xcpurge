@@ -181,4 +181,36 @@ final class RuntimeNameTests: XCTestCase {
         XCTAssertEqual(out.patterns.filter(\.isKeyless).map(\.line), [8, 9, 16],
                        "computed locals and loop variables only; not parameters, properties or literal-bound names")
     }
+
+    /// A helper call bound in one function must not hide a loop variable of the same name in another.
+    func testLocalCalleeDoesNotLeakAcrossFunctions() {
+        let tokens = SwiftTokenizer.tokenize("""
+        struct Icons {
+            func a() { let name = helper() }
+            func helper() -> String { "x" }
+            func b(_ names: [String]) { for name in names.sorted() { _ = UIImage(named: name) } }
+            func c(_ model: Model) {
+                let name = helper()
+                for name in model.names() { _ = UIImage(named: name) }
+            }
+        }
+        """)
+        let out = TokenReferenceExtractor.extract(tokens, file: 0, dialect: .swift, localizationMacros: [])
+        XCTAssertEqual(out.patterns.filter(\.isKeyless).map(\.line), [4, 7])
+    }
+
+    func testNestedStringEnumKeepsOuterCases() {
+        let tokens = SwiftTokenizer.tokenize("""
+        enum Outer: String {
+            case first
+            enum Inner: String { case nested }
+            case second, third
+        }
+        """)
+        let out = TokenReferenceExtractor.extract(tokens, file: 0, dialect: .swift, localizationMacros: [])
+        let raw = out.references.compactMap { r -> String? in
+            if case .implicitRawValue(let type) = r.kind { return "\(type).\(r.value)" } else { return nil }
+        }
+        XCTAssertEqual(raw, ["Outer.first", "Inner.nested", "Outer.second", "Outer.third"])
+    }
 }
