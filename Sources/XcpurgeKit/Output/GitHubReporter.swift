@@ -26,10 +26,8 @@ public struct GitHubReporter: Reporter {
             let file = RelPath.isUnder(absolute, base) ? RelPath.relative(absolute, to: base) : absolute
             out += "::\(command) file=\(Self.escapeProperty(file)),line=\(line),title=\(title)::\(message)\n"
         }
-        let counts = Confidence.allCases.reversed().map { c in
-            "\(result.findings.filter { $0.confidence == c }.count) \(c.rawValue)"
-        }
-        var summary = "xcpurge: \(result.findings.count) findings (\(counts.joined(separator: ", ")))"
+        let tally = FindingTally(result.findings)
+        var summary = "xcpurge: \(tally.headline)" + (tally.informationalText.map { " + " + $0 } ?? "")
         if let b = result.baseline {
             if !b.fixed.isEmpty {
                 let list = b.fixed.sorted().map { "\($0.kind.flagName) \($0.module) \($0.name ?? $0.path)" }.joined(separator: "; ")

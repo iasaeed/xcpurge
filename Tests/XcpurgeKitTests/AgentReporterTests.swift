@@ -21,7 +21,7 @@ final class AgentReporterTests: XCTestCase {
         after removing: build, rescan (removal exposes more), keep removals in their own commit; work on a clean branch.
         reasons: \(ReasonCodes.codes.joined(separator: ", "))
         ## Summary
-        8 findings (3 high, 1 medium, 4 low) · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2
+        7 findings (3 high, 1 medium, 3 low) + 1 dynamic lookup · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2
         ## unused-asset (2)
         ### MixedApp
         - id=unused-asset-ab15ed7993 high Legacy/LegacyAssets.xcassets/legacy_unused.imageset name=legacy_unused reasons=no-ref
@@ -130,7 +130,7 @@ final class AgentReporterTests: XCTestCase {
                                               BaselineEntry(key: "k2", kind: .deadSource, category: .files, module: "App", path: "b")])
         let with = ScanResult(context: scan.context, findings: scan.findings, baseline: baseline)
         XCTAssertTrue(AgentReporter().render(with).contains(
-            "8 findings (3 high, 1 medium, 4 low) · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2 · baseline: 140 hidden, 2 fixed\n"))
+            "7 findings (3 high, 1 medium, 3 low) + 1 dynamic lookup · unused-asset 2 · dynamic-lookup 1 · unused-string 1 · orphan-file 2 · unused-resource 2 · baseline: 140 hidden, 2 fixed\n"))
         XCTAssertFalse(AgentReporter().render(scan).contains("baseline:"))
         let empty = AgentReporter().render(ScanResult(context: scan.context, findings: []))
         XCTAssertTrue(empty.hasSuffix("## Summary\n0 findings (0 high, 0 medium, 0 low)\n"), empty)

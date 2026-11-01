@@ -19,7 +19,7 @@
   `summary` gains `actionable` and `informational` (`dynamicLookups`, `duplicateSets`); `summary.count` keeps
   counting every finding, as the schema's version policy requires, so use `summary.actionable` for the headline
   number. `docs/schema/findings-v2.schema.json` declares both new keys (optional; reports from 0.4.0 lack them).
-  `byKind` is unchanged.
+  `byKind` is unchanged. The `agent`, `github` and `xcode` summary lines use the same split.
 
 ### Fixed
 
