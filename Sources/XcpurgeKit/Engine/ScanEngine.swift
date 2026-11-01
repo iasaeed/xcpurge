@@ -74,6 +74,20 @@ public struct ScanEngine: Sendable {
         return rel.isEmpty || rel.hasPrefix("..") ? nil : rel
     }
 
+    /// Kinds that say "nothing uses this file", which snapshot-test reference images never satisfy by name.
+    static let fixtureKinds: Set<FindingKind> = [.unusedAsset, .unusedFont, .orphanFile, .unusedResource]
+
+    /// True for an unused-style finding inside a snapshot-test fixture folder (`testFixtureDirectories`).
+    static func isTestFixture(_ f: Finding, directories: [String]) -> Bool {
+        guard !directories.isEmpty, fixtureKinds.contains(f.kind) else { return false }
+        return inTestFixtureDirectory(f.path, directories: directories)
+    }
+
+    static func inTestFixtureDirectory(_ path: String, directories: [String]) -> Bool {
+        let names = Set(directories)
+        return path.split(separator: "/").dropLast().contains { names.contains(String($0)) }
+    }
+
     /// Full scan for the given categories.
     public func run(categories: Set<Category> = Category.scannable) async throws -> ScanResult {
         let start = Date()
@@ -128,6 +142,7 @@ public struct ScanEngine: Sendable {
         let targets = Set(config.targets)
         return Array(Set(findings)).filter { f in
             f.confidence >= config.minConfidence
+                && !Self.isTestFixture(f, directories: config.testFixtureDirectories)
                 && !context.ignore.suppresses(f, refs: context.refs, inventory: context.inventory)
                 && (targets.isEmpty || targets.contains(f.module))
                 && !excludes.contains { $0.matches(f.path) }

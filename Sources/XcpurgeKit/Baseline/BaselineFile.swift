@@ -80,12 +80,12 @@ public struct BaselineFile: Sendable, Equatable {
     }
 
     /// Hash of the settings that decide which findings a scan produces: exclude, targets, includePods,
-    /// ignoreTestReferences, retainPublic, localizationMacros and the project/workspace/package (root-relative).
+    /// ignoreTestReferences, retainPublic, localizationMacros, a non-default testFixtureDirectories and the project/workspace/package (root-relative).
     /// The `.xcpurgeignore` contents are not covered: ignoring something is how a baselined finding gets fixed.
     public static func configHash(_ config: Config, root: URL) -> String {
         let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
         func rel(_ p: String?) -> String { p.map { $0.hasPrefix("/") ? RelPath.relative($0, to: rootPath) : $0 } ?? "" }
-        let parts: [String] = [
+        var parts: [String] = [
             "exclude=" + config.exclude.sorted().joined(separator: ","),
             "targets=" + config.targets.sorted().joined(separator: ","),
             "includePods=\(config.includePods)",
@@ -96,6 +96,10 @@ public struct BaselineFile: Sendable, Equatable {
             "workspace=" + rel(config.workspace),
             "package=" + rel(config.package),
         ]
+        // Only a non-default list joins the hash, so baselines written before the key existed stay valid.
+        if config.testFixtureDirectories != Config.defaultTestFixtureDirectories {
+            parts.append("testFixtureDirectories=" + config.testFixtureDirectories.sorted().joined(separator: ","))
+        }
         let hash = FindingIdentity.fnv1a64(parts.joined(separator: "\n"))
         let hex = String(hash, radix: 16)
         return "fnv64:" + String(repeating: "0", count: max(0, 16 - hex.count)) + hex

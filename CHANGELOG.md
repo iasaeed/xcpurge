@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- New `xcpurge.json` key `testFixtureDirectories` (default `["__Snapshots__", "ReferenceImages", "ReferenceImages_64",
+  "FailureDiffs"]`, an empty list turns it off): snapshot-test reference images (swift-snapshot-testing,
+  FBSnapshotTestCase) are loaded by test name, so `unused-asset`, `unused-font`, `unused-resource` and
+  `orphan-file` findings under those folders are no longer reported. The files still count in `xcpurge size` tree
+  totals. A non-default list changes the baseline `configHash`; the default does not. README table row:
+  `| testFixtureDirectories | Folder names of snapshot-test reference images; files inside are never reported as unused or orphaned (still counted by xcpurge size). | ["__Snapshots__", "ReferenceImages", "ReferenceImages_64", "FailureDiffs"] |`
+
 ### Fixed
 
 - Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,

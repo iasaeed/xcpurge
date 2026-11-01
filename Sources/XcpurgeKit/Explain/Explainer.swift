@@ -99,6 +99,8 @@ public enum Explainer {
                 e.note = "hidden by --targets (module \(f.module))"
             } else if config.exclude.contains(where: { Glob($0).matches(f.path) }) {
                 e.note = "hidden by --exclude"
+            } else if ScanEngine.isTestFixture(f, directories: config.testFixtureDirectories) {
+                e.note = "snapshot-test fixture folder (testFixtureDirectories); files there are loaded by test name"
             } else {
                 e.note = "filtered out of the report"
             }
