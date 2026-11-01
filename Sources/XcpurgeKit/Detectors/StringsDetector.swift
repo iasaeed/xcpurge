@@ -12,7 +12,11 @@ public struct StringsDetector: Detector {
         let evaluator = Evaluator(ctx)
         let tables = loadTables(ctx)
         var findings = tables.flatMap { table in
-            table.keys.keys.sorted().compactMap { evaluator.evaluate(table.keys[$0]!, in: table) }
+            let keys = table.keys.keys.sorted()
+            var results: [String: Finding] = [:]
+            for key in keys { results[key] = evaluator.evaluate(table.keys[key]!, in: table) }
+            evaluator.applyPluralFamilies(&results, keys: keys, table: table)
+            return keys.compactMap { results[$0] }
         }
         findings += settingsBundleFindings(ctx)
         findings += dynamicLookupFindings(ctx, tables: tables, evaluator: evaluator)
@@ -247,6 +251,54 @@ public struct StringsDetector: Detector {
                   match.confidence < f.confidence else { return }
             f.confidence = match.confidence
             f.reasons.append(ctx.refs.reason(for: match, owner: f.module))
+        }
+
+        /// CLDR plural categories a key may end in (`dates.time_hours.one`).
+        static let pluralCategories: Set<String> = ["zero", "one", "two", "few", "many", "other"]
+
+        /// `dates.time_hours.one` -> `dates.time_hours`; nil when the last component is not a plural category.
+        static func pluralBase(_ key: String) -> String? {
+            guard let dot = key.lastIndex(of: "."), dot != key.startIndex,
+                  pluralCategories.contains(String(key[key.index(after: dot)...])) else { return nil }
+            return String(key[..<dot])
+        }
+
+        /// A plural family (`base.one`, `base.few`, …) is looked up as `base + "." + category` at runtime: when the
+        /// base key or a sibling is referenced (no finding), or the base name is passed to a localization call or
+        /// returned by an accessor a visible file uses, every high member of the family drops to medium.
+        func applyPluralFamilies(_ results: inout [String: Finding], keys: [String], table: Table) {
+            var families: [String: [String]] = [:]
+            for key in keys { if let base = Self.pluralBase(key) { families[base, default: []].append(key) } }
+            guard !families.isEmpty else { return }
+            let visibleModules = visible(table)
+            for (base, members) in families.sorted(by: { $0.key < $1.key }) {
+                guard members.contains(where: { results[$0].map { $0.confidence > .medium } ?? false }) else { continue }
+                guard let reason = familyEvidence(base: base, members: members, results: results, table: table,
+                                                  visibleModules) else { continue }
+                for member in members {
+                    guard var f = results[member], f.confidence > .medium else { continue }
+                    f.confidence = .medium
+                    f.reasons.append(reason)
+                    results[member] = f
+                }
+            }
+        }
+
+        private func familyEvidence(base: String, members: [String], results: [String: Finding], table: Table,
+                                    _ visibleModules: Set<ModuleID>) -> String? {
+            if let used = (members + [base]).first(where: { table.keys[$0] != nil && results[$0] == nil }) {
+                return "plural family of \"\(base)\": \"\(used)\" is referenced"
+            }
+            for r in ctx.refs.sites(base, kinds: .stringLiteral) where ctx.refs.isVisible(r.file, visibleModules) {
+                if LocalizationCallClassifier.isLocalization(r.context, extraMacros: macros), case .strong = literalMatch(r, table) {
+                    return "plural family of \"\(base)\": looked up at \(site(r.file, r.line))"
+                }
+            }
+            if let chain = ctx.refs.accessorChain([base], visible: visibleModules, literalMayBeVisible: true) {
+                return "plural family of \"\(base)\": accessor at \(site(chain.literal.file, chain.literal.line)) is used at "
+                    + site(chain.use.file, chain.use.line)
+            }
+            return nil
         }
 
         /// Narrowing of a localization literal by `tableName:` and `bundle:` (§4.2 step 5).

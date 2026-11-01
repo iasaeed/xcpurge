@@ -51,6 +51,16 @@
 
 ### Fixed
 
+- Plural variants (`dates.time_hours.one`, `.few`, …; any key ending in a CLDR category `zero`, `one`, `two`, `few`,
+  `many`, `other`) are looked up as `base + "." + category` at runtime: when the base key or a sibling is
+  referenced, the base is passed to a localization call, or an accessor holding the base (`Strings.dates_time_hours`)
+  is used, every high member of the family drops to medium (reason code `plural-family`).
+- An asset name written with a file extension (`#imageLiteral(resourceName: "clock-12.pdf")`,
+  `@"NowPlaying@2x.png"`; `.pdf .png .jpg .jpeg .heic .svg .gif .webp .json .dataset`, with `@2x`/`@3x`) now counts
+  as an exact reference to the asset set, and `#imageLiteral` is an asset lookup.
+- Dotted asset names with a digit component (`custom.person.3.circle.fill`) were already matched: the nextcloud-ios
+  finding is correct, since its only use sits inside a `/* … */` block. A test now covers both cases.
+
 - Ctrl-C or SIGTERM during `swift package dump-package` now stops the scan at once on repositories with many local
   packages: interrupt handlers and the 60 s timers run on their own queue instead of the global pool that blocked
   manifest runs could exhaust, and at most one `dump-package` per core runs at a time.

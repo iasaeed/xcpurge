@@ -61,6 +61,11 @@ public struct ReferenceIndex: Sendable {
         for (i, r) in references.enumerated() {
             byValue[r.value, default: []].append(Int32(i))
             byLower[r.value.lowercased(), default: []].append(Int32(i))
+            // `#imageLiteral(resourceName: "clock.pdf")`, `@"NowPlaying@2x.png"`: also the asset-set name.
+            if RefKindMask.names.contains(r.kind.mask), let bare = Self.strippingImageExtension(r.value) {
+                byValue[bare, default: []].append(Int32(i))
+                byLower[bare.lowercased(), default: []].append(Int32(i))
+            }
             if r.kind == .identifier || r.kind == .memberSymbol { idents[r.file, default: []].insert(r.value) }
             if r.kind == .stringLiteral, Self.isSeparatorPrefix(r.value) {
                 let key = r.value.lowercased()
@@ -92,18 +97,34 @@ public struct ReferenceIndex: Sendable {
     /// Accessor chain (OSS scan #1): a visible use of a declaration (`CommonStrings.attachmentTypeAnimated`) whose body,
     /// in a file the visibility rule does not count, holds `value` as a string literal. Only declarations whose name is
     /// declared once in the scan, so `title` or `body` never chain. Heuristic: a type checker would resolve the member.
-    public func accessorChain(_ values: [String], visible: Set<ModuleID>) -> (literal: Reference, use: Reference)? {
+    /// - Parameter literalMayBeVisible: also follow accessors in visible files (plural families: the literal itself
+    ///   is no use when only the base of the family is spelled).
+    public func accessorChain(_ values: [String], visible: Set<ModuleID>,
+                              literalMayBeVisible: Bool = false) -> (literal: Reference, use: Reference)? {
         for value in values {
             for i in byValue[value] ?? [] {
                 let r = references[Int(i)]
-                guard r.kind == .stringLiteral, let decl = enclosingDeclarations[i], declarationCounts[decl] == 1,
-                      !isVisible(r.file, visible) else { continue }
+                guard r.kind == .stringLiteral, r.value == value, let decl = enclosingDeclarations[i],
+                      declarationCounts[decl] == 1, literalMayBeVisible || !isVisible(r.file, visible) else { continue }
                 if let use = sites(decl, kinds: .symbols).first(where: { $0.file != r.file && isVisible($0.file, visible) }) {
                     return (r, use)
                 }
             }
         }
         return nil
+    }
+
+    /// File extensions an asset-set name may be written with in code.
+    static let imageExtensions: Set<String> = ["pdf", "png", "jpg", "jpeg", "heic", "svg", "gif", "webp", "json", "dataset"]
+
+    /// `clock-12.pdf` -> `clock-12`, `NowPlaying@2x.png` -> `NowPlaying`; nil when the value has no such extension.
+    static func strippingImageExtension(_ value: String) -> String? {
+        guard let dot = value.lastIndex(of: "."), value.count <= 256 else { return nil }
+        let ext = value[value.index(after: dot)...].lowercased()
+        guard imageExtensions.contains(ext) else { return nil }
+        var base = String(value[..<dot])
+        for scale in ["@2x", "@3x"] where base.hasSuffix(scale) { base.removeLast(scale.count) }
+        return base.isEmpty || base.contains("/") ? nil : base
     }
 
     static let nameSeparators: Set<Character> = ["-", "_", "."]

@@ -787,6 +787,8 @@ mapped back to the real names. Xcode's own generated symbols (`Image(.logo)`) ar
 **My image names come from a server.** xcpurge cannot see them. Add `asset:server_driven_*` to `.xcpurgeignore`, or
 `// xcpurge:ignore - loaded by name from the server` where you load them.
 
+**Names built from two variables** (`"\(base)-\(lang)"`) have no fixed prefix, so xcpurge cannot tell which files they load: add an `.xcpurgeignore` rule.
+
 **What about CocoaPods?** `Pods/` is skipped. Pass `--include-pods` to scan it. The HTML report has a
 **Show Pods** box.
 

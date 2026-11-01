@@ -31,7 +31,7 @@ public struct CallContext: Sendable, Hashable {
     ]
     static let assetCallees: Set<String> = [
         "UIImage", "Image", "Color", "UIColor", "NSImage", "NSColor", "NSDataAsset", "ImageResource",
-        "ColorResource", "setAlternateIconName", "imageNamed", "colorNamed",
+        "ColorResource", "setAlternateIconName", "imageNamed", "colorNamed", "#imageLiteral",
     ]
 
     /// True when a string literal at this position is a localization key.
