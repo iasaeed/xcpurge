@@ -41,7 +41,7 @@ brew install iasaeed/tap/xcpurge
 
 ```sh
 mkdir -p ~/.local/bin
-base=https://github.com/iasaeed/xcpurge/releases/download/v0.5.0
+base=https://github.com/iasaeed/xcpurge/releases/download/v0.6.0
 curl -fsSLO "$base/xcpurge-macos.tar.gz" && curl -fsSLO "$base/xcpurge-macos.tar.gz.sha256"
 shasum -a 256 -c xcpurge-macos.tar.gz.sha256 && tar -xzf xcpurge-macos.tar.gz -C ~/.local/bin
 ```
@@ -54,7 +54,7 @@ git clone https://github.com/iasaeed/xcpurge.git && cd xcpurge
 make install
 ```
 
-Check it works: `xcpurge --version` prints `0.5.0`. `xcpurge doctor` shows the Xcode and Swift it found.
+Check it works: `xcpurge --version` prints `0.6.0`. `xcpurge doctor` shows the Xcode and Swift it found.
 
 If the shell says `command not found: xcpurge`, the folder is not on your PATH (the list of folders the shell
 searches for commands). Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and open a new Terminal window.
@@ -430,7 +430,7 @@ This prints a **Run Script phase** (a shell script Xcode runs during a build). I
 starts like this:
 
 ```sh
-# xcpurge Run Script phase (xcpurge 0.5.0). Add after "Compile Sources".
+# xcpurge Run Script phase (xcpurge 0.6.0). Add after "Compile Sources".
 # Either set ENABLE_USER_SCRIPT_SANDBOXING = NO for this target, or add $(SRCROOT) to Input File Lists.
 # Output Files: $(DERIVED_FILE_DIR)/xcpurge.stamp  (lets Xcode skip the phase when nothing changed)
 …
