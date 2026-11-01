@@ -39,12 +39,19 @@ public struct AssetsDetector: Detector {
         let index = GeneratedAssetSymbolsIndex.load(derivedData: ctx.derivedData, root: ctx.root)
         var candidates: [Candidate] = []
 
-        for unit in ctx.inventory.files where unit.kind == .assetCatalog {
+        let catalogs = ctx.inventory.files.filter { $0.kind == .assetCatalog }
+            .map { (unit: $0, assets: AssetCatalogReader.read(catalog: $0.path, root: ctx.root)) }
+        // A target's catalogs share one generated-symbols file, so symbol collisions are settled per owner set.
+        let owned = Dictionary(grouping: catalogs, by: \.unit.effectiveModules).values
+            .reduce(into: [String: AssetSymbolMangler.OwnedSymbols]()) { all, group in
+                all.merge(AssetSymbolMangler.ownedSymbols(in: group.flatMap(\.assets))) { a, _ in a }
+            }
+        for (unit, assets) in catalogs {
             let visible = resolver.consumers(of: unit.effectiveModules)
             let module = ctx.moduleName(for: unit.path)
-            for asset in AssetCatalogReader.read(catalog: unit.path, root: ctx.root) where !asset.type.isAlwaysKept {
-                var c = evaluate(asset, module: module, visible: visible, resolver: resolver,
-                                 protection: protection, index: index, ctx: ctx)
+            for asset in assets where !asset.type.isAlwaysKept {
+                var c = evaluate(asset, owned: owned[asset.path] ?? .init(), module: module, visible: visible,
+                                 resolver: resolver, protection: protection, index: index, ctx: ctx)
                 Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: \.isAssetLookup)
                 c.owners = unit.effectiveModules
                 candidates.append(c)
@@ -104,8 +111,9 @@ public struct AssetsDetector: Detector {
 
     // MARK: - Catalog entries
 
-    private func evaluate(_ asset: CatalogAsset, module: String, visible: Set<ModuleID>, resolver: AssetReferenceResolver,
-                          protection: AppIconProtection, index: GeneratedAssetSymbolsIndex, ctx: ScanContext) -> Candidate {
+    private func evaluate(_ asset: CatalogAsset, owned: AssetSymbolMangler.OwnedSymbols, module: String,
+                          visible: Set<ModuleID>, resolver: AssetReferenceResolver, protection: AppIconProtection,
+                          index: GeneratedAssetSymbolsIndex, ctx: ScanContext) -> Candidate {
         var seen = Set<String>()
         let names = ([asset.name, asset.leaf] + asset.aliases).filter { seen.insert($0).inserted }
         var c = Candidate(kind: .unusedAsset, path: asset.path, name: asset.name, names: names, module: module,
@@ -130,13 +138,17 @@ public struct AssetsDetector: Detector {
                 return c
             }
         } else {
-            let swift = AssetSymbolMangler.symbols(leaf: asset.leaf, type: asset.type, namespace: asset.namespace)
-            let objc = AssetSymbolMangler.objcSymbol(leaf: asset.leaf, type: asset.type).map { [$0] } ?? []
+            // Only the asset that owns a symbol gets it: `.icWallet` is `Ic Wallet`, not `ic_wallet` or `ic-wallet`.
+            // When two namespace folders mangle alike, either may own the enum, so both keep their symbol.
+            let guess = owned.orderDependent
+                ? AssetSymbolMangler.swiftSymbol(leaf: asset.leaf, type: asset.type, namespace: asset.namespace) : nil
+            let swift = (owned.swift ?? guess).map { [$0] } ?? []
+            let objc = owned.objc.map { [$0] } ?? []
             if resolver.symbolEvidence(swift: swift, objc: objc, visible: visible, strength: .medium) != nil {
                 c.used = true
                 return c
             }
-            if let fuzzy = resolver.fuzzyEvidence(asset.leaf, visible: visible) {
+            if !owned.lostSwift || owned.orderDependent, let fuzzy = resolver.fuzzyEvidence(asset.leaf, visible: visible) {
                 ctx.diagnostics.info("treated as used: \(fuzzy.reason)", path: asset.path)
                 c.used = true
                 return c

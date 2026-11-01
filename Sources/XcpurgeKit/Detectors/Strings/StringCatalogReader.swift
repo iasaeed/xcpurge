@@ -12,6 +12,8 @@ public enum StringCatalogReader {
         /// `extracted_with_value`, `manual`, `migrated`, `stale`, or nil (= extracted by the compiler).
         public var extractionState: String?
         public var shouldTranslate: Bool
+        /// `generatesSymbol` (nil when absent). Xcode generates a symbol for `manual` keys unless this is `false`.
+        public var generatesSymbol: Bool?
         /// Key or source-language values contain printf-style specifiers (generated symbol is a function).
         public var hasFormatSpecifiers: Bool
         /// Plural / device / width variations or substitutions are present.
@@ -53,6 +55,7 @@ public enum StringCatalogReader {
             collectValues(sourceLoc as Any, into: &values)
             return Entry(key: key, extractionState: body["extractionState"] as? String,
                          shouldTranslate: (body["shouldTranslate"] as? Bool) ?? true,
+                         generatesSymbol: body["generatesSymbol"] as? Bool,
                          hasFormatSpecifiers: StringSymbolMangler.hasFormatSpecifiers(key)
                              || values.contains(where: StringSymbolMangler.hasFormatSpecifiers),
                          hasVariations: localizations.values.contains { containsVariations($0) },

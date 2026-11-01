@@ -32,6 +32,8 @@ public struct StringsDetector: Detector {
         var line: Int?
         var state: String?
         var isCatalog: Bool
+        /// Xcode generates a `LocalizedStringResource` symbol: a `manual` catalog key without `generatesSymbol: false`.
+        var generatesSymbol = false
         var rank: (Int, Int, String)
     }
 
@@ -61,11 +63,13 @@ public struct StringsDetector: Detector {
                 ctx.diagnostics.warn("empty strings file", path: file.path)
                 continue
             }
-            var entries: [(key: String, line: Int?, state: String?)] = []
+            var entries: [(key: String, line: Int?, state: String?, symbol: Bool)] = []
             switch file.kind {
             case .stringCatalog:
                 do {
-                    entries = try StringCatalogReader.read(data).entries.map { ($0.key, $0.line, $0.extractionState) }
+                    entries = try StringCatalogReader.read(data).entries.map {
+                        ($0.key, $0.line, $0.extractionState, $0.extractionState == "manual" && $0.generatesSymbol != false)
+                    }
                 } catch {
                     ctx.diagnostics.warn("cannot read string catalog: \(error)", path: file.path)
                     continue
@@ -76,7 +80,7 @@ public struct StringsDetector: Detector {
                     ctx.diagnostics.warn("cannot parse \(file.kind.rawValue) file", path: file.path)
                     continue
                 }
-                entries = keys.map { ($0.key, $0.value, nil) }
+                entries = keys.map { ($0.key, $0.value, nil, false) }
             }
             let owners = file.effectiveModules
             let stem = RelPath.stem(file.path)
@@ -85,7 +89,8 @@ public struct StringsDetector: Detector {
             let isCatalog = file.kind == .stringCatalog
             let rank = (isCatalog ? 0 : 1, Self.lprojRank(file.path), file.path)
             for e in entries {
-                let candidate = TableKey(key: e.key, path: file.path, line: e.line, state: e.state, isCatalog: isCatalog, rank: rank)
+                let candidate = TableKey(key: e.key, path: file.path, line: e.line, state: e.state, isCatalog: isCatalog,
+                                         generatesSymbol: isCatalog && e.symbol, rank: rank)
                 if let existing = table.keys[e.key], existing.rank <= rank { continue }
                 table.keys[e.key] = candidate
             }
@@ -202,9 +207,11 @@ public struct StringsDetector: Detector {
                 }
                 if ev.strong { return ev }
             }
-            // Generated symbols (STRING_CATALOG_GENERATE_SYMBOLS) exist for manually managed catalog keys only.
+            // Generated symbols (STRING_CATALOG_GENERATE_SYMBOLS) exist for manual catalog keys without `generatesSymbol: false`.
             // ponytail: matched whether or not the setting is on; a stray `.name` can only hide a finding.
-            if entry.isCatalog, entry.state == "manual", let symbol = StringSymbolMangler.symbol(forKey: entry.key) {
+            // Keys with placeholders become functions (`.landmarks(count: 3)`): the member before `(` is the symbol.
+            if entry.generatesSymbol, let generated = StringSymbolMangler.symbol(forKey: entry.key) {
+                let symbol = generated.trimmingCharacters(in: CharacterSet(charactersIn: "`"))
                 let namespace = table.stem == "Localizable" ? nil : StringSymbolMangler.tableNamespace(table.stem)
                 for r in refs.sites(symbol, kinds: .memberSymbol) where refs.isVisible(r.file, visibleModules) {
                     let qualifier = r.context?.qualifier ?? ""

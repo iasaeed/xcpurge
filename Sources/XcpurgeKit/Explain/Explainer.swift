@@ -145,7 +145,9 @@ public enum Explainer {
                 let type = AssetType.byExtension[ext] ?? .image
                 names.append(leaf)
                 names += AssetSymbolMangler.symbols(leaf: leaf, type: type, namespace: Array(parts.dropLast()))
-                if let objc = AssetSymbolMangler.objcSymbol(leaf: leaf, type: type) { names.append(objc) }
+                if let objc = AssetSymbolMangler.objcSymbol(leaf: leaf, type: type, namespace: Array(parts.dropLast())) {
+                    names.append(objc)
+                }
             } else {
                 names += [RelPath.stem(last), last]
             }
@@ -286,7 +288,9 @@ public enum Explainer {
             path = asset.path
             names = [asset.name, asset.leaf] + asset.aliases
                 + AssetSymbolMangler.symbols(leaf: asset.leaf, type: asset.type, namespace: asset.namespace)
-            if let objc = AssetSymbolMangler.objcSymbol(leaf: asset.leaf, type: asset.type) { names.append(objc) }
+            if let objc = AssetSymbolMangler.objcSymbol(leaf: asset.leaf, type: asset.type, namespace: asset.namespace) {
+                names.append(objc)
+            }
         } else if onDisk {
             let last = RelPath.lastComponent(subject)
             names = [RelPath.stem(last), last]
