@@ -26,8 +26,8 @@ public struct ScanEngine: Sendable {
     }
 
     private func buildContext(indexingReferences: Bool) async throws -> ScanContext {
-        let diagnostics = Diagnostics()
         let rootPath = root.path
+        let diagnostics = Diagnostics(rootPath: rootPath)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: rootPath, isDirectory: &isDir), isDir.boolValue else {
             throw XcpurgeError.notFound(rootPath)
@@ -38,6 +38,9 @@ public struct ScanEngine: Sendable {
         // A baseline inside the root names every finding, so it must never be read as a reference source.
         if let baseline = Self.baselinePath(config, rootPath: rootPath) { walk.files.removeAll { $0.path == baseline } }
         progress.report(.walking(files: walk.files.count))
+        let missing = MissingCheckouts.detect(root: root, files: walk.files)
+        for m in missing { diagnostics.info(m.message, path: m.kind == .pods ? m.path : nil) }
+        diagnostics.suppressWarnings(under: missing.map(\.path))
         let located = try ProjectLocator.locate(root: root, walk: walk, config: config)
         progress.report(.discovering(projects: located.xcodeprojs.count, packages: located.packages.count))
         let projects = await parseProjects(located, diagnostics: diagnostics)
@@ -63,7 +66,8 @@ public struct ScanEngine: Sendable {
             ignore = Ignore()
         }
         return ScanContext(root: root, config: config, inventory: inventory, graph: graph, refs: refs,
-                           projects: projects, derivedData: derivedData, diagnostics: diagnostics, ignore: ignore)
+                           projects: projects, derivedData: derivedData, diagnostics: diagnostics, ignore: ignore,
+                           missingCheckouts: missing)
     }
 
     /// Root-relative path of `config.baseline` (absolute from the command line, root-relative from `xcpurge.json`),

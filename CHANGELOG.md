@@ -13,6 +13,14 @@
 
 ### Fixed
 
+- `ghost-reference` findings under an uninitialised git submodule (a `.gitmodules` path that is missing or an empty
+  folder) or under missing CocoaPods output (a `Podfile` with no `Pods/Pods.xcodeproj` beside it) are no longer
+  reported, and neither are the `cannot read xcconfig` and `no project.pbxproj` warnings for those paths. One note
+  per folder says what to run: `uninitialised git submodule <path>; run git submodule update --init` or
+  `CocoaPods output missing; run pod install`.
+- A 0-byte `.strings`, `.stringsdict` or `.xcstrings` file warns `empty strings file` instead of `cannot parse
+  strings file`. Every diagnostic path is root-relative; `cannot read xcconfig` used to print an absolute path.
+
 - Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,
   a `size --save` snapshot such as `size-base.json`, including ones saved by 0.4.0, or an `explain --format json`
   file) was read as a reference source, so the next scan or `--delete` dropped every finding it listed (e.g. the

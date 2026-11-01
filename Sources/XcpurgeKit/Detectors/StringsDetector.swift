@@ -53,6 +53,10 @@ public struct StringsDetector: Detector {
                 ctx.diagnostics.warn("cannot read file", path: file.path)
                 continue
             }
+            if data.isEmpty {
+                ctx.diagnostics.warn("empty strings file", path: file.path)
+                continue
+            }
             var entries: [(key: String, line: Int?, state: String?)] = []
             switch file.kind {
             case .stringCatalog:
