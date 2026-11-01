@@ -39,7 +39,7 @@ permissions:
   actions: read
 
 env:
-  XCPURGE_VERSION: "0.4.0"
+  XCPURGE_VERSION: "0.5.0"
 
 jobs:
   size:
