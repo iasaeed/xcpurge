@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- A project target linking a local package product through `XCSwiftPackageProductDependency` with no `package =`
+  attribute (Xcode writes this for a package added as a folder) got no dependency edge when the product's targets
+  come from a variable (`targets: publicTargets`), which `--no-swift` cannot read: every non-test target of the
+  package is now linked, and local packages the project references are searched first. App code in such projects
+  now sees the package's assets and strings (mastodon-ios).
+
 - Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,
   a `size --save` snapshot such as `size-base.json`, including ones saved by 0.4.0, or an `explain --format json`
   file) was read as a reference source, so the next scan or `--delete` dropped every finding it listed (e.g. the
