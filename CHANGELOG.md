@@ -11,6 +11,16 @@
   totals. A non-default list changes the baseline `configHash`; the default does not. README table row:
   `| testFixtureDirectories | Folder names of snapshot-test reference images; files inside are never reported as unused or orphaned (still counted by xcpurge size). | ["__Snapshots__", "ReferenceImages", "ReferenceImages_64", "FailureDiffs"] |`
 
+### Changed
+
+- The headline counts only actionable findings. The text `Total:` line, the scan summary line and the HTML header
+  card exclude `dynamic-lookup` records and `duplicate` members and name them beside the total instead, e.g.
+  `Total: 4,500 findings (900 high, 2,000 medium, 1,600 low) + 392 dynamic lookups, 88 duplicate sets`. The JSON
+  `summary` gains `actionable` and `informational` (`dynamicLookups`, `duplicateSets`); `summary.count` keeps
+  counting every finding, as the schema's version policy requires, so use `summary.actionable` for the headline
+  number. `docs/schema/findings-v2.schema.json` declares both new keys (optional; reports from 0.4.0 lack them).
+  `byKind` is unchanged.
+
 ### Fixed
 
 - `swift package dump-package` (the default for `Package.swift`; use `--no-swift` for untrusted code, since it

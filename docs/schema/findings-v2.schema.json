@@ -27,7 +27,24 @@
           "propertyNames": { "$ref": "#/$defs/FindingKind" },
           "additionalProperties": { "type": "integer", "minimum": 0 }
         },
-        "count": { "type": "integer", "minimum": 0 },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of findings of every kind, dynamicLookup records and duplicate members included. Use `actionable` for the headline number."
+        },
+        "actionable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Findings that are not dynamicLookup records or duplicate members; the number the text headline and the HTML report show. Optional: reports written by 0.4.0 or earlier lack it."
+        },
+        "informational": {
+          "type": "object",
+          "description": "Records reported beside the actionable total, not inside it. Optional: reports written by 0.4.0 or earlier lack it.",
+          "properties": {
+            "dynamicLookups": { "type": "integer", "minimum": 0, "description": "Findings of kind dynamicLookup." },
+            "duplicateSets": { "type": "integer", "minimum": 0, "description": "Distinct duplicate sets (groupID values of duplicate findings)." }
+          }
+        },
         "bytes": { "type": "integer", "minimum": 0, "description": "Sum of sizeBytes over all findings." }
       }
     },

@@ -266,7 +266,7 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
     </div>
   </div>
   <dl class="wrap stats">
-    <div><dt>Findings</dt><dd id="s-findings">–</dd></div>
+    <div><dt>Findings <small id="s-info"></small></dt><dd id="s-findings">–</dd></div>
     <div><dt>Reclaimable <small>high + medium</small></dt><dd id="s-bytes">–</dd></div>
     <div><dt>Modules</dt><dd id="s-modules">–</dd></div>
     <div><dt>Files scanned</dt><dd id="s-files">{{FILES}}</dd></div>
@@ -1089,7 +1089,9 @@ const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
 $('#btn-json').addEventListener('click', () => {
   const fs = rows(), byKind = {};
   for (const f of fs) byKind[f.kind] = (byKind[f.kind] || 0) + 1;
-  const doc = Object.assign({}, D, { findings: fs, summary: { byKind, count: fs.length, bytes: fs.reduce((a, f) => a + (f.sizeBytes || 0), 0) } });
+  const dups = new Set(fs.filter(f => f.kind === 'duplicate').map(f => f.groupID || f.path + '\0' + (f.name || '')));
+  const dyn = fs.filter(f => f.kind === 'dynamicLookup').length, actionable = fs.length - dyn - fs.filter(f => f.kind === 'duplicate').length;
+  const doc = Object.assign({}, D, { findings: fs, summary: { actionable, byKind, bytes: fs.reduce((a, f) => a + (f.sizeBytes || 0), 0), count: fs.length, informational: { dynamicLookups: dyn, duplicateSets: dups.size } } });
   download('xcpurge-' + stamp() + '.json', 'application/json', JSON.stringify(doc, null, 2) + '\n');
 });
 $('#btn-csv').addEventListener('click', () => {
@@ -1153,7 +1155,19 @@ $('#dyn').addEventListener('click', e => {
 
 // ---- header ----
 let reclaim = 0; for (const f of F) if (f.confidence !== 'low' && f.sizeBytes) reclaim += f.sizeBytes;
-$('#s-findings').textContent = fmt(N);
+// Headline: actionable findings only. Dynamic lookups and duplicate members are named beside it.
+const TALLY = (fs => {
+  let actionable = 0, dyn = 0; const sets = new Set();
+  for (const f of fs) {
+    if (f.kind === 'dynamicLookup') dyn++;
+    else if (f.kind === 'duplicate') sets.add(f.groupID || f.path + '\0' + (f.name || ''));
+    else actionable++;
+  }
+  return { actionable, dyn, sets: sets.size };
+})(F);
+const infoText = t => [t.dyn ? fmt(t.dyn) + ' dynamic lookup' + (t.dyn === 1 ? '' : 's') : '', t.sets ? fmt(t.sets) + ' duplicate set' + (t.sets === 1 ? '' : 's') : ''].filter(Boolean).join(', ');
+$('#s-findings').textContent = fmt(TALLY.actionable);
+$('#s-info').textContent = infoText(TALLY) ? '+ ' + infoText(TALLY) : '';
 $('#s-bytes').textContent = human(reclaim);
 $('#s-modules').textContent = fmt(MODULES.length);
 const filesEl = $('#s-files'); filesEl.textContent = /^\d+$/.test(filesEl.textContent.trim()) ? fmt(+filesEl.textContent.trim()) : '—';

@@ -50,7 +50,8 @@ public struct NoProgress: ProgressSink {
     public func report(_ event: ScanProgress) {}
 }
 
-/// Totals of a finished scan, and the one-line summary printed after it.
+/// Totals of a finished scan, and the one-line summary printed after it. The finding counts are the actionable
+/// ones; dynamic lookups and duplicate sets are named after them (see `FindingTally`).
 public struct ScanSummary: Sendable, Equatable {
     public var files: Int
     public var modules: Int
@@ -58,31 +59,43 @@ public struct ScanSummary: Sendable, Equatable {
     public var high: Int
     public var medium: Int
     public var low: Int
+    public var dynamicLookups: Int
+    public var duplicateSets: Int
 
-    public init(files: Int, modules: Int, seconds: Double, high: Int, medium: Int, low: Int) {
+    public init(files: Int, modules: Int, seconds: Double, high: Int, medium: Int, low: Int,
+                dynamicLookups: Int = 0, duplicateSets: Int = 0) {
         self.files = files
         self.modules = modules
         self.seconds = seconds
         self.high = high
         self.medium = medium
         self.low = low
+        self.dynamicLookups = dynamicLookups
+        self.duplicateSets = duplicateSets
     }
 
     /// Totals of `result`; `seconds` defaults to `result.elapsed`.
     public init(_ result: ScanResult, seconds: Double? = nil) {
-        let f = result.findings
+        let t = FindingTally(result.findings)
         self.init(files: result.context.inventory.files.count, modules: result.context.graph.modules.count,
-                  seconds: seconds ?? result.elapsed, high: f.filter { $0.confidence == .high }.count,
-                  medium: f.filter { $0.confidence == .medium }.count, low: f.filter { $0.confidence == .low }.count)
+                  seconds: seconds ?? result.elapsed, high: t.high, medium: t.medium, low: t.low,
+                  dynamicLookups: t.dynamicLookups, duplicateSets: t.duplicateSets)
     }
 
-    public var findings: Int { high + medium + low }
+    private var tally: FindingTally {
+        FindingTally(high: high, medium: medium, low: low, dynamicLookups: dynamicLookups, duplicateSets: duplicateSets)
+    }
 
-    /// `Scanned 12,480 files in 9 modules in 2.3s — 38 findings (8 high, 30 medium, 0 low)`.
+    /// Actionable findings.
+    public var findings: Int { tally.actionable }
+
+    /// `Scanned 12,480 files in 9 modules in 2.3s — 38 findings (8 high, 30 medium, 0 low) + 392 dynamic lookups,
+    /// 88 duplicate sets`.
     public var line: String {
         let head = "Scanned \(Self.count(files, "file")) in \(Self.count(modules, "module")) in \(Self.duration(seconds))"
-        guard findings > 0 else { return head + " — No findings." }
-        return head + " — \(Self.count(findings, "finding")) (\(high) high, \(medium) medium, \(low) low)"
+        let info = tally.informationalText.map { " + " + $0 }
+        guard findings > 0 else { return head + " — No findings" + (info ?? ".") }
+        return head + " — " + tally.headline + (info ?? "")
     }
 
     /// `1 file`, `12,480 files`.

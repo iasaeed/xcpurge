@@ -338,6 +338,24 @@ final class HTMLReporterTests: XCTestCase {
         XCTAssertTrue(v1.contains("id=\"size-card\" aria-labelledby=\"h-size\" hidden"), "card hidden without size")
     }
 
+    /// The header card counts actionable findings and names dynamic lookups and duplicate sets beside the number.
+    func testHeaderCountsOnlyActionableFindings() throws {
+        func finding(_ kind: String, _ name: String, group: String? = nil) -> String {
+            #"{"kind":"\#(kind)","category":"assets","path":"A/\#(name)","name":"\#(name)","module":"App","confidence":"low","reasons":["r"]"#
+                + (group.map { #","groupID":"\#($0)""# } ?? "") + "}"
+        }
+        let items = [finding("unusedAsset", "a"), finding("orphanFile", "b"),
+                     finding("dynamicLookup", "d1"), finding("dynamicLookup", "d2"), finding("dynamicLookup", "d3"),
+                     finding("duplicate", "x1", group: "g"), finding("duplicate", "x2", group: "g")]
+        let json = #"{"schemaVersion":2,"tool":{"name":"xcpurge","version":"0"},"root":"/tmp/r","modules":[],"findings":["#
+            + items.joined(separator: ",") + #"],"diagnostics":[]}"#
+        let html = HTMLReporter.render(json: json, scannedFiles: 1, date: Self.date)
+        XCTAssertTrue(html.contains("Loading 2 findings"))
+        let dom = try dumpDOM(html)
+        XCTAssertTrue(dom.contains(#"id="s-findings">2<"#), "headline counts the two actionable findings")
+        XCTAssertTrue(dom.contains(#"id="s-info">+ 3 dynamic lookups, 1 duplicate set<"#), "informational records named beside it")
+    }
+
     /// The part of `dom` from the first `start` marker to the next `end` marker after it.
     private func slice(_ dom: String, from start: String, to end: String) throws -> String {
         let a = try XCTUnwrap(dom.range(of: start), start)

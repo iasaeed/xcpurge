@@ -35,12 +35,21 @@ public struct HTMLReporter: Reporter {
             "ROOT": escapeHTML(doc["root"] as? String ?? ""),
             "DATE": formatter.string(from: date),
             "FILES": scannedFiles.map(String.init) ?? "",
-            "COUNT": ScanSummary.count((doc["findings"] as? [Any])?.count ?? 0, "finding"),
+            "COUNT": ScanSummary.count(actionableCount(doc), "finding"),
         ]
         var html = template
         for (key, value) in values { html = html.replacingOccurrences(of: "{{\(key)}}", with: value) }
         // Data last, so placeholder-looking text inside findings is never substituted.
         return html.replacingOccurrences(of: "{{DATA}}", with: escapeScriptData(json))
+    }
+
+    /// Findings that are not dynamic lookups or duplicate members (the headline number).
+    static func actionableCount(_ doc: [String: Any]) -> Int {
+        let findings = doc["findings"] as? [[String: Any]] ?? []
+        return findings.filter { f in
+            guard let kind = f["kind"] as? String, let k = FindingKind(rawValue: kind) else { return true }
+            return k.isActionable
+        }.count
     }
 
     /// The document without `authorEmail` in any finding's `history.lastCommit` / `history.deadSince`; nil when
