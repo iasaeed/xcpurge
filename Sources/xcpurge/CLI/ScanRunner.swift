@@ -101,7 +101,7 @@ enum ScanRunner {
         let stamp = DateFormatter()
         stamp.locale = Locale(identifier: "en_US_POSIX")
         stamp.dateFormat = "yyyyMMdd-HHmmss"
-        return root.appendingPathComponent(".xcpurge/report-\(stamp.string(from: Date())).html")
+        return root.appendingPathComponent(ToolOutput.reportDirectoryName + "/report-\(stamp.string(from: Date())).html")
     }
 
     /// One confirmation line per finding: `[high] unused-asset App/Assets.xcassets/x.imageset (x)`.

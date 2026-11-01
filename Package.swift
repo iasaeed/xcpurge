@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "xcpurge", targets: ["xcpurge"]),
+        .library(name: "XcpurgeKit", targets: ["XcpurgeKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),

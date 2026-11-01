@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,
+  a `size --save` snapshot such as `size-base.json`, including ones saved by 0.4.0, or an `explain --format json`
+  file) was read as a reference source, so the next scan or `--delete` dropped every finding it listed (e.g. the
+  remaining copy of an asset after `remove` took the other one). Such files and the `.xcpurge/` and
+  `.xcpurge-trash/` folders are now skipped by every walk; size snapshots now carry a `tool` field.
+
 ## 0.4.0 - 2026-10-30
 
 ### Added

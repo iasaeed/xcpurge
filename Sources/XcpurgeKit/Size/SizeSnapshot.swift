@@ -110,7 +110,15 @@ public struct SizeSnapshot: Codable, Equatable, Sendable {
     public static let beforeFileName = "size-before.json"
     public static let afterFileName = "size-after.json"
 
+    /// Writer of the snapshot (`{"name": "xcpurge", "version": …}`); nil in snapshots from 0.4.0 and earlier. Lets
+    /// a scan recognise a snapshot saved inside the project and never read it as a reference source.
+    public struct Tool: Codable, Equatable, Sendable {
+        public var name: String
+        public var version: String
+    }
+
     public var schemaVersion: Int
+    public var tool: Tool?
     public var root: String
     /// ISO 8601.
     public var measuredAt: String
@@ -125,6 +133,7 @@ public struct SizeSnapshot: Codable, Equatable, Sendable {
     public init(root: String, measuredAt: Date, tree: TreeSize, reclaimable: Reclaimable, app: AppSize? = nil,
                 paths: [SizeEntry]? = nil) {
         self.schemaVersion = Self.schemaVersion
+        self.tool = Tool(name: XcpurgeVersion.name, version: XcpurgeVersion.current)
         self.root = root
         self.measuredAt = ISO8601DateFormatter().string(from: measuredAt)
         self.tree = tree

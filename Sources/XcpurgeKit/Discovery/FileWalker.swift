@@ -37,6 +37,8 @@ public struct FileWalker: Sendable {
             let excluded = excludes.contains { $0.matches(rel) }
             guard isDir else {
                 guard type == .typeRegular else { continue }
+                // A report or baseline xcpurge wrote names every finding; read as a source it would hide them all.
+                if ToolOutput.isGeneratedReport(path: rel, absolute: rootPath + "/" + rel) { continue }
                 if name == "Package.swift", !excluded { result.packages.append(RelPath.parent(rel)) }
                 let size = (enumerator.fileAttributes?[.size] as? NSNumber)?.int64Value ?? 0
                 result.files.append(SourceFile(path: rel, kind: FileKind(path: rel), size: size))
@@ -68,6 +70,7 @@ public struct FileWalker: Sendable {
 
     private func shouldSkip(dir rel: String, name: String, ext: String, absolute: String) -> Bool {
         if Self.skippedNames.contains(name) || Self.skippedExtensions.contains(ext) { return true }
+        if ToolOutput.directoryNames.contains(name) { return true }
         if name == "build", Self.isBuildOutput(rel: rel, absolute: absolute) { return true }
         if name == "Pods" && !includePods { return true }
         if rel.hasSuffix("Carthage/Build") || rel.hasSuffix("Carthage/Checkouts") { return true }

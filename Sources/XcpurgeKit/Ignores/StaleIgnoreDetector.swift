@@ -217,7 +217,8 @@ enum StaleIgnoreDetector {
             if values?.isSymbolicLink == true { enumerator.skipDescendants() }
             let rel = RelPath.relative(url.path, to: rootPath)
             let name = RelPath.lastComponent(rel)
-            if isDirectory, name == ".git" || name == TrashStore.directoryName { enumerator.skipDescendants(); continue }
+            if isDirectory, name == ".git" || ToolOutput.directoryNames.contains(name) { enumerator.skipDescendants(); continue }
+            if !isDirectory, ToolOutput.isGeneratedReport(path: rel, absolute: url.path) { continue }
             switch visit(rel, isDirectory, url.path) {
             case .descend: continue
             case .skip: if isDirectory { enumerator.skipDescendants() }
