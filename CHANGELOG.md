@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- HTML report: scrolling the page over the module graph no longer zooms it, so the page keeps scrolling past the
+  graph. Zoom with ⌘/Ctrl + scroll or a trackpad pinch; drag to pan and the +/−/1:1 buttons are unchanged.
+
 ## 0.5.0 - 2026-11-01
 
 ### Added

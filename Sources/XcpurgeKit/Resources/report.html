@@ -305,7 +305,7 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
 
   <section class="card" aria-labelledby="h-graph">
     <div class="sec-head">
-      <h2 id="h-graph">Module graph <span class="hint">· scroll to zoom, drag to pan</span></h2>
+      <h2 id="h-graph">Module graph <span class="hint">· ⌘/Ctrl + scroll or pinch to zoom, drag to pan</span></h2>
       <div class="g-right">
         <div class="legend-row" aria-label="Graph legend">
           <span><i class="sw bg-k-app"></i>app</span><span><i class="sw bg-k-ext"></i>extension</span><span><i class="sw bg-k-lib"></i>library / package</span><span><i class="sw bg-k-test"></i>test</span>
@@ -320,7 +320,7 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
         </div>
       </div>
     </div>
-    <div id="graph" class="graph" tabindex="0" aria-label="Module graph. Plus and minus zoom, 0 resets."></div>
+    <div id="graph" class="graph" tabindex="0" aria-label="Module graph. Plus and minus zoom, 0 resets, Control plus scroll zooms."></div>
   </section>
 
   <section aria-labelledby="h-findings">
@@ -969,6 +969,8 @@ graphEl.addEventListener('keydown', e => {
   else if (e.key === '0') { e.preventDefault(); resetZoom(); }
 });
 graphEl.addEventListener('wheel', e => {
+  // Plain scrolling must keep scrolling the page past the graph; zoom only on ⌘/Ctrl + wheel (trackpad pinch sends ctrlKey too).
+  if (!e.ctrlKey && !e.metaKey) return;
   const svg = graphEl.querySelector('svg'); if (!svg || !G.nodes.length) return;
   e.preventDefault();
   const r = svg.getBoundingClientRect(), dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
