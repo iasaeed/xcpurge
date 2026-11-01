@@ -213,4 +213,27 @@ final class RuntimeNameTests: XCTestCase {
         }
         XCTAssertEqual(raw, ["Outer.first", "Inner.nested", "Outer.second", "Outer.third"])
     }
+
+    /// The prefix index matches one-, two- and long-prefix patterns alike (keys are up to three characters).
+    func testPrefixIndexMatchesShortAndLongPrefixes() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Assets.xcassets/Contents.json": "{}",
+            "Assets.xcassets/x9.imageset/Contents.json": "{}",
+            "Assets.xcassets/ab7.imageset/Contents.json": "{}",
+            "Assets.xcassets/onboarding_page_2.imageset/Contents.json": "{}",
+            "Assets.xcassets/other.imageset/Contents.json": "{}",
+            "Art.swift": """
+            import UIKit
+            func a(_ n: Int) -> UIImage? { UIImage(named: "x\\(n)") }
+            func b(_ n: Int) -> UIImage? { UIImage(named: "ab\\(n)") }
+            let page = "onboarding_page\\(2)"
+            """,
+        ])
+        let found = AssetsDetector().run(try await ScanEngine(root: root, config: config).makeContext())
+        let byName = Dictionary(uniqueKeysWithValues: found.filter { $0.kind == .unusedAsset }.map { ($0.name!, $0.confidence) })
+        XCTAssertEqual(byName["x9"], .low)
+        XCTAssertEqual(byName["ab7"], .low)
+        XCTAssertEqual(byName["onboarding_page_2"], .low)
+        XCTAssertEqual(byName["other"], .high)
+    }
 }

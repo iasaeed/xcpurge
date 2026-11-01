@@ -26,6 +26,22 @@ struct AssetReferenceResolver: Sendable {
     let patterns: [DynamicPattern]
     /// Asset lookups whose name is a variable (`UIImage(named: entityName)`), not on an `xcpurge:ignore` line.
     let keylessLookups: [DynamicPattern]
+    /// `patterns` with their lowercased literal parts, computed once.
+    private let shapes: [PatternShape]
+    /// Indices of patterns with a constant prefix (they apply in any module), keyed by the prefix's first one to three
+    /// lowercased characters; a name looks up its own first one, two and three characters.
+    private let prefixedIndex: [String: [Int]]
+    /// Indices of patterns that apply only from visible modules (no constant prefix).
+    private let visibleOnly: [Int]
+
+    /// One dynamic pattern prepared for matching against many names.
+    private struct PatternShape: Sendable {
+        var prefix: String
+        var suffix: String
+        var literal: Int
+        var matches: Bool
+        var prefixed: Bool
+    }
 
     init(_ ctx: ScanContext) {
         let refs = ctx.refs
@@ -45,6 +61,19 @@ struct AssetReferenceResolver: Sendable {
         fuzzyMembers = fuzzy
         pathTails = tails
         patterns = refs.dynamicPatterns.filter { !$0.isKeyless && !refs.isIgnored(file: $0.file, line: $0.line) }
+        var shapes: [PatternShape] = [], index: [String: [Int]] = [:], visibleOnly: [Int] = []
+        for (i, p) in patterns.enumerated() {
+            let literal = p.prefix.count + p.suffix.count
+            // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in.
+            let shape = PatternShape(prefix: p.prefix.lowercased(), suffix: p.suffix.lowercased(), literal: literal,
+                                     matches: p.domain == .any ? literal >= 3 : literal >= 1,
+                                     prefixed: p.prefix.count >= (p.domain == .any ? 3 : 1))
+            shapes.append(shape)
+            if shape.prefixed { index[String(shape.prefix.prefix(3)), default: []].append(i) } else { visibleOnly.append(i) }
+        }
+        self.shapes = shapes
+        self.prefixedIndex = index
+        self.visibleOnly = visibleOnly
         keylessLookups = refs.dynamicPatterns.filter {
             $0.isKeyless && $0.domain == .asset && !refs.isIgnored(file: $0.file, line: $0.line)
         }
@@ -124,18 +153,20 @@ struct AssetReferenceResolver: Sendable {
     /// - Parameter domains: pattern domains that load this kind of resource; `.any` patterns always apply.
     func downgrade(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> Downgrade? {
         var best: Downgrade?
-        for p in patterns where domains.contains(p.domain) || p.domain == .any {
-            let literal = p.prefix.count + p.suffix.count
-            let matches = p.domain == .any ? literal >= 3 : literal >= 1
-            // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in.
-            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
-            guard matches, prefixed || counts(p.file, visible) else { continue }
-            let prefix = p.prefix.lowercased(), suffix = p.suffix.lowercased()
-            guard names.contains(where: { n in
-                let l = n.lowercased()
-                return l.count > literal && l.hasPrefix(prefix) && l.hasSuffix(suffix)
+        let lowered = names.map { $0.lowercased() }
+        // Candidates in pattern order (the first most severe match wins, as before the index existed).
+        var candidates = Set(visibleOnly)
+        for name in lowered {
+            for k in 1...3 where name.count >= k { candidates.formUnion(prefixedIndex[String(name.prefix(k))] ?? []) }
+        }
+        for i in candidates.sorted() {
+            let p = patterns[i], shape = shapes[i]
+            guard domains.contains(p.domain) || p.domain == .any else { continue }
+            guard shape.matches, shape.prefixed || counts(p.file, visible) else { continue }
+            guard lowered.contains(where: { l in
+                l.count > shape.literal && l.hasPrefix(shape.prefix) && l.hasSuffix(shape.suffix)
             }) else { continue }
-            let confidence: Confidence = p.domain == .any && !prefixed ? .medium : .low
+            let confidence: Confidence = p.domain == .any && !shape.prefixed ? .medium : .low
             if best == nil || confidence < best!.confidence {
                 best = Downgrade(confidence: confidence,
                                  reason: "may be built dynamically at \(location(p.file, p.line)) (\"\(p.prefix)…\(p.suffix)\")",
