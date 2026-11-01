@@ -75,4 +75,29 @@ final class TestFixtureDirectoryTests: XCTestCase {
         config.testFixtureDirectories = Config.defaultTestFixtureDirectories
         XCTAssertEqual(BaselineFile.configHash(config, root: root), base)
     }
+
+    /// Identical snapshot images are not duplicates, and do not make a real file a duplicate either.
+    func testFixtureFolderFilesAreNotDuplicates() async throws {
+        let tree = [
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+            let package = Package(name: "Snap", targets: [.target(name: "App"), .testTarget(name: "AppTests", dependencies: ["App"])])
+            """,
+            "Sources/App/App.swift": "public struct App {}\n",
+            "Sources/App/a.png": "same bytes", "Sources/App/b.png": "same bytes",
+            "Tests/AppTests/AppTests.swift": "import XCTest\n",
+            "Tests/AppTests/__Snapshots__/T1/x.png": "same bytes",
+            "Tests/AppTests/__Snapshots__/T2/x.png": "same bytes",
+            "Tests/AppTests/ReferenceImages/y.png": "other bytes", "Tests/AppTests/ReferenceImages_64/y.png": "other bytes",
+        ]
+        var config = Config()
+        config.noSwift = true
+        let root = try FixtureSupport.tempTree(tree)
+        let dups = try await ScanEngine(root: root, config: config).run().findings.filter { $0.kind == .duplicate }.map(\.path).sorted()
+        XCTAssertEqual(dups, ["Sources/App/a.png", "Sources/App/b.png"])
+        config.testFixtureDirectories = []
+        let all = try await ScanEngine(root: root, config: config).run().findings.filter { $0.kind == .duplicate }
+        XCTAssertEqual(all.count, 6, "with the list emptied they are reported again")
+    }
 }
