@@ -108,4 +108,48 @@ final class ProcessGroupTests: XCTestCase {
     func testDefaultTimeoutIsSixtySeconds() {
         XCTAssertEqual(PackageManifest.dumpTimeout, 60)
     }
+
+    /// Review: with dozens of manifests every `dump-package` blocked a global-pool thread, so the signal sources (also
+    /// on the global queue) never ran and Ctrl-C waited for the manifests. Signals now have their own queue and runs
+    /// are capped at the core count: SIGTERM stops a scan of 72 hanging manifests at once.
+    func testSigtermStopsAScanOfManyHangingManifests() throws {
+        guard FileManager.default.isExecutableFile(atPath: CLISupport.binary.path) else { throw XCTSkip("xcpurge not built") }
+        let marker = sleeper(6)
+        var files: [String: String] = ["bin/swift": "#!/bin/sh\nexec \(marker)\n"]
+        for i in 0..<72 {
+            let name = String(format: "P%02d", i)
+            files["\(name)/Package.swift"] = "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"\(name)\")\n"
+        }
+        let root = try FixtureSupport.tempTree(files)
+        let stub = root.appendingPathComponent("bin/swift")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stub.path)
+
+        let process = Process()
+        process.executableURL = CLISupport.binary
+        process.arguments = ["scan", root.path, "--quiet", "--format", "json", "--output", root.appendingPathComponent("out.json").path]
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = root.appendingPathComponent("bin").path + ":/usr/bin:/bin"
+        environment["XCPURGE_NO_SWIFT"] = nil
+        process.environment = environment
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        defer {
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            _ = try? ProcessRunner.run("/usr/bin/pkill", ["-9", "-f", marker], timeout: 10)
+        }
+        for _ in 0..<100 where pgrep(marker).isEmpty { usleep(100_000) }
+        XCTAssertFalse(pgrep(marker).isEmpty, "manifests started")
+        let running = pgrep(marker).split(separator: "\n").count
+        XCTAssertLessThanOrEqual(running, ProcessInfo.processInfo.activeProcessorCount, "dump-package runs are capped")
+
+        let sent = Date()
+        kill(process.processIdentifier, SIGTERM)
+        let exited = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { process.waitUntilExit(); exited.signal() }
+        XCTAssertEqual(exited.wait(timeout: .now() + 5), .success, "SIGTERM stops the scan")
+        XCTAssertLessThan(Date().timeIntervalSince(sent), 2)
+        XCTAssertEqual(process.terminationReason, .uncaughtSignal)
+        XCTAssertEqual(waitUntilGone(marker), "", "no manifest run is left behind")
+    }
 }

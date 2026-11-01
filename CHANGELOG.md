@@ -51,6 +51,10 @@
 
 ### Fixed
 
+- Ctrl-C or SIGTERM during `swift package dump-package` now stops the scan at once on repositories with many local
+  packages: interrupt handlers and the 60 s timers run on their own queue instead of the global pool that blocked
+  manifest runs could exhaust, and at most one `dump-package` per core runs at a time.
+
 - `xcpurge explain --format json` no longer prints `"line": 0` for a reference inside a file with no line
   structure (a value in a `.json` file): `line` is omitted from that reference site, and the text report shows the
   bare path. The `line` key of `referenceSites` is optional.

@@ -23,6 +23,10 @@ public enum ProcessRunner {
     /// same moment, or that run would not see end-of-file until the stranger exits (manifests run concurrently).
     private static let spawnLock = NSLock()
 
+    /// Timeout timers and interrupt handlers run here, never on the global pool, which blocked `read()` calls of
+    /// running manifests can exhaust (a Ctrl-C would then wait for them).
+    static let controlQueue = DispatchQueue(label: "xcpurge.process-control")
+
     /// Kills every running child and all it started at once (SIGKILL: a manifest evaluation has nothing to clean up).
     public static func killAll() {
         for child in ShellRunner.registry.running { kill(tree: child) }
@@ -104,7 +108,7 @@ public enum ProcessRunner {
 
         let timedOut = Flag()
         let timer = DispatchWorkItem { timedOut.set(); kill(tree: child) }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
+        controlQueue.asyncAfter(deadline: .now() + timeout, execute: timer)
 
         // Until every holder of the pipe is gone: the timer kills the group, so this cannot hang.
         var data = Data()
@@ -146,7 +150,7 @@ public enum ProcessRunner {
                 var old = sigaction()
                 sigaction(sig, &ignore, &old)
                 previous.append((sig, old))
-                let source = DispatchSource.makeSignalSource(signal: sig, queue: .global())
+                let source = DispatchSource.makeSignalSource(signal: sig, queue: ProcessRunner.controlQueue)
                 source.setEventHandler {
                     ProcessRunner.killAll()
                     signal(sig, SIG_DFL)

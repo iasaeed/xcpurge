@@ -19,8 +19,12 @@ public enum PackageManifest {
         // Ctrl-C or SIGTERM must take the swift-package / swift-frontend children with it.
         let interrupts = swiftAllowed ? ProcessRunner.InterruptGuard() : nil
         defer { interrupts?.dispose() }
+        // Each `dump-package` blocks a thread in `read()`: at most one per core at a time.
+        let limit = max(1, ProcessInfo.processInfo.activeProcessorCount)
         return await withTaskGroup(of: (Int, ProjectModel?).self) { group in
+            var results: [(Int, ProjectModel)] = []
             for (i, dir) in packageDirs.enumerated() {
+                if i >= limit, let (j, model) = await group.next(), let model { results.append((j, model)) }
                 group.addTask {
                     let abs = RelPath.join(rootPath, dir)
                     if swiftAllowed {
@@ -42,7 +46,6 @@ public enum PackageManifest {
                     return (i, PackageManifestRegexFallback.parse(text: text, packageDir: dir, rootPath: rootPath))
                 }
             }
-            var results: [(Int, ProjectModel)] = []
             for await (i, model) in group { if let model { results.append((i, model)) } }
             return results.sorted { $0.0 < $1.0 }.map(\.1)
         }
