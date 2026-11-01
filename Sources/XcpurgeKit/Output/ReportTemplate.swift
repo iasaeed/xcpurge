@@ -172,6 +172,9 @@ tbody tr.active td { background: var(--sel); }
 tbody tr:focus { outline: none; }
 tbody tr:focus-visible td { box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
+thead th.sel, tbody td.sel { text-align: center; padding: 0; }
+thead th.sel input, tbody td.sel input { margin: 0; width: 15px; height: 15px; vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+thead th.sel input:disabled, tbody td.sel input:disabled { opacity: .35; cursor: not-allowed; }
 td .base { font-family: var(--mono); font-size: 12.5px; }
 td .dir { font-family: var(--mono); font-size: 12px; color: var(--faint); margin-left: 6px; }
 td.reason { color: var(--muted); }
@@ -228,6 +231,20 @@ button.link { border: 0; background: none; padding: 0; color: var(--accent); tex
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: .18s; pointer-events: none; z-index: 40; }
 .toast.show { opacity: 1; transform: translateX(-50%); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* bulk selection bar */
+.selbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; background: var(--panel); border-top: 1px solid var(--border); box-shadow: 0 -6px 24px rgba(16,24,40,.12); padding: 10px 0; }
+.selbar[hidden] { display: none; }
+.selbar-inner { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.selbar-main { flex: 1 1 360px; min-width: 0; display: grid; gap: 4px; }
+.selbar-head { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; }
+.selbar-head b { font-variant-numeric: tabular-nums; }
+.selbar .hint { color: var(--muted); font-size: 12px; }
+.selbar pre { margin: 0; padding: 6px 10px; background: var(--panel-2); border-radius: 7px; font: 12.5px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.selbar-btns { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+body.has-sel { padding-bottom: var(--selbar-h, 0px); }
+body.has-sel .toast { bottom: calc(var(--selbar-h, 0px) + 16px); }
+body.has-sel .drawer { bottom: var(--selbar-h, 0px); }
 
 @media (max-width: 1100px) {
   .finder { grid-template-columns: minmax(0, 1fr); }
@@ -340,10 +357,11 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
           <button id="btn-clear" type="button">Clear</button>
         </div>
         <div id="chips" class="chips"></div>
-        <div id="scroller" class="scroller" tabindex="0" aria-label="Findings table. Arrow keys move between rows, Enter opens details.">
+        <div id="scroller" class="scroller" tabindex="0" aria-label="Findings table. Arrow keys move between rows, Enter opens details, x toggles selection.">
           <table id="tbl" aria-label="Findings">
-            <colgroup><col style="width:150px"><col style="width:92px"><col class="c-module" style="width:130px"><col class="c-name"><col class="c-path"><col style="width:84px"><col class="c-hist" style="width:56px"><col class="c-hist" style="width:110px"><col class="c-reason"></colgroup>
+            <colgroup><col style="width:38px"><col style="width:150px"><col style="width:92px"><col class="c-module" style="width:130px"><col class="c-name"><col class="c-path"><col style="width:84px"><col class="c-hist" style="width:56px"><col class="c-hist" style="width:110px"><col class="c-reason"></colgroup>
             <thead><tr>
+              <th scope="col" class="sel"><input type="checkbox" id="sel-all-cb" aria-label="Select all visible findings" title="Select or deselect every visible row that xcpurge purge can remove"></th>
               <th scope="col" data-sort="kind"><button type="button">Kind</button></th>
               <th scope="col" data-sort="conf"><button type="button">Confidence</button></th>
               <th scope="col" class="c-module" data-sort="module"><button type="button">Module</button></th>
@@ -383,6 +401,15 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
 </aside>
 <div id="tip" class="tip" role="tooltip" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="selbar" class="selbar" role="region" aria-label="Bulk selection" hidden>
+  <div class="wrap selbar-inner">
+    <div class="selbar-main">
+      <div class="selbar-head"><b id="sel-count" aria-live="polite"></b><span class="hint">Filter, then select all visible to pick a type. Press x on a row to toggle it.</span></div>
+      <pre id="sel-cmd" aria-label="Purge command"></pre>
+    </div>
+    <div class="selbar-btns" id="sel-btns"></div>
+  </div>
+</div>
 
 <script id="xcpurge-data" type="application/json">{{DATA}}</script>
 <script>
@@ -416,6 +443,12 @@ const shq = s => /^[A-Za-z0-9_.\/@%+=:,-]+$/.test(s) ? s : "'" + s.replace(/'/g,
 // A leading dash would read as an option: `./-x` names the same file.
 const shArg = s => shq(s.startsWith('-') ? './' + s : s);
 const removeCmd = f => 'xcpurge remove ' + shArg(D.root || '.') + ' ' + shArg(f.path);
+// `xcpurge purge` acts only on these kinds (PurgeCommand.purgeableKinds): what Trash moves plus prunable strings.
+// Dead source, ghost references, duplicates and informational findings are only reported.
+const PURGEABLE = new Set(['unusedAsset', 'unusedFont', 'orphanFile', 'unusedResource', 'unusedInterfaceFile', 'unusedString', 'staleString']);
+const selectable = f => !!f.id && PURGEABLE.has(f.kind);
+const purgeCmd = ids => 'xcpurge purge ' + shArg(D.root || '.') + ' --ids ' + ids.join(',');
+const cmdBtn = (cmd, label, what) => '<button type="button" data-cmd="' + esc(cmd).replace(/\n/g, '&#10;') + '" data-what="' + esc(what) + '">' + label + '</button>';
 const kindClass = k => ({ app: 'k-app', appClip: 'k-app', watchApp: 'k-app', appExtension: 'k-ext', unitTest: 'k-test', uiTest: 'k-test',
   framework: 'k-lib', staticLib: 'k-lib', packageLibrary: 'k-lib', packageExecutable: 'k-lib', macro: 'k-lib', plugin: 'k-lib' })[k] || 'k-other';
 const DYN_RE = /dynamically at (\S+?):(\d+)/g;
@@ -575,6 +608,9 @@ function parseQuery(q) {
 // ---- state ----
 const state = { q: '', sort: 'default', dir: 1, pods: false };
 let pred = null, view = new Int32Array(0), facetCounts = null, active = -1, drawerIndex = -1, selVersion = 0;
+// Bulk selection: finding ids, kept across filters, sorting and virtual-row re-renders.
+const SEL = new Set(), ID_IDX = new Map();
+for (let i = 0; i < N; i++) if (selectable(F[i])) ID_IDX.set(F[i].id, i);
 
 function compute() {
   const t = performance.now();
@@ -619,7 +655,8 @@ function apply(opts = {}) {
   if (opts.selChanged !== false) { renderCharts(); renderGraph(); }
   if (opts.resetScroll !== false) { scroller.scrollTop = 0; active = view.length ? 0 : -1; }
   renderRows();
-  for (const th of document.querySelectorAll('thead th')) {
+  updateSelUI();
+  for (const th of document.querySelectorAll('thead th[data-sort]')) {
     const key = th.dataset.sort;
     if (key === state.sort) th.setAttribute('aria-sort', state.dir >= 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
     th.querySelector('button').innerHTML = esc(th.textContent.replace(/[▲▼]/g, '').trim()) + (key === state.sort ? ' <span class="ar" aria-hidden="true">' + (state.dir >= 0 ? '▲' : '▼') + '</span>' : '');
@@ -639,12 +676,15 @@ function renderRows() {
   const start = Math.max(0, Math.floor(top / ROW_H) - BUFFER);
   const end = Math.min(n, Math.ceil((top + h - headH) / ROW_H) + BUFFER);
   let s = '';
-  const COLS = HAS_HIST ? 9 : 7;
+  const COLS = HAS_HIST ? 10 : 8;
   if (start > 0) s += '<tr class="spacer" aria-hidden="true"><td colspan="' + COLS + '" style="height:' + (start * ROW_H) + 'px"></td></tr>';
   for (let r = start; r < end; r++) {
     const i = view[r], f = F[i];
     const reasons = f.reasons;
     s += '<tr data-r="' + r + '" aria-rowindex="' + (r + 2) + '" tabindex="-1"' + (r === active ? ' class="active" aria-selected="true"' : '') + '>'
+      + '<td class="sel">' + (ID_IDX.has(f.id)
+        ? '<input type="checkbox" data-i="' + i + '" aria-label="Select ' + esc(f.name || base(f.path)) + '"' + (SEL.has(f.id) ? ' checked' : '') + '>'
+        : '<input type="checkbox" disabled title="Not removable by xcpurge purge" aria-label="Select ' + esc(f.name || base(f.path)) + ' (not removable by xcpurge purge)">') + '</td>'
       + '<td><span class="kind"><i class="dot bg-' + esc(f.category) + '" aria-hidden="true"></i>' + esc(kebab(f.kind)) + '</span></td>'
       + '<td><span class="badge b-' + esc(f.confidence) + '">' + esc(f.confidence) + '</span></td>'
       + '<td class="mod" title="' + esc(f.module) + '">' + esc(f.module) + '</td>'
@@ -682,18 +722,69 @@ function setActive(r) {
 }
 scroller.addEventListener('keydown', e => {
   if (!view.length) return;
+  if (e.target.tagName === 'INPUT' && (e.key === ' ' || e.key === 'Enter')) return; // native checkbox toggle
   const page = Math.max(1, Math.floor((scroller.clientHeight - 34) / ROW_H) - 1);
   const map = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page, j: 1, k: -1 };
   if (e.key in map) { e.preventDefault(); setActive(active < 0 ? 0 : active + map[e.key]); }
   else if (e.key === 'Home') { e.preventDefault(); setActive(0); }
   else if (e.key === 'End') { e.preventDefault(); setActive(view.length - 1); }
   else if (e.key === 'Enter' || e.key === ' ') { if (active >= 0) { e.preventDefault(); openDrawer(view[active]); } }
+  else if (e.key === 'x' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (active >= 0 && ID_IDX.has(F[view[active]].id)) { e.preventDefault(); toggleSel(F[view[active]].id); renderRows(); focusRow(false); }
+  }
 });
 tbody.addEventListener('click', e => {
+  if (e.target.closest('td.sel')) return; // the checkbox cell neither opens the drawer nor moves the active row
   const tr = e.target.closest('tr[data-r]');
   if (!tr) return;
   active = +tr.dataset.r; renderRows(); focusRow(false); openDrawer(view[active]);
 });
+
+// ---- bulk selection ----
+const selbar = $('#selbar'), selAllCb = $('#sel-all-cb');
+$('#sel-btns').innerHTML = cmdBtn('', 'Copy purge command', 'purge command') + '<button type="button" id="sel-all">Select all visible</button><button type="button" id="sel-clear">Clear</button>';
+const selCopyBtn = $('#sel-btns [data-cmd]');
+function toggleSel(id, on) {
+  if (on === undefined) on = !SEL.has(id);
+  if (on) SEL.add(id); else SEL.delete(id);
+  updateSelUI();
+}
+function setVisibleSel(on) {
+  for (let r = 0; r < view.length; r++) { const f = F[view[r]]; if (ID_IDX.has(f.id)) { if (on) SEL.add(f.id); else SEL.delete(f.id); } }
+  updateSelUI(); renderRows();
+}
+function updateSelUI() {
+  let vis = 0, picked = 0;
+  for (let r = 0; r < view.length; r++) { const f = F[view[r]]; if (ID_IDX.has(f.id)) { vis++; if (SEL.has(f.id)) picked++; } }
+  selAllCb.disabled = vis === 0;
+  selAllCb.checked = vis > 0 && picked === vis;
+  selAllCb.indeterminate = picked > 0 && picked < vis;
+  const idx = [];
+  for (const id of SEL) idx.push(ID_IDX.get(id));
+  idx.sort((a, b) => a - b);
+  let bytes = 0, sized = false;
+  for (const i of idx) if (F[i].sizeBytes != null) { sized = true; bytes += F[i].sizeBytes; }
+  document.body.classList.toggle('has-sel', idx.length > 0);
+  selbar.hidden = idx.length === 0;
+  if (!idx.length) return;
+  const cmd = purgeCmd(idx.map(i => F[i].id));
+  $('#sel-count').textContent = fmt(idx.length) + ' selected' + (sized ? ' · ' + human(bytes) : '');
+  $('#sel-cmd').textContent = cmd;
+  selCopyBtn.dataset.cmd = cmd;
+  document.body.style.setProperty('--selbar-h', selbar.offsetHeight + 'px');
+}
+selAllCb.addEventListener('change', () => setVisibleSel(selAllCb.checked));
+tbody.addEventListener('change', e => {
+  const cb = e.target.closest('input[data-i]'); if (!cb) return;
+  toggleSel(F[+cb.dataset.i].id, cb.checked);
+});
+selbar.addEventListener('click', e => {
+  const c = e.target.closest('[data-cmd]'); if (c) { copy(c.dataset.cmd, c.dataset.what || 'command'); return; }
+  if (e.target.closest('#sel-all')) setVisibleSel(true);
+  else if (e.target.closest('#sel-clear')) { SEL.clear(); updateSelUI(); renderRows(); }
+});
+addEventListener('resize', () => { if (!selbar.hidden) document.body.style.setProperty('--selbar-h', selbar.offsetHeight + 'px'); });
+
 document.querySelector('thead').addEventListener('click', e => {
   const th = e.target.closest('th[data-sort]'); if (!th) return;
   const key = th.dataset.sort;
@@ -1015,7 +1106,6 @@ function openDrawer(i) {
   }).join('');
   const group = f.groupID ? F.map((g, j) => j).filter(j => j !== i && F[j].groupID === f.groupID) : [];
   const entry = ignoreEntry(f);
-  const cmdBtn = (cmd, label, what) => '<button type="button" data-cmd="' + esc(cmd).replace(/\n/g, '&#10;') + '" data-what="' + esc(what) + '">' + label + '</button>';
   let removeHTML = '';
   if (REMOVABLE.has(f.kind) && f.kind === 'duplicate' && group.length) {
     const members = [i].concat(group.slice(0, 50)), cmds = members.map(j => removeCmd(F[j]));

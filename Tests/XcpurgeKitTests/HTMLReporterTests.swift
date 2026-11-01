@@ -70,7 +70,30 @@ final class HTMLReporterTests: XCTestCase {
         for kind in ["unusedAsset", "unusedFont", "orphanFile", "unusedResource", "unusedInterfaceFile", "duplicate", "deadSource", "ghostReference"] {
             XCTAssertTrue(html.contains("'\(kind)'"), "\(kind) is removable")
         }
-        XCTAssertFalse(html.contains("'unusedString', 'staleString'"), "string findings have no file to remove")
+        let removable = html.split(separator: "\n").first { $0.hasPrefix("const REMOVABLE = ") } ?? ""
+        XCTAssertFalse(removable.isEmpty)
+        XCTAssertFalse(removable.contains("'unusedString'") || removable.contains("'staleString'"), "string findings have no file to remove")
+    }
+
+    /// Bulk selection: a checkbox column, a sticky bar with the `xcpurge purge <root> --ids ...` command, the `x` key,
+    /// and a checkbox only for the kinds purge acts on (`PurgeCommand.purgeableKinds`): none for dead source, ghost
+    /// references, duplicates or informational kinds.
+    func testTemplateHasBulkSelection() {
+        let html = HTMLReporter(date: Self.date).render(SyntheticResult.make(count: 50))
+        for marker in [#"id="sel-all-cb""#, #"id="selbar""#, #"id="sel-cmd""#, #"id="sel-count""#, "Select all visible", "Copy purge command",
+                       "Not removable by xcpurge purge", "const purgeCmd = ids => 'xcpurge purge ' + shArg(D.root || '.') + ' --ids ' + ids.join(',');",
+                       "const selectable = f => !!f.id && PURGEABLE.has(f.kind);", "e.key === 'x'", "selAllCb.indeterminate",
+                       "const SEL = new Set()", "aria-label=\"Select ", "Filter, then select all visible to pick a type"] {
+            XCTAssertTrue(html.contains(marker), "missing \(marker)")
+        }
+        XCTAssertTrue(html.contains("if (e.target.closest('td.sel')) return;"), "checkbox cell must not open the drawer")
+        let purgeable = html.split(separator: "\n").first { $0.hasPrefix("const PURGEABLE = ") } ?? ""
+        for kind in ["unusedAsset", "unusedFont", "orphanFile", "unusedResource", "unusedInterfaceFile", "unusedString", "staleString"] {
+            XCTAssertTrue(purgeable.contains("'\(kind)'"), "\(kind) is selectable")
+        }
+        for kind in ["deadSource", "ghostReference", "duplicate", "dynamicLookup", "staleIgnore"] {
+            XCTAssertFalse(purgeable.contains("'\(kind)'"), "\(kind) is not selectable")
+        }
     }
 
     /// The module graph has zoom controls and a Pods toggle; the report is light-only (no theme switch).
@@ -188,7 +211,7 @@ final class HTMLReporterTests: XCTestCase {
                                   options: .regularExpression), "age and author cells")
         XCTAssertTrue(dom.contains(#"<td class="num c-hist" title="n/a (shallow clone; use fetch-depth: 0)"><span class="muted">n/a</span></td>"#))
         XCTAssertFalse(try slice(dom, from: #"<tbody id="rows">"#, to: "</tbody>").contains("hidden@example.com"), "no email in rows")
-        XCTAssertTrue(dom.contains(#"colspan="9""#) || !dom.contains("spacer"), "spacers span the extra columns")
+        XCTAssertTrue(dom.contains(#"colspan="10""#) || !dom.contains("spacer"), "spacers span the extra columns")
 
         let bare = try dumpDOM(HTMLReporter(date: Self.date).render(SyntheticResult.make(count: 120)))
         XCTAssertTrue(bare.contains(#"id="js-errors" hidden"#))

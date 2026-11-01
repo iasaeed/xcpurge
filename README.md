@@ -238,6 +238,8 @@ Dead-source files and ghost references are only reported. Remove one of those yo
 the report, for example `App/Old.swift`. Run one line at a time; do not paste the whole block.
 
 ```sh
+# everything high-confidence at once: unused assets, files and strings
+xcpurge purge .
 # unused assets (high confidence only)
 xcpurge assets . --delete
 # orphans, unused resources and interface files (high only)
@@ -257,11 +259,27 @@ xcpurge restore . --path FILE-PATH
 Each action prints what it moved, a `Size before → after` table and the exact undo command, such as
 `Undo with: xcpurge restore --session 20261030-194738`.
 
+`purge` does what the three cleanup commands above do, in one run and one trash session. Narrow it down when you
+want less:
+
+```sh
+# show what would go, change nothing
+xcpurge purge . --dry-run
+# only one category, or only one kind of finding
+xcpurge purge . --only strings
+xcpurge purge . --only orphan-file
+# exactly these findings (ids from the report), whatever their confidence
+xcpurge purge . --ids unused-asset-9532ffca6e,orphan-file-5f22e12c23
+```
+
+It asks once, listing everything grouped by category. `xcpurge restore .` undoes the whole purge.
+
 How it stays safe:
 
 - Each run is a **trash session**: one folder in `.xcpurge-trash/SESSION/` with the moved files, the old project
   file and a list of what happened. Nothing is deleted for real.
-- `--delete` and `--prune` touch **high** findings only, unless you pass `--min-confidence` yourself.
+- `--delete`, `--prune` and `purge` touch **high** findings only, unless you pass `--min-confidence` yourself
+  (or pick findings by id with `purge --ids`).
 - They ask before acting, and `--yes` skips the question. Without a terminal (CI, a script, an AI agent) and without
   `--yes`, nothing happens: xcpurge stops with an error status (exit code 2; all codes are listed under
   [Exit codes](#exit-codes)).
@@ -270,6 +288,12 @@ How it stays safe:
 The HTML report has a **Remove from terminal** box for every file finding, with a ready `xcpurge remove` command:
 
 ![Finding details in the HTML report with a ready remove command and its .xcpurgeignore entry](docs/images/report-git-drawer.jpg)
+
+To remove many at once, tick findings in the report. The first column has a checkbox per row; the header checkbox
+selects every row currently visible, so filter first (kind, category, module, confidence, search) and then
+"select all visible" to pick a whole type. A bar at the bottom shows how many are selected, their total size, and a
+**Copy purge command** button with a ready `xcpurge purge <root> --ids <id>,<id>,...` line. Duplicates and
+informational findings have a disabled checkbox because `purge` never removes them.
 
 **Next:** build the app, run it, then commit the removal in its own commit.
 
@@ -283,7 +307,8 @@ xcpurge files . --delete --yes --verify \
 ```
 
 Replace `SCHEME` with your scheme (`xcodebuild -list` shows them). Add `-workspace` or `-project` to the build
-command if the folder holds several. `--verify` works on `assets --delete`, `files --delete` and `remove`.
+command if the folder holds several. `--verify` works on `assets --delete`, `files --delete`, `purge` and `remove`.
+On `purge` it covers the files moved to the trash, not the pruned string keys.
 
 - **Preflight:** before anything is removed, xcpurge runs your build once. If that build already fails, nothing is
   removed and xcpurge stops with an error status (exit code 4; all codes are listed under [Exit codes](#exit-codes)).
@@ -606,7 +631,7 @@ Every command takes these two flags:
 ### scan
 
 `xcpurge scan [FOLDER]` reports unused assets, strings and files. It never changes anything. The same flags work on
-`assets`, `strings`, `files`, `baseline`, `explain`, `size` and `modules`.
+`assets`, `strings`, `files`, `purge`, `baseline`, `explain`, `size` and `modules`.
 
 | Flag | What it does | Default |
 |---|---|---|
@@ -691,9 +716,30 @@ confidence. Plain folders are refused: pass the files inside.
 | `--verify-timeout SECONDS` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
 | `--verify-max-builds N` | Most builds `--verify` may run after the removal. | `8` |
 
+### purge
+
+`xcpurge purge [FOLDER]` removes every actionable finding in one go: unused assets and files go to the trash (with
+their project references), unused string keys are pruned. It is `assets --delete`, `files --delete` and
+`strings --prune` in one run and one trash session. Dead-source files, ghost references, duplicates and informational
+findings are never touched.
+All `scan` flags, plus:
+
+| Flag | What it does | Default |
+|---|---|---|
+| `--only WHAT` | Act only on `assets`, `strings`, `files`, `unused-CATEGORY` or a kind (`orphan-file`). Repeatable, comma-separated. Kinds purge never acts on are refused. | everything |
+| `--ids IDS` | Act only on these finding ids, whatever their confidence. Repeatable, comma-separated. Unknown ids are warned about. | all actionable |
+| `--dry-run` | List what would be removed and print the report; change nothing. | off |
+| `-y`, `--yes` | Do not ask for confirmation. | asks |
+| `--verify COMMAND` | Build before and after the removal; put back what the build needs. | off |
+| `--verify-timeout SECONDS` | Time limit per build; a timeout restores everything and exits 4. | `1800` |
+| `--verify-max-builds N` | Most builds `--verify` may run after the removal. | `8` |
+
+Without `--ids`, only high findings are acted on unless you pass `--min-confidence`. `--verify` build-checks the files
+moved to the trash, not the pruned string keys. Undo with `xcpurge restore`.
+
 ### restore
 
-`xcpurge restore [FOLDER]` undoes a delete, prune or remove from `.xcpurge-trash`.
+`xcpurge restore [FOLDER]` undoes a delete, prune, purge or remove from `.xcpurge-trash`.
 
 | Flag | What it does | Default |
 |---|---|---|

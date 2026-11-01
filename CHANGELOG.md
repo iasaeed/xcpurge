@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- `xcpurge purge <root>`: one command that does what `assets --delete`, `files --delete` and `strings --prune` do,
+  in one run with one confirmation and one trash session (`xcpurge restore` undoes it all). `--only` narrows it
+  to categories or finding kinds (same values as `--fail-on`, except `any`), `--ids <id>,<id>,...` acts on
+  exactly the listed findings whatever their confidence (unknown ids are warned about), `--dry-run` lists what
+  would go and changes nothing, and `--verify` works as on `assets --delete` (pruned strings are not
+  build-checked). The HTML report's purge selection only offers the kinds purge acts on.
+- HTML report: bulk selection. A checkbox column with a select-all-visible header checkbox, keyboard `x`, and a
+  bottom bar showing the count, total size and a copyable `xcpurge purge <root> --ids ...` command. Duplicates and
+  informational findings are not selectable.
+
 ### Fixed
 
 - HTML report: scrolling the page over the module graph no longer zooms it, so the page keeps scrolling past the

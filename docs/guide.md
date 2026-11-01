@@ -873,6 +873,7 @@ The template lives in `Sources/XcpurgeKit/Resources/report.html` and is compiled
 xcpurge assets --delete            # move unused assets to .xcpurge-trash, edit classic pbxproj references
 xcpurge strings --prune            # remove unused keys from .xcstrings/.strings/.stringsdict
 xcpurge files --delete             # move orphans, unused resources and xibs/storyboards to the trash
+xcpurge purge                      # all three at once, high confidence only, one trash session (see below)
 xcpurge remove <root> <path> ...   # move exactly these files or asset sets to the trash (see below)
 xcpurge restore --list             # sessions
 xcpurge restore [--session ID]     # undo (newest by default), byte-identical
@@ -882,8 +883,8 @@ Why it is safe:
 
 - Actions ask for confirmation (`--yes` skips it) and touch only **high** findings unless you pass
   `--min-confidence` explicitly. When stdin is not a terminal and `--yes` is missing (CI, an agent, a pipe),
-  nothing can answer: `assets --delete`, `files --delete` and `strings --prune` still write their report
-  (stdout or `--output`), `remove` prints what it would have done, and all four exit 2 with
+  nothing can answer: `assets --delete`, `files --delete`, `strings --prune` and `purge` still write their
+  report (stdout or `--output`), `remove` prints what it would have done, and all five exit 2 with
   `Not a terminal; pass --yes to confirm.` on stderr, so a silent no-op never looks like success.
 - Everything moved or rewritten goes into `.xcpurge-trash/<session>/` with a manifest. There is never a `.bak`
   next to the file, which would ship inside a synchronized folder or `.lproj`. Add `.xcpurge-trash/` to
@@ -897,10 +898,46 @@ Why it is safe:
 
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
 
+### Remove everything at once (`purge`)
+
+`xcpurge purge` scans every category and does what `assets --delete`, `files --delete` and `strings --prune`
+do, in one run: one confirmation, one trash session, one `xcpurge restore` to undo it all.
+
+```sh
+xcpurge purge                                    # every high-confidence unused asset, file and string
+xcpurge purge --dry-run                          # list what would go and print the report; change nothing
+xcpurge purge --only strings                     # one category: assets, strings, files (or unused-<category>)
+xcpurge purge --only orphan-file,unused-asset    # or finding kinds; repeatable, commas allowed
+xcpurge purge --ids unused-asset-9532ffca6e,orphan-file-5f22e12c23   # exactly these findings
+xcpurge restore                                  # undo the whole purge
+```
+
+- The findings acted on are the kinds the three commands actually remove (unused assets, fonts, resources and
+  interface files, orphan files, unused and stale strings) at **high** confidence, or at `--min-confidence` when
+  you give it. Dead-source files, ghost references, duplicates and informational findings are never acted on;
+  use `xcpurge remove` for those.
+- `--only` takes the same values as `--fail-on`, except `any` (that is the default) and the categories and
+  kinds purge never acts on, which are refused: `duplicates`, `unused-duplicates`, `ignores`, `unused-ignores`,
+  `duplicate`, `stale-ignore`, `dynamic-lookup`, `dead-source` and `ghost-reference`.
+- `--ids` takes finding ids from the report (`id` in JSON, the HTML report's drawer). You picked them, so the
+  confidence gate does not apply, not even a `--min-confidence` flag or a `minConfidence` in `xcpurge.json`
+  (the report still hides findings below that floor). An id naming a finding purge never acts on is listed as
+  left alone. Ids the scan did not produce are listed on stderr
+  (`warning: 1 id(s) not found in this scan: ...`) and the rest go ahead; if none match, nothing happens and
+  the exit code is 0.
+- The confirmation lists every pending action grouped by category. `--yes` skips it; without a terminal and
+  without `--yes`, the report is written and the exit code is 2, as for the other cleanup commands.
+- `--verify` checks the moved files and asset sets as it does for `assets --delete`; it does not build-check the
+  pruned string keys (a warning says so). String keys are pruned after the verification, so an aborted verify
+  leaves the strings untouched.
+- `--fail-on` applies when nothing is removed (`--dry-run`, or nothing to do), as for `scan`.
+- If pruning fails after files were trashed, the trash result and the `xcpurge restore --session` command are
+  printed, the report is written, and the exit code is 3.
+
 ### Let the build check the removal (`--verify`)
 
-`--verify "<command>"` on `assets --delete`, `files --delete` and `remove` runs your build before and after the
-action and puts back whatever the build cannot do without:
+`--verify "<command>"` on `assets --delete`, `files --delete`, `purge` and `remove` runs your build before and
+after the action and puts back whatever the build cannot do without:
 
 ```sh
 xcpurge files --delete --yes --verify \
@@ -986,6 +1023,24 @@ xcpurge restore                                                             # un
 - Everything goes through the same trash session as `--delete`, so `xcpurge restore` undoes it byte for byte.
   `remove` does not record the size before/after table.
 
+
+### Select many findings in the report
+
+Use the checkbox column to pick findings one by one, or filter the table and use the header checkbox (or
+"Select all visible" in the bottom bar) to pick everything shown. The header checkbox shows a partial state when
+only some visible rows are selected. Selected findings stay selected while you change filters, search or sort, so
+you can build one command from several types. "Clear" empties the selection. Press `x` while a row is active to
+toggle it.
+
+The bar's command targets the scanned project root and lists each finding's stable id:
+
+    xcpurge purge /path/to/project --ids unused-asset-8324ee39c9,unused-asset-1f0a2b3c4d
+
+Paste it into a terminal to remove exactly those findings (see [`purge`](#remove-everything-at-once-purge)).
+Duplicate sets and informational kinds cannot be selected (their checkboxes are disabled with the note "Not
+removable by xcpurge purge"); handle duplicates with `xcpurge remove` from the finding's drawer. Very large
+selections produce a very long command line; filter to a type and purge in batches if your shell rejects it.
+
 ## Measuring size
 
 `xcpurge size` measures the scanned tree by category and by module, using the same walk and module attribution
@@ -1059,7 +1114,7 @@ Snapshots written by 0.4 carry `paths: [{name, files, bytes}]` (every file, asse
 
 ### Before and after a purge
 
-`assets --delete`, `files --delete` and `strings --prune` measure the tree before acting and again after. They
+`assets --delete`, `files --delete`, `strings --prune` and `purge` measure the tree before acting and again after. They
 store both as `size-before.json` and `size-after.json` in the trash session, and print the categories that
 changed (the `Size before → after` table in the [walkthrough](#delete-safely-then-undo)). `xcpurge restore`
 prints the same table reversed. `xcpurge size --compare .xcpurge-trash/<session>/size-before.json` compares any
