@@ -10,9 +10,10 @@ public struct RefKindMask: OptionSet, Sendable, Hashable {
     public static let plistValue = RefKindMask(rawValue: 1 << 4)
     public static let buildSetting = RefKindMask(rawValue: 1 << 5)
     public static let accessorUse = RefKindMask(rawValue: 1 << 6)
+    public static let implicitRawValue = RefKindMask(rawValue: 1 << 7)
 
     /// Everything that carries a raw name as a string (literals, IB, plist, settings, accessors).
     public static let names: RefKindMask = [.stringLiteral, .ibAttribute, .plistValue, .buildSetting, .accessorUse]
     public static let symbols: RefKindMask = [.memberSymbol, .identifier]
-    public static let all = RefKindMask(rawValue: 0x7F)
+    public static let all = RefKindMask(rawValue: 0xFF)
 }

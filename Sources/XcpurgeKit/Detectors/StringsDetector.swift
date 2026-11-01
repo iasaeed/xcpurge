@@ -153,8 +153,7 @@ public struct StringsDetector: Detector {
             }
 
             let visibleModules = visible(table)
-            var ev = evidence(entry, table, visibleModules)
-            if !ev.strong, ev.weak.isEmpty, let reason = mainBundleEvidence(key, table) { ev.weak.append(reason) }
+            let ev = evidence(entry, table, visibleModules)
             var result: Finding
             if entry.state == "stale" {
                 result = ev.strong || !ev.weak.isEmpty
@@ -174,6 +173,7 @@ public struct StringsDetector: Detector {
             } else {
                 result = finding(.unusedString, .high, ["no reference found"])
             }
+            applyUnseenEvidence(&result, key: key, table: table, visibleModules)
             downgrade(&result, key: key, table: table, visibleModules)
             return result
         }
@@ -228,24 +228,25 @@ public struct StringsDetector: Detector {
                     return ev
                 }
             }
+            // A visible accessor (`CommonStrings.attachmentTypeAnimated`) whose body in another module holds the key.
+            if ctx.refs.accessorChain([entry.key], visible: visibleModules) != nil { ev.strong = true }
             return ev
         }
 
-        /// Review #9: `NSLocalizedString("k", comment:)` without `bundle:` in a module the owning app depends on
-        /// reads `Bundle.main`, i.e. the app's table. Weak (medium) evidence only.
-        func mainBundleEvidence(_ key: String, _ table: Table) -> String? {
-            let reach = ctx.graph.mainBundleReach(of: table.owners)
-            guard !reach.isEmpty else { return nil }
-            for r in ctx.refs.sites(key, kinds: .stringLiteral) where ctx.refs.isVisible(r.file, reach) {
-                guard let context = r.context, LocalizationCallClassifier.isLocalization(context, extraMacros: macros),
-                      (context.table ?? "Localizable") == table.stem else { continue }
-                let bundle = LocalizationCallClassifier.bundle(context)
-                guard bundle == .none || bundle == .main else { continue }
-                let module = ctx.refs.modules(of: r.file).intersection(reach).sorted().first?.name ?? "a dependency"
-                return "referenced from \(module) without a bundle at \(site(r.file, r.line)); "
-                    + "resolves to the main bundle at runtime"
+        /// OSS scan #1 (supersedes review #9's medium cap for bundle-less calls in dependencies): the key in a module
+        /// the visibility rule does not count. A localization call reading the main bundle caps at low, any other exact
+        /// match at medium; calls naming another table, or the calling module's own bundle, never count.
+        func applyUnseenEvidence(_ f: inout Finding, key: String, table: Table, _ visibleModules: Set<ModuleID>) {
+            let isLookup = { (c: CallContext) in LocalizationCallClassifier.isLocalization(c, extraMacros: macros) }
+            let otherTable = { (r: Reference) -> Bool in
+                guard let c = r.context, isLookup(c) else { return false }
+                return (c.table ?? "Localizable") != table.stem
             }
-            return nil
+            guard let match = ctx.refs.unseenMatch([key], visible: visibleModules, isLookup: isLookup,
+                                                   accept: { !otherTable($0) }),
+                  match.confidence < f.confidence else { return }
+            f.confidence = match.confidence
+            f.reasons.append(ctx.refs.reason(for: match, owner: f.module))
         }
 
         /// Narrowing of a localization literal by `tableName:` and `bundle:` (§4.2 step 5).

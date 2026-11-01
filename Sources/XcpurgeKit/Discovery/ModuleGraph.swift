@@ -161,13 +161,18 @@ public struct ModuleGraph: Sendable {
         } else if let identity = dep.package?.lowercased(), let dir = project.packageDependencies[identity] {
             candidates = packages[dir].map { [$0] } ?? []
         } else {
-            let declared = Set(project.packageDependencies.values)
+            // No package named (Xcode writes `productName = Foo;` without `package =` for a local package added as a
+            // folder): any package declaring the product, local packages this project references first.
+            let declared = Set(project.packageDependencies.values).union(project.localPackages)
             candidates = packages.keys.sorted().compactMap { packages[$0] }
                 .sorted { declared.contains($0.directory) && !declared.contains($1.directory) }
         }
         for pkg in candidates {
             if let targets = pkg.products[dep.product] {
-                return Set(targets.map { ModuleID(container: pkg.container, name: $0) })
+                // An empty list means the product's targets are computed (`targets: publicTargets`) and the text
+                // fallback could not read them: link every non-test target rather than none.
+                let linked = targets.isEmpty ? pkg.targets.filter { !$0.kind.isTest }.map(\.name) : targets
+                return Set(linked.map { ModuleID(container: pkg.container, name: $0) })
             }
             if pkg.target(named: dep.product) != nil { return [ModuleID(container: pkg.container, name: dep.product)] }
         }

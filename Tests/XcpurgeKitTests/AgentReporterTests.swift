@@ -235,6 +235,10 @@ final class AgentReporterTests: XCTestCase {
         XCTAssertEqual(ReasonCodes.classify("not declared in UIAppFonts and never referenced by file, PostScript, family or full name"), "no-ref")
         XCTAssertEqual(ReasonCodes.classify("declared in UIAppFonts of App but never used by file, PostScript, family or full name"), "font-declared")
         XCTAssertEqual(ReasonCodes.classify("matches no file on disk"), "stale-ignore")
+        XCTAssertEqual(ReasonCodes.classify("exact match \"hero\" at Kit/A.swift:3 in Kit, a module that cannot see App"), "not-visible")
+        XCTAssertEqual(ReasonCodes.classify("referenced from Kit without a bundle at Kit/A.swift:3; resolves to the main bundle at runtime"),
+                       "main-bundle-lookup")
+        XCTAssertEqual(ReasonCodes.classify("App/A.swift:3 reads the main bundle, not Kit's bundle"), "main-bundle")
         for code in ReasonCodes.codes {
             XCTAssertFalse(ReasonCodes.entry(for: code).meaning.isEmpty)
             XCTAssertFalse(ReasonCodes.entry(for: code).toMakeSafe.isEmpty)

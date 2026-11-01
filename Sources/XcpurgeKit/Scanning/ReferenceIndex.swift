@@ -20,8 +20,14 @@ public struct ReferenceIndex: Sendable {
     /// Reference sources that could not be scanned (path -> reason), sorted by path. Findings that might
     /// depend on them are capped at medium by the engine.
     public let skippedSources: [(path: String, reason: String)]
+    /// Reference index of a Swift string literal -> the outermost `var`/`let`/`func` whose body holds it.
+    public let enclosingDeclarations: [Int32: String]
+    /// Outermost `var`/`let`/`func` name -> how often it is declared across Swift sources.
+    public let declarationCounts: [String: Int]
     private let byValue: [String: [Int32]]
     private let byLowercased: [String: [Int32]]
+    /// Lowercased string literals ending in `-`, `_` or `.` (`"pause-animation-"`) -> first reference index.
+    private let separatorPrefixes: [String: Int32]
 
     /// Generic text files (json, html, css, js, xcconfig) larger than this are streamed in chunks instead of
     /// loaded whole. Nothing is skipped by size; only unreadable files are.
@@ -37,8 +43,11 @@ public struct ReferenceIndex: Sendable {
 
     init(references: [Reference], dynamicPatterns: [DynamicPattern], ignoredLines: Set<FileLine>,
          accessors: [String: String], generatedFiles: Set<Int32>, sourcePaths: [String], sourceModules: [Set<ModuleID>],
-         skippedSources: [(path: String, reason: String)] = [], ignoreMarkers: [Int32: [IgnoreMarker]] = [:]) {
+         skippedSources: [(path: String, reason: String)] = [], ignoreMarkers: [Int32: [IgnoreMarker]] = [:],
+         enclosingDeclarations: [Int32: String] = [:], declarationCounts: [String: Int] = [:]) {
         self.skippedSources = skippedSources
+        self.enclosingDeclarations = enclosingDeclarations
+        self.declarationCounts = declarationCounts
         self.ignoreMarkers = ignoreMarkers
         self.references = references
         self.dynamicPatterns = dynamicPatterns
@@ -48,11 +57,17 @@ public struct ReferenceIndex: Sendable {
         self.sourcePaths = sourcePaths
         self.sourceModules = sourceModules
         var byValue: [String: [Int32]] = [:], byLower: [String: [Int32]] = [:], idents: [Int32: Set<String>] = [:]
+        var prefixes: [String: Int32] = [:]
         for (i, r) in references.enumerated() {
             byValue[r.value, default: []].append(Int32(i))
             byLower[r.value.lowercased(), default: []].append(Int32(i))
             if r.kind == .identifier || r.kind == .memberSymbol { idents[r.file, default: []].insert(r.value) }
+            if r.kind == .stringLiteral, Self.isSeparatorPrefix(r.value) {
+                let key = r.value.lowercased()
+                if prefixes[key] == nil { prefixes[key] = Int32(i) }
+            }
         }
+        self.separatorPrefixes = prefixes
         self.byValue = byValue
         self.byLowercased = byLower
         self.identifiersByFile = idents
@@ -71,6 +86,46 @@ public struct ReferenceIndex: Sendable {
     public func referenced(_ value: String, kinds: RefKindMask, from visible: Set<ModuleID>) -> Confidence? {
         if sites(value, kinds: kinds).contains(where: { isVisible($0.file, visible) }) { return .high }
         if sites(value, kinds: kinds, caseInsensitive: true).contains(where: { isVisible($0.file, visible) }) { return .medium }
+        return nil
+    }
+
+    /// Accessor chain (OSS scan #1): a visible use of a declaration (`CommonStrings.attachmentTypeAnimated`) whose body,
+    /// in a file the visibility rule does not count, holds `value` as a string literal. Only declarations whose name is
+    /// declared once in the scan, so `title` or `body` never chain. Heuristic: a type checker would resolve the member.
+    public func accessorChain(_ values: [String], visible: Set<ModuleID>) -> (literal: Reference, use: Reference)? {
+        for value in values {
+            for i in byValue[value] ?? [] {
+                let r = references[Int(i)]
+                guard r.kind == .stringLiteral, let decl = enclosingDeclarations[i], declarationCounts[decl] == 1,
+                      !isVisible(r.file, visible) else { continue }
+                if let use = sites(decl, kinds: .symbols).first(where: { $0.file != r.file && isVisible($0.file, visible) }) {
+                    return (r, use)
+                }
+            }
+        }
+        return nil
+    }
+
+    static let nameSeparators: Set<Character> = ["-", "_", "."]
+
+    /// A literal that reads as the start of a built name: one separator after a letter or digit (`"icon-"`, not
+    /// `"Loading..."`), two letters or digits in all, no spaces or slashes.
+    static func isSeparatorPrefix(_ s: String) -> Bool {
+        guard let last = s.last, nameSeparators.contains(last), s.count <= 128,
+              let beforeLast = s.dropLast().last, beforeLast.isLetter || beforeLast.isNumber,
+              !s.contains(where: { $0.isWhitespace || $0 == "/" }) else { return false }
+        return s.filter { $0.isLetter || $0.isNumber }.count >= 2
+    }
+
+    /// OSS scan #3b: a string literal ending in a separator that is a proper prefix of `name` (`"pause-animation-"` for
+    /// `pause-animation-3`), compared ignoring case, in any module: the rest is appended at runtime.
+    public func separatorPrefix(of name: String) -> Reference? {
+        var prefix = ""
+        for (n, c) in name.lowercased().enumerated() {
+            prefix.append(c)
+            guard Self.nameSeparators.contains(c), n < name.count - 1, let i = separatorPrefixes[prefix] else { continue }
+            return references[Int(i)]
+        }
         return nil
     }
 
@@ -117,6 +172,7 @@ public struct ReferenceIndex: Sendable {
         var markers: [Int32: [IgnoreMarker]] = [:]
         var accessors: [String: String] = [:], generated = Set<Int32>()
         var skipped: [(path: String, reason: String)] = []
+        var enclosing: [Int32: String] = [:], declarations: [String: Int] = [:]
         for (i, out) in outputs {
             if let reason = out.skipReason {
                 skipped.append((files[i].path, reason))
@@ -127,6 +183,8 @@ public struct ReferenceIndex: Sendable {
                 for (k, v) in out.accessors.sorted(by: { $0.key < $1.key }) where accessors[k] == nil { accessors[k] = v }
                 continue
             }
+            for (k, decl) in out.enclosingDeclarations { enclosing[Int32(references.count + k)] = decl }
+            declarations.merge(out.declarationCounts, uniquingKeysWith: +)
             references += out.references
             patterns += out.patterns
             for line in out.ignoredLines { ignored.insert(FileLine(file: Int32(i), line: line)) }
@@ -164,7 +222,8 @@ public struct ReferenceIndex: Sendable {
         }
         return ReferenceIndex(references: references, dynamicPatterns: patterns, ignoredLines: ignored,
                               accessors: accessors, generatedFiles: generated, sourcePaths: sourcePaths,
-                              sourceModules: sourceModules, skippedSources: skipped, ignoreMarkers: markers)
+                              sourceModules: sourceModules, skippedSources: skipped, ignoreMarkers: markers,
+                              enclosingDeclarations: enclosing, declarationCounts: declarations)
     }
 
     static func scanFile(_ file: SourceFile, index: Int32, rootPath: String, macros: [String],

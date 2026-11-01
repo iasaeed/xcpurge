@@ -53,6 +53,7 @@ enum InterfaceFileUsage {
         case .ibAttribute(let attribute): return attribute == "storyboardName"
         case .stringLiteral:
             return loaderCallees.contains(r.context?.callee ?? "") || loaderLabels.contains(r.context?.label ?? "")
+        case .implicitRawValue: return false
         }
     }
 }

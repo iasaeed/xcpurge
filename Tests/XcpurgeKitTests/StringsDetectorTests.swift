@@ -188,7 +188,8 @@ final class StringsDetectorTests: XCTestCase {
         }
     }
 
-    /// Review #9: a bundle-less `NSLocalizedString` in DesignSystem (App depends on it) reads App's table.
+    /// Review #9: a bundle-less `NSLocalizedString` in DesignSystem (App depends on it) reads App's table; OSS scan #1
+    /// caps such main-bundle lookups at low.
     func testBundlelessLocalizationInDependencyReachesAppTable() async throws {
         let root = try FixtureSupport.copyToTemp("ModularWorkspace")
         let legacy = root.appendingPathComponent("App/App/en.lproj/Legacy.strings")
@@ -203,7 +204,7 @@ final class StringsDetectorTests: XCTestCase {
         config.noSwift = true
         let findings = try await ScanEngine(root: root, config: config).run(categories: [.strings]).findings
         let key = try XCTUnwrap(findings.first { $0.name == "ds_reads_app" })
-        XCTAssertEqual(key.confidence, .medium)
+        XCTAssertEqual(key.confidence, .low)
         XCTAssertTrue(key.reasons.contains { $0.contains("referenced from DesignSystem without a bundle") }, "\(key.reasons)")
         XCTAssertEqual(findings.first { $0.name == "nobody_reads" }?.confidence, .high)
     }

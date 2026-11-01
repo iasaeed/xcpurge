@@ -14,6 +14,32 @@
 
 ### Changed
 
+- An exact name in a module the visibility rule does not count (a framework or package the app links, a sibling
+  target) no longer leaves a finding at high: it caps assets, strings, fonts and resource files at medium (reason
+  code `not-visible`), or at low when it is the argument of a main-bundle lookup (`UIImage(named:)`, `Image("…")`,
+  `UIColor(named:)`, `NSDataAsset`, `NSLocalizedString`, `String(localized:)`, `Text("key")`,
+  `Bundle.main.url(forResource:)`; reason code `main-bundle-lookup`). Bundle-less lookups in dependencies of the
+  owning app were medium and are now low too. Lookups that pass `.module`/`#bundle`, and localization calls naming
+  another table, still never count. `bundle: nil` / `in: nil` now reads as the main bundle.
+- A visible use of an accessor whose body in another module holds the name (`CommonStrings.attachmentTypeAnimated`
+  wrapping `"ATTACHMENT_TYPE_ANIMATED"`) counts as a reference, for declarations whose name is declared only once.
+  Heuristic, without type checking.
+- Runtime-built names count from any module, not only visible ones: a constant prefix before an interpolation or
+  concatenation (`"avatar_\(rawValue)"`, three characters for untyped strings) and a string literal ending in `-`,
+  `_` or `.` that is a proper prefix of a name (`"pause-animation-"`) make matching assets and resource files low,
+  with a `dynamic-lookup` record. A visible untyped prefix was medium before.
+- Cases of `enum E: String` without an explicit raw value are indexed as implicit raw values (new reference kind
+  `implicitRawValue` in `explain`), so `Bundle.main.url(forResource: effect.rawValue, …)` with `case pull` keeps
+  `pull.wav` at medium (reason code `enum-raw-value`).
+- An asset name computed locally and passed to a lookup (`let name = entity.displayName.lowercased()` then
+  `UIImage(named: name)`, `for name in names { Image(name) }`, `Image(name.lowercased())`) is a keyless lookup: the
+  catalogs and loose images of that module drop to medium, with a `dynamic-lookup` record. Parameters (forwarding
+  wrappers, whose callers' literals are indexed), stored properties, plain value reads (`model.iconName`,
+  `if let name = model.iconName`), names bound to literal text anywhere in the file, and calls to a same-file
+  function whose body holds literals never count.
+  References inside `#if FLAG` blocks keep counting whatever the flag (now covered by a test).
+
+
 - The headline counts only actionable findings. The text `Total:` line, the scan summary line and the HTML header
   card exclude `dynamic-lookup` records and `duplicate` members and name them beside the total instead, e.g.
   `Total: 4,500 findings (900 high, 2,000 medium, 1,600 low) + 392 dynamic lookups, 88 duplicate sets`. The JSON
@@ -41,6 +67,13 @@
   `CocoaPods output missing; run pod install`.
 - A 0-byte `.strings`, `.stringsdict` or `.xcstrings` file warns `empty strings file` instead of `cannot parse
   strings file`. Every diagnostic path is root-relative; `cannot read xcconfig` used to print an absolute path.
+
+- A project target linking a local package product through `XCSwiftPackageProductDependency` with no `package =`
+  attribute (Xcode writes this for a package added as a folder) got no dependency edge when the product's targets
+  come from a variable (`targets: publicTargets`), which `--no-swift` cannot read: every non-test target of the
+  package is now linked, and local packages the project references are searched first. App code in such projects
+  now sees the package's assets and strings (mastodon-ios).
+
 
 - Output xcpurge wrote inside the scanned tree (an `--output` HTML or JSON report, a baseline under another name,
   a `size --save` snapshot such as `size-base.json`, including ones saved by 0.4.0, or an `explain --format json`

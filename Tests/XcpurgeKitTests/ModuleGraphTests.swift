@@ -80,4 +80,26 @@ final class ModuleGraphTests: XCTestCase {
         XCTAssertEqual(g.module(app)?.embeds, [kit])
         XCTAssertTrue(g.consumers(of: kit).contains(app))
     }
+
+    /// OSS scan #5 (mastodon-ios): `productName = DesignSystemDynamic;` with no `package =` attribute, and a product
+    /// whose targets come from a variable the text fallback cannot read. The app still depends on the package.
+    func testPackagelessProductDependencyWithComputedTargets() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        let pbxproj = root.appendingPathComponent("App/App.xcodeproj/project.pbxproj")
+        let text = try String(contentsOf: pbxproj, encoding: .utf8)
+        XCTAssertTrue(text.contains("package = AA0000000000000000000010;"))
+        let edited = text.replacingOccurrences(of: "package = AA0000000000000000000010;", with: "")
+            .replacingOccurrences(of: "productName = DesignSystem;", with: "productName = DesignSystemDynamic;")
+        try Data(edited.utf8).write(to: pbxproj)
+        let manifest = root.appendingPathComponent("Packages/DesignSystem/Package.swift")
+        let swift = try String(contentsOf: manifest, encoding: .utf8)
+            .replacingOccurrences(of: "let package = Package(", with: "let publicTargets = [\"DesignSystem\"]\n\nlet package = Package(")
+            .replacingOccurrences(of: #".library(name: "DesignSystem", targets: ["DesignSystem"]),"#,
+                                  with: #".library(name: "DesignSystemDynamic", type: .dynamic, targets: publicTargets),"#)
+        try Data(swift.utf8).write(to: manifest)
+
+        let g = try await ScanEngine(root: root, config: config()).makeContext().graph
+        XCTAssertEqual(g.module(app)?.dependsOn, [widget, core, ds])
+        XCTAssertTrue(g.consumers(of: ds).contains(app))
+    }
 }
