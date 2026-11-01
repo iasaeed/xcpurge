@@ -96,9 +96,11 @@ public struct BaselineFile: Sendable, Equatable {
             "workspace=" + rel(config.workspace),
             "package=" + rel(config.package),
         ]
-        // Only a non-default list joins the hash, so baselines written before the key existed stay valid.
-        if config.testFixtureDirectories != Config.defaultTestFixtureDirectories {
-            parts.append("testFixtureDirectories=" + config.testFixtureDirectories.sorted().joined(separator: ","))
+        // Only a non-default list joins the hash, so baselines written before the key existed stay valid. Compared as
+        // a set: order and duplicates do not change what is skipped.
+        let fixtures = Set(config.testFixtureDirectories)
+        if fixtures != Set(Config.defaultTestFixtureDirectories) {
+            parts.append("testFixtureDirectories=" + fixtures.sorted().joined(separator: ","))
         }
         let hash = FindingIdentity.fnv1a64(parts.joined(separator: "\n"))
         let hex = String(hash, radix: 16)

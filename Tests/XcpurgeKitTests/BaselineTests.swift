@@ -111,6 +111,19 @@ final class BaselineTests: XCTestCase {
         XCTAssertEqual(BaselineFile.configHash(a, root: URL(fileURLWithPath: "/tmp/root")).count, "fnv64:".count + 16)
     }
 
+    func testConfigHashIgnoresFixtureDirectoryOrderAndDuplicates() {
+        let root = URL(fileURLWithPath: "/tmp/root")
+        var reordered = Config()
+        reordered.testFixtureDirectories = Config.defaultTestFixtureDirectories.reversed() + ["__Snapshots__"]
+        XCTAssertEqual(BaselineFile.configHash(Config(), root: root), BaselineFile.configHash(reordered, root: root),
+                       "the default list in another order is still the default")
+        var custom = Config(), customReordered = Config()
+        custom.testFixtureDirectories = ["Golden", "Snapshots"]
+        customReordered.testFixtureDirectories = ["Snapshots", "Golden", "Golden"]
+        XCTAssertEqual(BaselineFile.configHash(custom, root: root), BaselineFile.configHash(customReordered, root: root))
+        XCTAssertNotEqual(BaselineFile.configHash(Config(), root: root), BaselineFile.configHash(custom, root: root))
+    }
+
     // MARK: - Matching
 
     /// SwiftLint #6871: two findings sharing a key need two counts; one count hides one of them.
