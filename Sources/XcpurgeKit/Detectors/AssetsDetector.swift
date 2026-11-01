@@ -43,7 +43,7 @@ public struct AssetsDetector: Detector {
             for asset in AssetCatalogReader.read(catalog: unit.path, root: ctx.root) where !asset.type.isAlwaysKept {
                 var c = evaluate(asset, module: module, visible: visible, resolver: resolver,
                                  protection: protection, index: index, ctx: ctx)
-                Self.applyMainBundleEvidence(&c, owners: unit.effectiveModules, resolver: resolver)
+                Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: \.isAssetLookup)
                 candidates.append(c)
             }
         }
@@ -53,11 +53,15 @@ public struct AssetsDetector: Detector {
         let folderLoads = Self.folderLoadRoots(ctx)
         for file in ctx.inventory.files where file.kind == .image && !file.modules.isEmpty {
             var c = evaluateLooseImage(file, ctx: ctx, resolver: resolver, protection: protection, folderLoads: folderLoads)
-            Self.applyMainBundleEvidence(&c, owners: file.effectiveModules, resolver: resolver)
+            Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: { $0.isAssetLookup || $0.isResourceLookup })
             candidates.append(c)
         }
         for file in ctx.inventory.files where file.kind == .font && !file.modules.isEmpty {
-            candidates.append(evaluateFont(file, ctx: ctx, resolver: resolver, folderLoads: folderLoads))
+            var c = evaluateFont(file, ctx: ctx, resolver: resolver, folderLoads: folderLoads)
+            // Fonts register process-wide: a name in any module is a use, never a bundle lookup.
+            Self.applyUnseenEvidence(&c, resolver: resolver, isLookup: { _ in false },
+                                     accept: { !Self.isFontDeclaration($0) })
+            candidates.append(c)
         }
 
         var usedPatterns = Set<DynamicPattern>()
@@ -183,9 +187,7 @@ public struct AssetsDetector: Detector {
         var c = Candidate(kind: .unusedFont, path: file.path, name: file.fileName, names: names,
                           module: ctx.moduleName(for: file.path), visible: visible, group: RelPath.parent(file.path),
                           sizeBytes: file.size, domains: [.resource])
-        let isDeclaration: (Reference) -> Bool = {
-            $0.kind == .plistValue && Self.fontDeclarationKeys.contains($0.context?.callee ?? "")
-        }
+        let isDeclaration: (Reference) -> Bool = Self.isFontDeclaration
         if resolver.nameEvidence(names, visible: visible, excluding: isDeclaration) != nil {
             c.used = true
             return c
@@ -211,11 +213,26 @@ public struct AssetsDetector: Detector {
         return c
     }
 
-    /// Review #9: bundle-less lookups in modules an app depends on read the app's bundle; never high then.
-    private static func applyMainBundleEvidence(_ c: inout Candidate, owners: Set<ModuleID>, resolver: AssetReferenceResolver) {
-        guard !c.used, c.confidence > .medium, let e = resolver.mainBundleEvidence(c.names, owners: owners) else { return }
-        c.confidence = .medium
-        c.reasons.append(e.reason)
+    /// The `UIAppFonts` / `ATSApplicationFontsPath` entry that declares a font is not a use of it.
+    static func isFontDeclaration(_ r: Reference) -> Bool {
+        r.kind == .plistValue && fontDeclarationKeys.contains(r.context?.callee ?? "")
+    }
+
+    /// OSS scan #1 (supersedes review #9's medium cap for bundle-less lookups in dependencies): exact names in modules
+    /// the visibility rule does not count. A visible accessor whose body there holds the name is a use; otherwise a
+    /// main-bundle lookup (`UIImage(named:)`, `Image("…")`, `NSDataAsset`) caps at low and any other exact match at medium.
+    private static func applyUnseenEvidence(_ c: inout Candidate, resolver: AssetReferenceResolver,
+                                            isLookup: (CallContext) -> Bool,
+                                            accept: (Reference) -> Bool = { _ in true }) {
+        guard !c.used else { return }
+        if resolver.refs.accessorChain(c.names, visible: c.visible) != nil {
+            c.used = true
+            return
+        }
+        guard let match = resolver.refs.unseenMatch(c.names, visible: c.visible, isLookup: isLookup, accept: accept),
+              match.confidence < c.confidence else { return }
+        c.confidence = match.confidence
+        c.reasons.append(resolver.refs.reason(for: match, owner: c.module))
     }
 
     /// Folders whose contents are copied or loaded wholesale: package `.copy` resources, folder references

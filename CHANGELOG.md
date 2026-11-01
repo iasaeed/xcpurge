@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed
+
+- An exact name in a module the visibility rule does not count (a framework or package the app links, a sibling
+  target) no longer leaves a finding at high: it caps assets, strings, fonts and resource files at medium (reason
+  code `not-visible`), or at low when it is the argument of a main-bundle lookup (`UIImage(named:)`, `Image("…")`,
+  `UIColor(named:)`, `NSDataAsset`, `NSLocalizedString`, `String(localized:)`, `Text("key")`,
+  `Bundle.main.url(forResource:)`; reason code `main-bundle-lookup`). Bundle-less lookups in dependencies of the
+  owning app were medium and are now low too. Lookups that pass `.module`/`#bundle`, and localization calls naming
+  another table, still never count. `bundle: nil` / `in: nil` now reads as the main bundle.
+- A visible use of an accessor whose body in another module holds the name (`CommonStrings.attachmentTypeAnimated`
+  wrapping `"ATTACHMENT_TYPE_ANIMATED"`) counts as a reference, for declarations whose name is declared only once.
+  Heuristic, without type checking.
+
 ### Fixed
 
 - A project target linking a local package product through `XCSwiftPackageProductDependency` with no `package =`

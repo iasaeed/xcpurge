@@ -174,7 +174,7 @@ final class AssetsDetectorTests: XCTestCase {
     }
 
     /// Review #9: `Image("brandLogo")` without a bundle in DesignSystem (a dependency of App) reads Bundle.main,
-    /// so App's own `brandLogo` is medium, not high. Same for an `NSLocalizedString` key of App's table.
+    /// so App's own `brandLogo` is not high; OSS scan #1 caps such main-bundle lookups at low.
     func testBundlelessLookupsInDependenciesReachTheAppBundle() async throws {
         let root = try FixtureSupport.copyToTemp("ModularWorkspace")
         let fm = FileManager.default
@@ -201,7 +201,7 @@ final class AssetsDetectorTests: XCTestCase {
         config.noSwift = true
         let findings = try await ScanEngine(root: root, config: config).run(categories: [.assets]).findings
         let logo = try XCTUnwrap(findings.first { $0.name == "brandLogo" })
-        XCTAssertEqual(logo.confidence, .medium)
+        XCTAssertEqual(logo.confidence, .low)
         XCTAssertTrue(logo.reasons.contains { $0.contains("referenced from DesignSystem without a bundle") }, "\(logo.reasons)")
         XCTAssertEqual(findings.first { $0.name == "elsewhere" }?.confidence, .high, "an explicit .module bundle is not Bundle.main")
     }

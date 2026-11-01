@@ -9,6 +9,10 @@ public struct ScanOutput: Sendable {
     public var accessors: [String: String] = [:]
     /// True for generated accessor files; their references are not counted as uses.
     public var isGenerated = false
+    /// Swift only: index into `references` of a string literal -> the outermost `var`/`let`/`func` whose body holds it.
+    public var enclosingDeclarations: [Int: String] = [:]
+    /// Swift only: how often each outermost `var`/`let`/`func` name is declared in the file.
+    public var declarationCounts: [String: Int] = [:]
     /// Why the file was not scanned (too large, unreadable); its references are unknown.
     public var skipReason: String?
 

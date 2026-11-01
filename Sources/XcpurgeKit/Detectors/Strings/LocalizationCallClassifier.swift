@@ -14,7 +14,7 @@ public enum LocalizationCallClassifier {
         case none
         /// `.module`, `Bundle.module`, `#bundle`: the calling module's own bundle.
         case module
-        /// `.main`, `Bundle.main`.
+        /// `.main`, `Bundle.main`, `nil` (`UIImage(named:in: nil, …)`).
         case main
         /// Anything else (a variable, `Bundle(for:)`, a receiver): unknown, no narrowing.
         case other
@@ -42,7 +42,7 @@ public enum LocalizationCallClassifier {
         guard let raw = ctx.bundle else { return .none }
         switch raw {
         case ".module", "Bundle.module", "#bundle", "Foundation.Bundle.module": return .module
-        case ".main", "Bundle.main", "Foundation.Bundle.main": return .main
+        case ".main", "Bundle.main", "Foundation.Bundle.main", "nil": return .main
         default: return .other
         }
     }

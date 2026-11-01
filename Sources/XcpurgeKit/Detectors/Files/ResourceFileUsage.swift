@@ -40,6 +40,7 @@ enum ResourceFileUsage {
                     || (tails[name.lowercased()] ?? []).contains { canSee($0.file) }
             }) { continue }
             if file.isUnit, (components[file.fileName.lowercased()] ?? []).contains(where: { canSee($0.file) }) { continue }
+            if ctx.refs.accessorChain(names, visible: visible) != nil { continue }
 
             let ext = (file.fileName as NSString).pathExtension.lowercased()
             let low: String?
@@ -62,6 +63,14 @@ enum ResourceFileUsage {
             } else if file.kind == .dataModel {
                 confidence = .medium
                 reasons.append("Core Data models load without a name (NSManagedObjectModel.mergedModel(from:))")
+            }
+            // OSS scan #1: `Bundle.main.url(forResource:)` (low) or another exact match (medium) in a module that
+            // cannot see the file. Heuristic: the receiver of `url(forResource:)` is not tracked, only `bundle:`.
+            let accept = { (r: Reference) in r.file != Int32(i) && isUser(r.file) && !isUserText(r) }
+            if let match = ctx.refs.unseenMatch(names, visible: visible, isLookup: \.isResourceLookup, accept: accept),
+               match.confidence < confidence {
+                confidence = match.confidence
+                reasons.append(ctx.refs.reason(for: match, owner: ctx.moduleName(for: file.path)))
             }
             out.append(Finding(kind: .unusedResource, category: .files, path: file.path,
                                module: ctx.moduleName(for: file.path), confidence: confidence, reasons: reasons,

@@ -25,6 +25,21 @@ struct TokenReferenceExtractor {
     private var refFrame: [Int] = []
     private var patternFrame: [Int] = []
     private var nextFrameID = 0
+    /// Accessor chain (OSS scan #1): the outermost `var`/`let`/`func` being declared and the frame depth it sits at,
+    /// then the one whose `{ … }` body (by frame id) or `= …` initializer (until the next line at its depth) is open.
+    /// Heuristic, no type checking: nested declarations count for the outer one.
+    private var pendingDecl: (name: String, depth: Int)?
+    private var bodyDecl: (name: String, frame: Int)?
+    private var initDecl: (name: String, depth: Int, line: Int32)?
+
+    static let declarationKeywords: Set<String> = ["var", "let", "func"]
+    /// Keywords that end a pending `var`/`let`/`func` without a body (protocol requirements, new scopes).
+    static let declarationResets: Set<String> = [
+        "class", "struct", "enum", "extension", "protocol", "actor", "init", "deinit", "subscript", "case", "import",
+        "typealias",
+    ]
+    /// Binding keywords preceded by these are conditions, not declarations (`if let x = y {`).
+    static let conditionKeywords: Set<String> = ["if", "guard", "while", "case", "for"]
 
     init(tokens: [SwiftToken], file: Int32, dialect: SwiftTokenizer.Dialect, localizationMacros: [String]) {
         self.tokens = tokens
@@ -52,6 +67,7 @@ struct TokenReferenceExtractor {
 
     private mutating func visit(_ t: Int) {
         let tok = tokens[t]
+        if dialect == .swift { trackDeclaration(t, tok) }
         if tok.kind == .punct {
             switch tok.text {
             case "(":
@@ -151,6 +167,35 @@ struct TokenReferenceExtractor {
         }
     }
 
+    /// Follows `var`/`let`/`func` declarations so string literals know the declaration whose body holds them.
+    private mutating func trackDeclaration(_ t: Int, _ tok: SwiftToken) {
+        if let d = initDecl, frames.count < d.depth || (frames.count == d.depth && tok.line > d.line) { initDecl = nil }
+        guard bodyDecl == nil, initDecl == nil else { return }
+        if tok.kind == .identifier {
+            if Self.declarationKeywords.contains(tok.text), let name = token(t + 1), name.kind == .identifier,
+               !(token(t - 1).map { $0.kind == .identifier && Self.conditionKeywords.contains($0.text) } ?? false) {
+                pendingDecl = (name.text, frames.count)
+                out.declarationCounts[name.text, default: 0] += 1
+            } else if Self.declarationResets.contains(tok.text) {
+                pendingDecl = nil
+            }
+            return
+        }
+        guard let pending = pendingDecl, tok.kind == .punct, frames.count == pending.depth else { return }
+        switch tok.text {
+        case "=":
+            initDecl = (pending.name, frames.count, tok.line)
+            pendingDecl = nil
+        case "{":
+            bodyDecl = (pending.name, nextFrameID + 1)  // the frame `visit` pushes next
+            pendingDecl = nil
+        case "}", ";":
+            pendingDecl = nil
+        default:
+            break
+        }
+    }
+
     /// Splits a format string at its first and last `%` specifiers; nil when there is none.
     static func formatParts(_ s: String) -> (String, String)? {
         let chars = Array(s)
@@ -195,7 +240,9 @@ struct TokenReferenceExtractor {
 
     /// Pops the innermost frame and back-fills its table / bundle arguments into the references it produced.
     private mutating func popFrame() {
-        guard let f = frames.popLast(), !f.isBarrier else { return }
+        guard let f = frames.popLast() else { return }
+        if bodyDecl?.frame == f.id { bodyDecl = nil }
+        guard !f.isBarrier else { return }
         let bundle = f.bundleTokens.isEmpty ? nil : f.bundleTokens.prefix(4).joined()
         guard f.table != nil || bundle != nil else { return }
         for r in f.refStart..<out.references.count where refFrame[r] == f.id {
@@ -209,6 +256,9 @@ struct TokenReferenceExtractor {
     }
 
     private mutating func addRef(_ kind: RefKind, _ value: String, _ line: Int32, _ ctx: CallContext?) {
+        if kind == .stringLiteral, let decl = bodyDecl?.name ?? initDecl?.name {
+            out.enclosingDeclarations[out.references.count] = decl
+        }
         out.references.append(Reference(kind: kind, value: value, file: file, line: line, context: ctx))
         refFrame.append(frames.last.map { $0.isBarrier ? 0 : $0.id } ?? 0)
     }
