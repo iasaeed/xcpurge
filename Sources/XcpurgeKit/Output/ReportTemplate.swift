@@ -10,6 +10,7 @@ enum ReportTemplate {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <title>{{TOOL}} report · {{ROOT}}</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http%3A//www.w3.org/2000/svg'%20viewBox='0%200%20256%20256'%3E%3Crect%20width='256'%20height='256'%20rx='60'%20fill='%23C9F73A'/%3E%3Cg%20fill='none'%20stroke='%230A0B10'%20stroke-width='34'%20stroke-linecap='round'%3E%3Cpath%20d='M78%2078L178%20178M178%2078L128%20128L100%20156'/%3E%3C/g%3E%3Cg%20fill='%230A0B10'%3E%3Crect%20x='66'%20y='166'%20width='24'%20height='24'%20rx='7'/%3E%3Crect%20x='48'%20y='192'%20width='16'%20height='16'%20rx='5'/%3E%3Crect%20x='36'%20y='214'%20width='9'%20height='9'%20rx='3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #f5f6f8; --panel: #ffffff; --panel-2: #f0f2f5; --text: #151a21; --muted: #5d6675; --faint: #8a93a2;
@@ -40,7 +41,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .brand { min-width: 0; flex: 1 1 420px; }
 .brand h1 { font-size: 20px; display: flex; align-items: center; gap: 10px; }
 .brand h1 .sub { color: var(--muted); font-weight: 500; }
-.logo { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--c-assets), var(--c-strings) 55%, var(--c-duplicates)); flex: none; }
+.logo { width: 22px; height: 22px; flex: none; }
 .root { display: block; margin-top: 4px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin: 16px auto 0; }
@@ -273,7 +274,7 @@ window.addEventListener('unhandledrejection', function (e) { window.onerror('unh
 <header class="top">
   <div class="wrap top-inner">
     <div class="brand">
-      <h1><span class="logo" aria-hidden="true"></span>{{TOOL}} <span class="sub">report</span></h1>
+      <h1><svg class="logo" viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="60" fill="#C9F73A"/><g fill="none" stroke="#0A0B10" stroke-width="34" stroke-linecap="round"><path d="M78 78L178 178M178 78L128 128L100 156"/></g><g fill="#0A0B10"><rect x="66" y="166" width="24" height="24" rx="7"/><rect x="48" y="192" width="16" height="16" rx="5"/><rect x="36" y="214" width="9" height="9" rx="3"/></g></svg>{{TOOL}} <span class="sub">report</span></h1>
       <code class="root" id="root" title="{{ROOT}}">{{ROOT}}</code>
     </div>
     <div class="actions">

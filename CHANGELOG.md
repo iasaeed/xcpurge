@@ -14,6 +14,10 @@
   bottom bar showing the count, total size and a copyable `xcpurge purge <root> --ids ...` command. Duplicates and
   informational findings are not selectable.
 
+### Changed
+
+- New brand mark and icon (docs/brand); the HTML report shows it in the header and as its favicon.
+
 ### Fixed
 
 - HTML report: scrolling the page over the module graph no longer zooms it, so the page keeps scrolling past the

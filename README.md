@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/brand/icon.svg" width="112" alt="xcpurge"></p>
+
 # xcpurge
 
 [![GitHub release](https://img.shields.io/github/v/release/iasaeed/xcpurge)](https://github.com/iasaeed/xcpurge/releases)
