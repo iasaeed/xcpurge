@@ -1,5 +1,12 @@
 # xcpurge
 
+[![GitHub release](https://img.shields.io/github/v/release/iasaeed/xcpurge)](https://github.com/iasaeed/xcpurge/releases)
+[![CI](https://github.com/iasaeed/xcpurge/actions/workflows/ci.yml/badge.svg)](https://github.com/iasaeed/xcpurge/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/iasaeed/xcpurge)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey)
+
+*Scans a 12,000-file app in about 7 seconds with no build. Every finding shows its evidence and can be undone.*
+
 ## What xcpurge does
 
 xcpurge finds things in an Xcode project that nothing uses: images, colors, fonts, localized strings and files.
@@ -7,6 +14,8 @@ It reads your project files and does not build your app. A scan never changes an
 
 Every finding has a confidence level (high, medium or low) that says how sure xcpurge is. When you clean up, files
 go to a trash folder inside your project. One command puts them back.
+
+![xcpurge scanning a demo app, writing the HTML report, deleting the unused assets and restoring them](docs/images/demo.gif)
 
 ![The xcpurge HTML report: summary cards, charts, module graph and a table of findings](docs/report-light.png)
 
@@ -333,7 +342,15 @@ Baseline .xcpurge-baseline.json (0 days): 8 baselined, 0 new, 0 fixed
 [docs/ci/xcpurge.yml](docs/ci/xcpurge.yml) is a complete GitHub Actions workflow. It downloads a pinned release
 binary and uses the baseline. It scans with `--format github`, so findings appear as comments on the changed lines.
 
-Copy it to `.github/workflows/` in your repository. The HTML report shows the baseline at the top:
+Copy it to `.github/workflows/` in your repository.
+
+**Show it in your README.** Once CI runs xcpurge, you can add a badge. Copy this line into your own `README.md`:
+
+```markdown
+[![unused assets checked by xcpurge](https://img.shields.io/badge/unused%20assets-checked%20by%20xcpurge-2ea44f)](https://github.com/iasaeed/xcpurge)
+```
+
+The HTML report shows the baseline at the top:
 
 ![Baseline card in the HTML report: new, baselined and fixed counts with warnings](docs/images/report-baseline.jpg)
 
@@ -596,7 +613,7 @@ Every command takes these two flags:
 | `--workspace FILE` | Scan the projects and packages of this `.xcworkspace`. | all found |
 | `--package PATH` | Scan only this Swift package (folder or `Package.swift`). | all found |
 | `--targets NAMES` | Only report findings in these modules (comma-separated). | all modules |
-| `--format FORMAT` | Output format: `text`, `json`, `xcode`, `github`, `html`, `agent`. | `text` |
+| `--format FORMAT` | Output format: `text`, `json`, `xcode`, `github`, `html`, `agent`, `markdown` (only `size` accepts `markdown`; see [Output formats](#output-formats)). | `text` |
 | `--output FILE` | Write the report to this file instead of the terminal. | terminal; html: `.xcpurge/report-TIME.html` |
 | `--open` | Open the HTML report when it is written. | off |
 | `--browser APP` | App for `--open`, for example `"Google Chrome"`. | default browser |
@@ -609,7 +626,7 @@ Every command takes these two flags:
 | `--include-pods` | Scan `Pods/` too. | off |
 | `--ignore-test-references` | Do not count uses from test targets. | off |
 | `--retain-public` | Never report public code of libraries as dead source. | off |
-| `--no-swift` | Read `Package.swift` as text instead of running `swift`. | off |
+| `--no-swift` | Read `Package.swift` as text instead of running `swift` (see the note below). | off |
 | `-v`, `--verbose` | Print more detail: reasons, info messages, which file went to which module. | off |
 | `-q`, `--quiet` | No progress, summary or hints (warnings and errors still print). | off |
 | `--max-warnings N` | Show at most this many `--format xcode` warnings, then a summary line. | no cap |
@@ -623,6 +640,8 @@ Every command takes these two flags:
 | `--git-emails` | With `--git`: also show author emails (JSON only). | names only |
 | `--git-dead-since` | With `--git`: guess the commit that removed the last use (slower). | off |
 | `--git-recent-days N` | With `--git`: paths added within this many days count as "recently added". | `30` |
+
+**About `--no-swift`.** By default xcpurge runs `swift package dump-package` on every `Package.swift` it finds, which compiles and executes that manifest. On a project you do not trust, or in CI where speed matters, pass `--no-swift` to use the built-in manifest text parser instead (about 10x faster on package-heavy repos).
 
 ### assets
 
