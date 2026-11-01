@@ -5,10 +5,10 @@ import XCTest
 /// What xcpurge writes into a scanned tree (trash, `.xcpurge/` reports, `--output` reports, baselines) is never read
 /// back as part of the project: a report names every finding and would mark all of them used on the next scan.
 final class ToolOutputTests: XCTestCase {
-    /// Two Swift packages, each with an unused `cardgift` image set (byte-identical PDFs).
+    /// Two Swift packages, each with an unused `promo_tile` image set (byte-identical PDFs).
     private func twoModules() throws -> URL {
         var files: [String: String] = [:]
-        for m in ["CardsFeature", "WalletFeature"] {
+        for m in ["ShopFeature", "ProfileFeature"] {
             let catalog = "Features/\(m)/Sources/\(m)/Resources/\(m).xcassets"
             files["Features/\(m)/Package.swift"] = """
                 // swift-tools-version: 5.9
@@ -17,15 +17,15 @@ final class ToolOutputTests: XCTestCase {
                 """
             files["Features/\(m)/Sources/\(m)/\(m).swift"] = "public struct \(m)View {}\n"
             files["\(catalog)/Contents.json"] = #"{"info":{"author":"xcode","version":1}}"#
-            files["\(catalog)/cardgift.imageset/Contents.json"] =
-                #"{"images":[{"filename":"cardgift.pdf","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#
-            files["\(catalog)/cardgift.imageset/cardgift.pdf"] = "%PDF-1.4\n%%EOF\n"
+            files["\(catalog)/promo_tile.imageset/Contents.json"] =
+                #"{"images":[{"filename":"promo_tile.pdf","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#
+            files["\(catalog)/promo_tile.imageset/promo_tile.pdf"] = "%PDF-1.4\n%%EOF\n"
         }
         return try FixtureSupport.tempTree(files)
     }
 
     private func set(_ module: String) -> String {
-        "Features/\(module)/Sources/\(module)/Resources/\(module).xcassets/cardgift.imageset"
+        "Features/\(module)/Sources/\(module)/Resources/\(module).xcassets/promo_tile.imageset"
     }
 
     private func unusedAssets(_ root: URL) async throws -> [String] {
@@ -37,16 +37,16 @@ final class ToolOutputTests: XCTestCase {
     func testTrashingOneDuplicateKeepsTheOtherModulesCopyReported() async throws {
         let root = try twoModules()
         let before = try await unusedAssets(root)
-        XCTAssertEqual(before, [set("CardsFeature"), set("WalletFeature")])
+        XCTAssertEqual(before, [set("ProfileFeature"), set("ShopFeature")])
 
         let context = try await ScanEngine(root: root, config: Config()).discover()
         let report = try Trash(store: try TrashStore.begin(root: context.root))
-            .remove(paths: [set("CardsFeature") + "/cardgift.pdf"], context: context)
-        XCTAssertEqual(report.moved, [set("CardsFeature")])
+            .remove(paths: [set("ShopFeature") + "/promo_tile.pdf"], context: context)
+        XCTAssertEqual(report.moved, [set("ShopFeature")])
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(TrashStore.directoryName).path))
 
         let after = try await unusedAssets(root)
-        XCTAssertEqual(after, [set("WalletFeature")])
+        XCTAssertEqual(after, [set("ProfileFeature")])
     }
 
     /// `xcpurge scan . --output report.html` (or a JSON report / baseline saved anywhere in the tree) must not
@@ -65,7 +65,7 @@ final class ToolOutputTests: XCTestCase {
             .write(to: root.appendingPathComponent(ToolOutput.reportDirectoryName + "/report-1.html"))
 
         let rescanned = try await unusedAssets(root)
-        XCTAssertEqual(rescanned, [set("CardsFeature"), set("WalletFeature")])
+        XCTAssertEqual(rescanned, [set("ProfileFeature"), set("ShopFeature")])
         let walked = FileWalker().walk(root: root).files.map(\.path)
         XCTAssertFalse(walked.contains { $0.hasSuffix("report.html") || $0.hasSuffix("report.json") || $0 == "my-baseline.json" })
         XCTAssertFalse(walked.contains { $0.hasPrefix(ToolOutput.reportDirectoryName + "/") })
@@ -78,10 +78,10 @@ final class ToolOutputTests: XCTestCase {
     /// Ordinary project HTML/JSON stays a reference source; only xcpurge's own output is recognised.
     func testOnlyXcpurgeOutputIsRecognised() throws {
         let root = try FixtureSupport.tempTree([
-            "web/index.html": "<!doctype html><title>Help</title><img src=\"cardgift.png\">",
-            "data/config.json": #"{"tool": {"name": "swiftlint"}, "image": "cardgift"}"#,
-            "data/other.json": "[\"cardgift\"]",
-            "data/stats.json": #"{"measuredAt": "today", "image": "cardgift"}"#,
+            "web/index.html": "<!doctype html><title>Help</title><img src=\"promo_tile.png\">",
+            "data/config.json": #"{"tool": {"name": "swiftlint"}, "image": "promo_tile"}"#,
+            "data/other.json": "[\"promo_tile\"]",
+            "data/stats.json": #"{"measuredAt": "today", "image": "promo_tile"}"#,
         ])
         for path in ["web/index.html", "data/config.json", "data/other.json", "data/stats.json"] {
             XCTAssertFalse(detected(root, path), path)
@@ -96,7 +96,7 @@ final class ToolOutputTests: XCTestCase {
         let snapshot = SizeMeasurer.snapshot(result, categories: Category.scannable, date: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(snapshot.tool?.name, XcpurgeVersion.name)
         try snapshot.write(to: root.appendingPathComponent("size-base.json"))
-        XCTAssertTrue(snapshot.json().contains("cardgift"))
+        XCTAssertTrue(snapshot.json().contains("promo_tile"))
 
         // 0.4.0 wrote no `tool`: the same document with the key removed.
         var legacy = try JSONSerialization.jsonObject(with: Data(snapshot.json().utf8)) as! [String: Any]
@@ -112,13 +112,13 @@ final class ToolOutputTests: XCTestCase {
 
         for path in ["size-base.json", "Features/size-040.json", "compare.json"] { XCTAssertTrue(detected(root, path), path) }
         let rescanned = try await unusedAssets(root)
-        XCTAssertEqual(rescanned, [set("CardsFeature"), set("WalletFeature")])
+        XCTAssertEqual(rescanned, [set("ProfileFeature"), set("ShopFeature")])
     }
 
     /// `explain --format json --output x.json` writes `"tool": "xcpurge <version>"` (a string, per its schema).
     func testExplainJSONIsRecognised() throws {
         let root = try FixtureSupport.tempTree([:])
-        let json = Explainer.renderJSON(ExplainReport(subject: "cardgift", root: root.path, matches: []))
+        let json = Explainer.renderJSON(ExplainReport(subject: "promo_tile", root: root.path, matches: []))
         XCTAssertTrue(json.contains("\"tool\" : \"\(XcpurgeVersion.name) "))
         try Data(json.utf8).write(to: root.appendingPathComponent("explain.json"))
         XCTAssertTrue(detected(root, "explain.json"))

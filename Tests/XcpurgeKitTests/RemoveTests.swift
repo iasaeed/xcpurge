@@ -74,7 +74,7 @@ final class RemoveTests: XCTestCase {
 
     /// The innermost set: an image set inside a sprite atlas, brand assets or an image stack goes alone.
     func testAssetSetContainingIsInnermost() {
-        XCTAssertEqual(Trash.assetSet(containing: "A/V.xcassets/pubg.imageset/cardgift.pdf"), "A/V.xcassets/pubg.imageset")
+        XCTAssertEqual(Trash.assetSet(containing: "A/V.xcassets/pubg.imageset/promo_tile.pdf"), "A/V.xcassets/pubg.imageset")
         XCTAssertEqual(Trash.assetSet(containing: "A/V.xcassets/Group/c.colorset/Contents.json"), "A/V.xcassets/Group/c.colorset")
         XCTAssertEqual(Trash.assetSet(containing: "A.xcassets/Icons.spriteatlas/x.imageset/a.png"), "A.xcassets/Icons.spriteatlas/x.imageset")
         XCTAssertEqual(Trash.assetSet(containing: "A.xcassets/TV.brandassets/Top.imagestack/Front.imagestacklayer/Content.imageset/a.png"),
