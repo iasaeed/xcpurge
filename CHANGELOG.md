@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `restore --path` no longer rewrites project files whose cleanup edit did not touch the restored file; they are left alone and not reported.
+
 ## 0.6.1 - 2026-11-02
 
 ### Added

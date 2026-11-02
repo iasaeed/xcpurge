@@ -57,7 +57,9 @@ public enum Restore {
     }
 
     /// Partial restore: `moved` and non-project `rewritten` entries for `paths` go back and leave the manifest;
-    /// every `project.pbxproj` entry is reverted to its original and re-edited for the paths still in the trash.
+    /// only the `project.pbxproj` entries whose edit removed a reference to a restored path (or to a file now back
+    /// on disk) are reverted to their original and re-edited for the paths still in the trash. The others are left
+    /// untouched and not reported.
     private static func restore(_ paths: Set<String>, from manifest: TrashManifest, root: URL,
                                 context: ScanContext?, force: Bool) throws -> ActionReport {
         let store = try TrashStore.open(root: root, id: manifest.id)
@@ -86,10 +88,6 @@ public enum Restore {
                 report.skipped.append(.init(path: entry.path, reason: "stored copy is missing"))
                 continue
             }
-            if !force, changedSinceCleanup(entry, target: target) {
-                report.skipped.append(.init(path: entry.path, reason: changedReason))
-                continue
-            }
             var wrote = false
             do {
                 let container = RelPath.parent(entry.path)
@@ -105,6 +103,12 @@ public enum Restore {
                 // project file alone (changed since the cleanup).
                 let keep = removedByEdit.filter {
                     !restoredFolded.contains(fold($0)) && !FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path)
+                }
+                // Nothing in this project needs its reference back: its edit stands, no rewrite, no report line.
+                if keep.count == removedByEdit.count { continue }
+                if !force, changedSinceCleanup(entry, target: target) {
+                    report.skipped.append(.init(path: entry.path, reason: changedReason))
+                    continue
                 }
                 try original.write(to: target, options: .atomic)
                 wrote = true

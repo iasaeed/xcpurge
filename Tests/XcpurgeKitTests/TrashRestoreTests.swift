@@ -602,6 +602,40 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
     }
 
+    /// A project file whose cleanup edit never referenced the restored path is neither rewritten nor reported.
+    func testPartialRestoreLeavesUnrelatedProjectFileAlone() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let fm = FileManager.default
+        let appProject = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let otherDir = root.appendingPathComponent("Other.xcodeproj")
+        try fm.createDirectory(at: otherDir, withIntermediateDirectories: true)
+        let other = otherDir.appendingPathComponent("project.pbxproj")
+        // A second project over the same sources that never references Unused.plist.
+        let lines = try String(contentsOf: appProject, encoding: .utf8).components(separatedBy: "\n")
+        let trimmed = lines.filter { !$0.contains("Unused.plist") }
+        XCTAssertEqual(lines.count - trimmed.count, 4)
+        try trimmed.joined(separator: "\n").write(to: other, atomically: true, encoding: .utf8)
+
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        let removed = try Trash(store: store).remove(paths: ["ClassicApp/unused_loose.png", "ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(Set(removed.rewritten), ["ClassicApp.xcodeproj/project.pbxproj", "Other.xcodeproj/project.pbxproj"])
+        let otherAfterCleanup = try Data(contentsOf: other)
+        let otherDate = try XCTUnwrap(try fm.attributesOfItem(atPath: other.path)[.modificationDate] as? Date)
+
+        let partial = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(partial.moved, ["ClassicApp/Unused.plist"])
+        XCTAssertEqual(partial.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertEqual(partial.skipped, [])
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("ClassicApp/Unused.plist").path))
+        XCTAssertTrue(try String(contentsOf: appProject, encoding: .utf8).contains("Unused.plist"))
+        XCTAssertFalse(try String(contentsOf: appProject, encoding: .utf8).contains("unused_loose.png"))
+        XCTAssertEqual(try Data(contentsOf: other), otherAfterCleanup)
+        XCTAssertEqual(try fm.attributesOfItem(atPath: other.path)[.modificationDate] as? Date, otherDate)
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path).sorted(),
+                       ["ClassicApp.xcodeproj/project.pbxproj", "ClassicApp/unused_loose.png", "Other.xcodeproj/project.pbxproj"])
+    }
+
     /// A partial restore puts the file back but leaves a changed project file alone; `force` re-plans it for what
     /// is still trashed (the unrelated edit is lost, as `--force` documents).
     func testPartialRestoreRefusesChangedProjectFile() async throws {
