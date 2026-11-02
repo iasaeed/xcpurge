@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `restore` no longer overwrites a `project.pbxproj`, `.strings` or `.xcstrings` file that changed after the cleanup. Each rewrite now records the hash of the file it left behind; a file that differs is left alone with "changed since the cleanup", the session is kept, and `restore --force` overwrites it anyway. Sessions written by older versions restore as before.
+
 ## 0.6.0 - 2026-11-01
 
 ### Added

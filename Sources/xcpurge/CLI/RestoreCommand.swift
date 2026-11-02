@@ -13,6 +13,7 @@ struct RestoreCommand: AsyncParsableCommand {
             help: "Restore only this file or asset set (root-relative or absolute; repeatable), leaving the rest of the session in the trash; project.pbxproj edits are redone for what stays trashed.")
     var paths: [String] = []
     @Flag(help: "List sessions instead of restoring.") var list = false
+    @Flag(help: "Overwrite files that changed after the cleanup.") var force = false
 
     func run() async throws {
         let root = CommonOptions.absolute(path)
@@ -37,11 +38,16 @@ struct RestoreCommand: AsyncParsableCommand {
         let after = try? SizeSnapshot.load(from: sessionURL.appendingPathComponent(SizeSnapshot.afterFileName))
         let report: ActionReport
         if paths.isEmpty {
-            report = try Restore.run(root: root, sessionID: session)
+            report = try Restore.run(root: root, sessionID: session, force: force)
         } else {
-            report = try Restore.run(root: root, sessionID: session, paths: Set(paths.map { relative($0, root: root) }), context: nil)
+            report = try Restore.run(root: root, sessionID: session, paths: Set(paths.map { relative($0, root: root) }), context: nil,
+                                     force: force)
         }
         ScanRunner.printAction(report, verb: "restored", session: id)
+        if !force, report.skipped.contains(where: { $0.reason == Restore.changedReason }) {
+            ScanRunner.stderr("Some files changed after the cleanup and were left alone. Re-run with --force to overwrite them.\n")
+            throw ExitCode(1)
+        }
         // The reverse of the action's table: what the tree measured after it, back to before (whole sessions only).
         if paths.isEmpty, let before, let after, !report.moved.isEmpty || !report.rewritten.isEmpty {
             ScanRunner.stderr(SizeText.compact(after, before, colors: StderrTerminal.isTTY && StderrTerminal.colors))

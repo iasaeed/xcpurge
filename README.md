@@ -748,6 +748,11 @@ moved to the trash, not the pruned string keys. Undo with `xcpurge restore`.
 | `--session ID` | Restore this trash session. | newest |
 | `--path PATH` | Restore only this file or asset set and leave the rest in the trash. Repeatable. | whole session |
 | `--list` | List trash sessions instead of restoring. | off |
+| `--force` | Overwrite files that changed after the cleanup. | off |
+
+`restore` refuses to overwrite a rewritten file (`project.pbxproj`, `.strings`, `.xcstrings`) that changed after
+the cleanup: it lists the path as `changed since the cleanup`, keeps the session and exits 1. `--force` overwrites
+it anyway.
 
 ### baseline
 

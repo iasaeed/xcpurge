@@ -48,10 +48,11 @@ public enum PBXProjEditor {
         return PBXProjEdit(projectFile: rel, paths: matched, referenceCount: refIDs.count, output: output, original: data)
     }
 
-    /// Backs the project file up into `store`, then writes the planned edit.
+    /// Backs the project file up into `store`, writes the planned edit, then records its hash in `store`.
     public static func apply(_ edit: PBXProjEdit, root: URL, store: TrashStore) throws {
         try store.backup(edit.projectFile)
         try edit.output.write(to: root.appendingPathComponent(edit.projectFile), options: .atomic)
+        try store.sealRewrite(edit.projectFile)
     }
 
     /// Writes back the contents `edit` was planned from.

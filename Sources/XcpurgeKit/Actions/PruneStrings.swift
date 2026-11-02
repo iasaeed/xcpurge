@@ -49,6 +49,7 @@ public struct PruneStrings: Sendable {
             guard let updated, updated != data else { continue }
             try store.backup(path)
             try updated.write(to: url, options: .atomic)
+            try store.sealRewrite(path)
             report.rewritten.append(path)
         }
         return report

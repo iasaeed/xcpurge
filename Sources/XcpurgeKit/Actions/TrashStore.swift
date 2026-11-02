@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Reversible deletion store. Each session lives in `<root>/.xcpurge-trash/<id>/` with one `manifest.json`;
@@ -100,6 +101,23 @@ public final class TrashStore: @unchecked Sendable {
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
         try FileManager.default.copyItem(at: source, to: destination)
         try record(TrashEntry(action: .rewritten, path: path, stored: stored, sizeBytes: Self.size(of: source)))
+    }
+
+    /// Records the SHA-256 of a rewritten file as it is now (right after the rewrite) on its `rewritten` entry
+    /// and rewrites the manifest.
+    public func sealRewrite(_ path: String) throws {
+        let hash = try Self.sha256(of: root.appendingPathComponent(path))
+        lock.withLock {
+            for i in manifest.entries.indices where manifest.entries[i].path == path && manifest.entries[i].action == .rewritten {
+                manifest.entries[i].afterSHA256 = hash
+            }
+        }
+        try flush()
+    }
+
+    /// SHA-256 of a file's contents, lowercase hex.
+    static func sha256(of url: URL) throws -> String {
+        SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Absolute URL of an entry's stored copy.

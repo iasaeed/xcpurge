@@ -485,4 +485,151 @@ final class TrashRestoreTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(before.reclaimable.high, after.reclaimable.high)
         XCTAssertGreaterThanOrEqual(before.reclaimable.highMedium, after.reclaimable.highMedium)
     }
+
+    // MARK: - Restore guard: rewritten files that changed after the cleanup
+
+    /// A build setting added in Xcode after the cleanup survives a plain restore; `--force` overwrites it.
+    func testRestoreRefusesProjectFileChangedAfterCleanup() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let original = try Data(contentsOf: pbxproj)
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        let report = try Trash(store: store).remove(paths: ["ClassicApp/unused_loose.png"], context: context)
+        XCTAssertEqual(report.moved, ["ClassicApp/unused_loose.png"])
+        XCTAssertEqual(report.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertNotNil(store.entries.first { $0.action == .rewritten }?.afterSHA256)
+
+        let edited = try String(contentsOf: pbxproj, encoding: .utf8)
+        let setting = "\t\t\t\tSWIFT_VERSION = 5.0;\n"
+        let range = try XCTUnwrap(edited.range(of: setting))
+        let changed = Data(edited.replacingCharacters(in: range, with: setting + "\t\t\t\tSWIFT_STRICT_CONCURRENCY = complete;\n").utf8)
+        try changed.write(to: pbxproj)
+
+        let refused = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(try Data(contentsOf: pbxproj), changed)
+        XCTAssertEqual(refused.skipped, [.init(path: "ClassicApp.xcodeproj/project.pbxproj", reason: Restore.changedReason)])
+        XCTAssertEqual(Restore.changedReason, "changed since the cleanup; pass --force to overwrite it")
+        XCTAssertEqual(refused.moved, ["ClassicApp/unused_loose.png"], "moved entries restore on their own")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/unused_loose.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.sessionURL.path))
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path), ["ClassicApp.xcodeproj/project.pbxproj"])
+
+        let forced = try Restore.run(root: root, sessionID: nil, force: true)
+        XCTAssertEqual(forced.rewritten, ["ClassicApp.xcodeproj/project.pbxproj"])
+        XCTAssertEqual(forced.skipped, [])
+        XCTAssertEqual(try Data(contentsOf: pbxproj), original)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+        XCTAssertEqual(try snapshot(root), before)
+    }
+
+    /// A `.strings` table edited after `strings --prune` is left alone (the CLI exits 1), `force` restores it.
+    func testRestoreRefusesPrunedStringsChangedAfterCleanup() async throws {
+        let original = "\"used\" = \"1\";\n\"gone\" = \"2\";\n"
+        let root = try FixtureSupport.tempTree(["en.lproj/A.strings": original])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("en.lproj/A.strings")
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        let store = try TrashStore.begin(root: ctx.root)
+        let finding = Finding(kind: .unusedString, category: .strings, path: "en.lproj/A.strings", name: "gone",
+                              module: "unknown", confidence: .high)
+        let pruned = try PruneStrings(store: store).apply([finding], context: ctx)
+        XCTAssertEqual(pruned.rewritten, ["en.lproj/A.strings"])
+        XCTAssertEqual(store.entries.first?.afterSHA256, try TrashStore.sha256(of: file))
+
+        let changed = try String(contentsOf: file, encoding: .utf8) + "\"added\" = \"3\";\n"
+        try Data(changed.utf8).write(to: file)
+        let refused = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(refused.skipped, [.init(path: "en.lproj/A.strings", reason: Restore.changedReason)])
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), changed)
+        XCTAssertEqual(try TrashStore.sessions(root: root).map(\.id), [store.sessionID])
+
+        let cli = try CLISupport.run(["restore", root.path])
+        XCTAssertEqual(cli.status, 1, cli.stderr)
+        XCTAssertTrue(cli.stderr.contains("Some files changed after the cleanup and were left alone. Re-run with --force to overwrite them."),
+                      cli.stderr)
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), changed)
+
+        let forced = try Restore.run(root: root, sessionID: nil, force: true)
+        XCTAssertEqual(forced.rewritten, ["en.lproj/A.strings"])
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), original)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
+
+    /// Sessions written before the hash existed decode and restore over a changed file as before.
+    func testManifestWithoutAfterHashRestoresAsBefore() throws {
+        let root = try FixtureSupport.tempTree(["en.lproj/A.strings": "changed later\n"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let id = "20260101-000000"
+        let session = TrashStore.sessionURL(root: root, id: id)
+        try FileManager.default.createDirectory(at: session.appendingPathComponent("originals/en.lproj"), withIntermediateDirectories: true)
+        try Data("original\n".utf8).write(to: session.appendingPathComponent("originals/en.lproj/A.strings"))
+        let json = """
+        {"createdAt": "2026-01-01T00:00:00Z", "entries": [{"action": "rewritten", "path": "en.lproj/A.strings",
+         "sizeBytes": 9, "stored": "originals/en.lproj/A.strings"}], "id": "\(id)", "schemaVersion": 1, "toolVersion": "0.6.0"}
+        """
+        try Data(json.utf8).write(to: session.appendingPathComponent(TrashStore.manifestName))
+        XCTAssertNil(try TrashStore.open(root: root, id: id).entries.first?.afterSHA256)
+
+        let restored = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(restored.rewritten, ["en.lproj/A.strings"])
+        XCTAssertEqual(restored.skipped, [])
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("en.lproj/A.strings"), encoding: .utf8), "original\n")
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
+
+    /// The project edit a partial restore re-applies is re-sealed, so the rest restores without `force`.
+    func testPartialRestoreResealsProjectHash() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let before = try snapshot(root)
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        _ = try Trash(store: store).remove(paths: ["ClassicApp/unused_loose.png", "ClassicApp/Unused.plist"], context: context)
+        let sealed = store.entries.first { $0.action == .rewritten }?.afterSHA256
+
+        let partial = try Restore.run(root: root, sessionID: store.sessionID, paths: ["ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(partial.skipped, [])
+        let entry = try XCTUnwrap(try TrashStore.sessions(root: root).first?.entries.first { $0.action == .rewritten })
+        XCTAssertEqual(entry.afterSHA256, try TrashStore.sha256(of: pbxproj))
+        XCTAssertNotEqual(entry.afterSHA256, sealed)
+
+        let rest = try Restore.run(root: root, sessionID: nil)
+        XCTAssertEqual(rest.skipped, [])
+        XCTAssertEqual(rest.moved, ["ClassicApp/unused_loose.png"])
+        XCTAssertEqual(try snapshot(root), before)
+        XCTAssertTrue(try TrashStore.sessions(root: root).isEmpty)
+    }
+
+    /// A partial restore puts the file back but leaves a changed project file alone; `force` re-plans it for what
+    /// is still trashed (the unrelated edit is lost, as `--force` documents).
+    func testPartialRestoreRefusesChangedProjectFile() async throws {
+        let root = try FixtureSupport.copyToTemp("ClassicApp")
+        let pbxproj = root.appendingPathComponent("ClassicApp.xcodeproj/project.pbxproj")
+        let context = try await ScanEngine(root: root, config: Config()).discover()
+        let store = try TrashStore.begin(root: context.root)
+        _ = try Trash(store: store).remove(paths: ["ClassicApp/unused_loose.png", "ClassicApp/Unused.plist"], context: context)
+
+        let edited = try String(contentsOf: pbxproj, encoding: .utf8)
+        let setting = "\t\t\t\tSWIFT_VERSION = 5.0;\n"
+        let range = try XCTUnwrap(edited.range(of: setting))
+        let changed = Data(edited.replacingCharacters(in: range, with: setting + "\t\t\t\tSWIFT_STRICT_CONCURRENCY = complete;\n").utf8)
+        try changed.write(to: pbxproj)
+
+        let partial = try Restore.run(root: root, sessionID: nil, paths: ["ClassicApp/Unused.plist"], context: context)
+        XCTAssertEqual(partial.moved, ["ClassicApp/Unused.plist"])
+        XCTAssertEqual(partial.skipped, [.init(path: "ClassicApp.xcodeproj/project.pbxproj", reason: Restore.changedReason)])
+        XCTAssertEqual(try Data(contentsOf: pbxproj), changed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("ClassicApp/Unused.plist").path))
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path).sorted(),
+                       ["ClassicApp.xcodeproj/project.pbxproj", "ClassicApp/unused_loose.png"])
+
+        _ = try Restore.run(root: root, sessionID: nil, paths: ["ClassicApp/Unused.plist"], context: context, force: true)
+        let expected = try await pbxprojAfterRemoving(["ClassicApp/unused_loose.png"])
+        XCTAssertEqual(try Data(contentsOf: pbxproj), expected)
+        XCTAssertFalse(try String(contentsOf: pbxproj, encoding: .utf8).contains("SWIFT_STRICT_CONCURRENCY"))
+        XCTAssertEqual(try TrashStore.sessions(root: root).first?.entries.map(\.path).sorted(),
+                       ["ClassicApp.xcodeproj/project.pbxproj", "ClassicApp/unused_loose.png"])
+    }
 }

@@ -241,7 +241,11 @@ public struct Trash: Sendable {
                     try PBXProjEditor.apply(redo, root: context.root, store: store)
                     report.rewritten.append(redo.projectFile)
                 }
+                // Without a redo the file is the original again; record what is there either way.
+                try store.sealRewrite(edit.projectFile)
             } catch {
+                // Record whatever the failed revert or redo left on disk, so the next restore accepts it.
+                try? store.sealRewrite(edit.projectFile)
                 report.skipped.append(.init(path: edit.projectFile, reason: "references not restored after a failed edit or move: \(error)"))
             }
         }

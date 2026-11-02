@@ -13,11 +13,15 @@ public struct TrashEntry: Codable, Sendable, Hashable {
     /// Path of the stored copy, relative to the session directory.
     public var stored: String
     public var sizeBytes: Int64
+    /// `rewritten` only: SHA-256 (lowercase hex) of the file as the rewrite left it, so `Restore` can tell when it
+    /// changed since. Nil in sessions written by older versions.
+    public var afterSHA256: String?
 
-    public init(action: Action, path: String, stored: String, sizeBytes: Int64) {
+    public init(action: Action, path: String, stored: String, sizeBytes: Int64, afterSHA256: String? = nil) {
         self.action = action
         self.path = path
         self.stored = stored
         self.sizeBytes = sizeBytes
+        self.afterSHA256 = afterSHA256
     }
 }

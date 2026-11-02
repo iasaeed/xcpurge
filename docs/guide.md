@@ -894,6 +894,10 @@ Why it is safe:
   (classic `project.pbxproj`, LF or CRLF, `.xcdatamodeld` version groups included). Files referenced by a
   `project.xcproj`, or by a pbxproj line the editor cannot change safely, stay in place and are listed as
   skipped.
+- `restore` never overwrites your later work. Each rewrite records the hash of the file it left behind; a
+  `project.pbxproj`, `.strings` or `.xcstrings` that changed since (a build setting added in Xcode, a new key) is
+  left alone and listed as `changed since the cleanup`, the session is kept, and `restore` exits 1.
+  `xcpurge restore --force` overwrites it anyway.
 - After the action, the report lists only what is left.
 
 See the [delete and undo walkthrough](#delete-safely-then-undo) for real output.
