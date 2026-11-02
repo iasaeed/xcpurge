@@ -30,6 +30,8 @@ struct CommonOptions: ParsableArguments {
     @Flag(name: .shortAndLong, help: "More detail (reasons, info diagnostics, per-file attribution).") var verbose = false
     @Flag(name: .shortAndLong, help: "No progress, summary or hints on stderr (warnings and errors still print).")
     var quiet = false
+    @Flag(name: .customLong("gitignore"), help: "Add .xcpurge/ and .xcpurge-trash/ to the project .gitignore without asking.")
+    var gitignore = false
     @Option(help: "Cap --format xcode warnings at this many; a summary line follows.") var maxWarnings: Int?
     @Option(help: "--format agent rows per kind; 0 = all.") var agentLimit: Int = 30
     @OptionGroup var baselineOptions: BaselineOptions

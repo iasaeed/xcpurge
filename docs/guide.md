@@ -847,8 +847,8 @@ their findings are hidden from the graph, the table and the charts. Turning it o
 
 ![HTML report](report-light.png)
 
-HTML always goes to a file: `--output FILE`, else `<path>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` (add
-`.xcpurge/` to `.gitignore`). A report with no findings is still written (and opened). `--open` opens it in the
+HTML always goes to a file: `--output FILE`, else `<path>/.xcpurge/report-<yyyyMMdd-HHmmss>.html` (the first
+time, in a git work tree, xcpurge offers to add `.xcpurge/` to `.gitignore`; `--gitignore` does it without asking). A report with no findings is still written (and opened). `--open` opens it in the
 default browser, or in the app given by `--browser` ("Google Chrome", "Safari", ...). The report path, the
 findings summary and the open result go to stderr:
 
@@ -887,8 +887,9 @@ Why it is safe:
   report (stdout or `--output`), `remove` prints what it would have done, and all five exit 2 with
   `Not a terminal; pass --yes to confirm.` on stderr, so a silent no-op never looks like success.
 - Everything moved or rewritten goes into `.xcpurge-trash/<session>/` with a manifest. There is never a `.bak`
-  next to the file, which would ship inside a synchronized folder or `.lproj`. Add `.xcpurge-trash/` to
-  `.gitignore`.
+  next to the file, which would ship inside a synchronized folder or `.lproj`. The first time, in a git work
+  tree, xcpurge offers to add `.xcpurge-trash/` to `.gitignore` (or the global excludes); `--gitignore` does it
+  without asking.
 - Dead-source and ghost findings are reported, never deleted. Duplicates are reported too; you pick the copy.
 - Project edits are dry-run first. A file is moved only when every project referencing it can drop the reference
   (classic `project.pbxproj`, LF or CRLF, `.xcdatamodeld` version groups included). Files referenced by a

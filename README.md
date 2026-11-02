@@ -116,7 +116,7 @@ Scanned 35 files in 5 modules in 1.0s — 27 findings (12 high, 5 medium, 10 low
 Open it with: open "/path/to/YourApp/.xcpurge/report-20261030-195638.html"
 ```
 
-Add `.xcpurge/` to your `.gitignore`.
+The first time xcpurge is about to create `.xcpurge/` or `.xcpurge-trash/` in a git work tree where it is not ignored, it offers to add it to your `.gitignore` (or your global excludes). `--gitignore` adds both without asking.
 
 **3. Remove one thing, then undo it.**
 
@@ -151,7 +151,7 @@ xcpurge restore .
 Restored 2 item(s) from session 20261030-200232.
 ```
 
-The image is back, and `project.pbxproj` is byte for byte as before. Add `.xcpurge-trash/` to `.gitignore` too.
+The image is back, and `project.pbxproj` is byte for byte as before.
 
 ## Pick your task
 

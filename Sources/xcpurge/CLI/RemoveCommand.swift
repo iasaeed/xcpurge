@@ -19,6 +19,8 @@ struct RemoveCommand: AsyncParsableCommand {
     @Argument(parsing: .remaining, help: "Files or asset sets to remove.", completion: .file()) var paths: [String]
     @Flag(name: .shortAndLong, help: "Do not ask for confirmation.") var yes = false
     @Flag(name: .shortAndLong, help: "No progress or hints on stderr.") var quiet = false
+    @Flag(name: .customLong("gitignore"), help: "Add .xcpurge/ and .xcpurge-trash/ to the project .gitignore without asking.")
+    var gitignore = false
     @OptionGroup var verifyOptions: VerifyOptions
 
     func validate() throws {
@@ -110,6 +112,9 @@ struct RemoveCommand: AsyncParsableCommand {
 
         VerifyStep.warnBlocked(acting, root: context.root)
         try VerifyStep.preflight(verifyOptions, root: context.root, quiet: quiet)
+        if gitignore { GitIgnoreOffer.addAll(root: context.root, quiet: quiet) }
+        // Nothing to move means no trash folder: nothing to offer to ignore.
+        if !acting.isEmpty { GitIgnoreOffer.offerTrash(root: context.root, assumeYes: yes, quiet: quiet) }
         let store = try TrashStore.begin(root: context.root)
         var report = try Trash(store: store).remove(paths: targets, context: context)
         report = try VerifyStep.verify(verifyOptions, store: store, context: context, action: report, quiet: quiet)

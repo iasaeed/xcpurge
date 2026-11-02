@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- xcpurge offers to add `.xcpurge-trash/` and `.xcpurge/` to `.gitignore` (or your global git excludes) the first time it is about to create them in a git work tree where they are not ignored; without a terminal, with `--yes` or with `--quiet` it prints a one-line hint instead. `--gitignore` adds both to the project `.gitignore` without asking.
+
 ### Fixed
 
 - `restore` no longer overwrites a `project.pbxproj`, `.strings` or `.xcstrings` file that changed after the cleanup. Each rewrite now records the hash of the file it left behind; a file that differs is left alone with "changed since the cleanup", the session is kept, and `restore --force` overwrites it anyway. Sessions written by older versions restore as before.

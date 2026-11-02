@@ -15,14 +15,18 @@ enum CLISupport {
         return packageRoot.appendingPathComponent(".build/debug/xcpurge")
     }
 
-    /// Runs the CLI with stdout and stderr on pipes; skips the test when the binary is not built.
-    static func run(_ args: [String]) throws -> (status: Int32, stdout: String, stderr: String) {
+    /// Runs the CLI with stdout and stderr on pipes; skips the test when the binary is not built. `environment`
+    /// entries are added to (and override) the test process's environment.
+    static func run(_ args: [String], environment: [String: String] = [:]) throws -> (status: Int32, stdout: String, stderr: String) {
         guard FileManager.default.isExecutableFile(atPath: binary.path) else {
             throw XCTSkip("\(binary.path) not built; run `swift build` first")
         }
         let process = Process()
         process.executableURL = binary
         process.arguments = args
+        if !environment.isEmpty {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err

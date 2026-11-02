@@ -84,7 +84,7 @@ struct PurgeCommand: AsyncParsableCommand {
         let toPrune = pending.filter { $0.category == .strings }
         let acting = toTrash + toPrune
         guard !acting.isEmpty else {
-            try ScanRunner.report(result, options)
+            try ScanRunner.report(result, options, assumeYes: yes)
             try ScanRunner.exitIfFailOn(result)
             return
         }
@@ -98,19 +98,20 @@ struct PurgeCommand: AsyncParsableCommand {
         if dryRun {
             let lines = details.map { "  \($0)\n" } + ["Dry run: would \(summary); nothing was changed.\n"]
             ScanRunner.stderr(lines.joined())
-            try ScanRunner.report(result, options)
+            try ScanRunner.report(result, options, assumeYes: yes)
             try ScanRunner.exitIfFailOn(result)
             return
         }
         let question = summary.prefix(1).uppercased() + summary.dropFirst() + "?"
         let answer = ConfirmPrompt.confirm(question, details: details, assumeYes: yes)
         guard answer == .yes else {
-            try ScanRunner.report(result, options)
+            try ScanRunner.report(result, options, assumeYes: yes)
             return try answer.exitIfNotATerminal()
         }
 
         if !toTrash.isEmpty { try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet) }
         let sizeBefore = SizeMeasurer.snapshot(ungated, categories: scanned)
+        GitIgnoreOffer.offerTrash(root: result.context.root, assumeYes: yes, quiet: options.quiet)
         let store = try TrashStore.begin(root: result.context.root)
         var trashed = ActionReport(), pruned = ActionReport()
         if !toTrash.isEmpty {
@@ -133,7 +134,7 @@ struct PurgeCommand: AsyncParsableCommand {
                         + "Undo with: xcpurge restore --session \(store.sessionID)\n"
                 }
                 ScanRunner.stderr(text)
-                try ScanRunner.report(result.afterAction(trashed, acted: toTrash), options)
+                try ScanRunner.report(result.afterAction(trashed, acted: toTrash), options, assumeYes: yes)
                 throw error
             }
             ScanRunner.printAction(pruned, verb: "pruned", session: store.sessionID)
@@ -142,7 +143,7 @@ struct PurgeCommand: AsyncParsableCommand {
         await ScanRunner.recordSizes(before: sizeBefore, result: result, store: store, categories: scanned, options: options)
         let combined = ActionReport(moved: trashed.moved + pruned.moved, rewritten: trashed.rewritten + pruned.rewritten,
                                     skipped: trashed.skipped + pruned.skipped)
-        try ScanRunner.report(result.afterAction(combined, acted: acting), options)
+        try ScanRunner.report(result.afterAction(combined, acted: acting), options, assumeYes: yes)
     }
 
     /// The findings to act on, all of purgeable kinds. Without `--ids`: `ScanRunner.actionable` per category (its

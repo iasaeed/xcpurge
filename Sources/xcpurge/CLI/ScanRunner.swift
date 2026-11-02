@@ -11,6 +11,7 @@ enum ScanRunner {
     static func scan(_ options: CommonOptions, categories: Set<XcpurgeKit.Category>, applyGates: Bool = true) async throws -> ScanResult {
         let config = try options.makeConfig()
         let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
+        if options.gitignore { GitIgnoreOffer.addAll(root: options.rootURL, quiet: options.quiet) }
         if !options.quiet { hintIfManyRepositories(options.rootURL) }
         let progress = TerminalProgress(isTTY: StderrTerminal.isTTY, quiet: options.quiet, colors: StderrTerminal.colors,
                                         width: StderrTerminal.width,
@@ -70,7 +71,7 @@ enum ScanRunner {
     }
 
     /// Prints the report, or writes it to `--output` (html always goes to a file) and honours `--open`.
-    static func report(_ result: ScanResult, _ options: CommonOptions? = nil) throws {
+    static func report(_ result: ScanResult, _ options: CommonOptions? = nil, assumeYes: Bool = false) throws {
         let config = result.context.config
         let format = config.format.flatMap(OutputFormat.init(rawValue:)) ?? .text
         let file = outputURL(format: format, root: result.context.root, options: options)
@@ -80,6 +81,11 @@ enum ScanRunner {
                                               maxWarnings: options?.maxWarnings, agentLimit: options?.agentLimit ?? 30)
         let text = format.reporter(reporterOptions).render(result)
         guard let file else { print(text, terminator: ""); return }
+        // The default html location: offer to ignore `.xcpurge/` before it is first created.
+        if options?.output == nil {
+            GitIgnoreOffer.offer(root: result.context.root, directory: ToolOutput.reportDirectoryName,
+                                 assumeYes: assumeYes, quiet: options?.quiet == true)
+        }
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(text.utf8).write(to: file, options: .atomic)
         let quiet = options?.quiet == true

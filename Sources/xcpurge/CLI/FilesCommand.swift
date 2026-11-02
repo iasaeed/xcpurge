@@ -29,11 +29,12 @@ struct FilesCommand: AsyncParsableCommand {
             let answer = deletable.isEmpty ? ConfirmPrompt.Answer.no
                 : ConfirmPrompt.confirm("Move \(deletable.count) file(s) to the trash?", details: deletable.map(ScanRunner.describe), assumeYes: yes)
             guard answer == .yes else {
-                try ScanRunner.report(result, options)
+                try ScanRunner.report(result, options, assumeYes: yes)
                 return try answer.exitIfNotATerminal()
             }
             try VerifyStep.preflight(verifyOptions, root: result.context.root, quiet: options.quiet)
             let sizeBefore = SizeMeasurer.snapshot(ungated, categories: [.files])
+            GitIgnoreOffer.offerTrash(root: result.context.root, assumeYes: yes, quiet: options.quiet)
             let store = try TrashStore.begin(root: result.context.root)
             var report = try Trash(store: store).apply(deletable, context: result.context)
             report = try VerifyStep.verify(verifyOptions, store: store, context: result.context, action: report, quiet: options.quiet)
@@ -41,10 +42,10 @@ struct FilesCommand: AsyncParsableCommand {
             ScanRunner.printAction(report, verb: "trashed", session: store.sessionID)
             await ScanRunner.recordSizes(before: sizeBefore, result: result, store: store,
                                          categories: [.files], options: options)
-            try ScanRunner.report(result.afterAction(report, acted: deletable), options)
+            try ScanRunner.report(result.afterAction(report, acted: deletable), options, assumeYes: yes)
             return
         }
-        try ScanRunner.report(result, options)
+        try ScanRunner.report(result, options, assumeYes: yes)
         try ScanRunner.exitIfFailOn(result)
     }
 }

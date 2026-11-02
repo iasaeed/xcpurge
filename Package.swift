@@ -22,7 +22,7 @@ let package = Package(
         ),
         .testTarget(
             name: "XcpurgeKitTests",
-            dependencies: ["XcpurgeKit"]
+            dependencies: ["XcpurgeKit", "xcpurge"]
         ),
     ],
     swiftLanguageModes: [.v6]
