@@ -14,6 +14,8 @@ enum InterfaceFileUsage {
 
     static func find(_ ctx: ScanContext, skipping orphans: Set<String>) -> [Finding] {
         let isUser = FilesDetector.userFilter(ctx, orphans: orphans)
+        // Nib loading is case-sensitive and a module's nibs sit in its own bundle: exact case, visible sites only.
+        let shapes = ResourceFileUsage.dynamicShapes(ctx, domains: [.any, .resource], caseInsensitive: false, anchoring: false)
         var out: [Finding] = []
         for (i, file) in ctx.inventory.files.enumerated() where file.kind == .storyboard || file.kind == .xib {
             guard !file.modules.isEmpty, !orphans.contains(file.path), !FilesDetector.isInsideOpaqueFolder(file.path)
@@ -33,7 +35,7 @@ enum InterfaceFileUsage {
             if let literal = sites.first {
                 confidence = .medium
                 reasons.append("'\(stem)' appears as a string at \(ctx.refs.path(of: literal.file)):\(literal.line)")
-            } else if let site = ResourceFileUsage.dynamicMatch(stem, domains: [.any, .resource], ctx, canSee: canSee) {
+            } else if let site = ResourceFileUsage.dynamicMatch(stem, fileName: stem, shapes, ctx, canSee: canSee) {
                 confidence = .low
                 reasons.append("may be built dynamically at \(site)")
             } else {

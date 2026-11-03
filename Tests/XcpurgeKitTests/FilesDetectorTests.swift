@@ -208,6 +208,53 @@ final class FilesDetectorTests: XCTestCase {
         XCTAssertTrue(unused["Sources/Kit/intro.mp4"]?.reasons.contains { $0.hasPrefix("may be built dynamically at ") } == true)
     }
 
+    /// A cache path builder (`.any` domain) names loose files by stem only: `"\(id).json"` must not lower every
+    /// visible `.json`, while `String(bundleName: "\(x).html")` is a resource lookup that builds a file name.
+    func testFileNameMatchingIsLimitedToResourceLookups() async throws {
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import Foundation
+            func cache(_ dir: URL, _ id: String) -> URL { dir.appendingPathComponent("\\(id).json") }
+            func page(_ x: String) -> String { String(bundleName: "\\(x).html") }
+            func clip(_ name: String) -> URL? { Bundle.main.url(forResource: name, withExtension: "mp4") }
+            """,
+            "Sources/Kit/stale_photo.json": "{}",
+            "Sources/Kit/intro.html": "<html/>",
+            "Sources/Kit/Intro.MP4": "x",
+        ])
+        let unused = byPath(f, .unusedResource)
+        XCTAssertEqual(unused["Sources/Kit/stale_photo.json"]?.confidence, .high, "an .any pattern matches the stem only")
+        XCTAssertEqual(unused["Sources/Kit/intro.html"]?.confidence, .low, "String(bundleName:) builds a file name")
+        XCTAssertEqual(unused["Sources/Kit/Intro.MP4"]?.confidence, .low, "resource lookups are case-insensitive")
+    }
+
+    /// Nib loading is case-sensitive and stays inside a module's bundle: a suffix pattern in another module, even
+    /// one that matches ignoring case, does not lower a xib.
+    func testInterfaceFilesIgnoreCrossModuleAndCaseFoldedPatterns() async throws {
+        let xib = "<document><objects><view id=\"1\"/></objects></document>\n"
+        let tree = [
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+
+            let package = Package(
+                name: "Pkg",
+                targets: [.target(name: "Cells"), .target(name: "Other")]
+            )
+            """,
+            "Sources/Cells/Cells.swift": "enum Cells {}\n",
+            "Sources/Cells/FooCell.xib": xib,
+            "Sources/Cells/Foo_cell.xib": xib,
+            "Sources/Other/Use.swift": "func nib(_ x: String) -> String { x + \"cell\" }\n",
+        ]
+        var config = Config()
+        config.noSwift = true
+        let f = try await findings(try FixtureSupport.tempTree(tree), config: config)
+        let unused = byPath(f, .unusedInterfaceFile)
+        XCTAssertEqual(unused["Sources/Cells/FooCell.xib"]?.confidence, .high, "case differs")
+        XCTAssertEqual(unused["Sources/Cells/Foo_cell.xib"]?.confidence, .high, "pattern lives in another module")
+    }
+
     /// Item 8: an `.ahap` haptic pattern is JSON naming its sibling audio by path, so the audio is used.
     func testAhapNamesItsSiblingAudio() async throws {
         let f = try await package([

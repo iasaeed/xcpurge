@@ -80,8 +80,9 @@ public struct AssetsDetector: Detector {
         var findings: [Finding] = []
         var reachByOwners: [Set<ModuleID>: Set<ModuleID>] = [:]
         for var c in candidates where !c.used {
-            if resolver.enumAffixMatch(c.names, visible: c.visible, domains: c.domains) != nil { continue }
-            if let d = resolver.downgrade(c.names, visible: c.visible, domains: c.domains), d.confidence < c.confidence {
+            let applicable = resolver.applicablePatterns(c.names, visible: c.visible, domains: c.domains)
+            if resolver.enumAffixMatch(c.names, applicable: applicable) != nil { continue }
+            if let d = resolver.downgrade(c.names, applicable: applicable), d.confidence < c.confidence {
                 c.confidence = d.confidence
                 c.reasons.append(d.reason)
                 if d.pattern.domain == .any { usedPatterns.insert(d.pattern) }

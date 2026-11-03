@@ -82,7 +82,8 @@ public enum Explainer {
                             modulesChecked: checked.sorted().map(\.description),
                             visibilityRule: visibilityRule(owners: owners, config: config),
                             referenceSites: sites, referenceSitesTruncated: truncated,
-                            dynamicPatterns: dynamicSites(for: f, visible: checked, refs: context.refs),
+                            dynamicPatterns: dynamicSites(for: f, owners: owners, visible: checked, graph: context.graph,
+                                                          refs: context.refs),
                             confidence: derivation(f))
         if reported {
             e.status = .reported
@@ -205,19 +206,24 @@ public enum Explainer {
     }
 
     /// Runtime-built names that could produce the finding's name (keyless localization calls count for strings).
-    static func dynamicSites(for f: Finding, visible: Set<ModuleID>, refs: ReferenceIndex) -> [Explanation.DynamicSite] {
+    static func dynamicSites(for f: Finding, owners: Set<ModuleID>, visible: Set<ModuleID>, graph: ModuleGraph,
+                             refs: ReferenceIndex) -> [Explanation.DynamicSite] {
         guard f.kind != .dynamicLookup, f.kind != .staleIgnore else { return [] }
         let name = f.name ?? RelPath.stem(RelPath.lastComponent(f.path))
         // Resource patterns can build the file name too (`"\(x).html"`, a keyless lookup with `withExtension:`).
         let isFile = f.category == .files
         let names = isFile ? [name, RelPath.lastComponent(f.path)].map { $0.lowercased() } : [name]
+        // Keyless asset lookups only count where they can load this module's catalog (see `keylessLookup`).
+        let reach = f.category == .assets ? graph.mainBundleReach(of: owners) : []
         let hits = refs.dynamicPatterns.filter { p in
             guard p.isKeyless else {
                 var q = p
                 if isFile { q.segments = p.segments.map { $0.lowercased() } }  // resource lookups ignore case
                 return names.contains(where: q.couldBuild)
             }
-            return (f.category == .strings && p.domain == .string) || (f.category == .assets && p.domain == .asset)
+            return (f.category == .strings && p.domain == .string)
+                || (f.category == .assets && p.domain == .asset
+                    && AssetReferenceResolver.isKeylessLookup(p, in: owners, reach: reach, refs: refs))
         }
         let sites = hits.map { p in
             Explanation.DynamicSite(path: refs.path(of: p.file), line: Int(p.line),

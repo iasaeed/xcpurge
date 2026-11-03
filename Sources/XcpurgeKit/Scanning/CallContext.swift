@@ -35,6 +35,10 @@ public struct CallContext: Sendable, Hashable {
     ]
     /// Initializers whose `named:` loads a bundle resource (a scene, sound, particle file), not an asset-catalog entry.
     static let namedResourceCallees: Set<String> = ["SCNScene", "NSSound", "SCNParticleSystem", "MDLAsset"]
+    /// Callees whose `named:` labels an activity, snapshot or attachment, never an asset-catalog entry.
+    static let nonAssetNamedCallees: Set<String> = [
+        "runActivity", "assertSnapshot", "assertSnapshots", "verifySnapshot", "XCTContext", "XCTAttachment",
+    ]
 
     /// True when a string literal at this position is a localization key.
     public func isLocalization(extraMacros: [String] = []) -> Bool {
@@ -53,12 +57,13 @@ public struct CallContext: Sendable, Hashable {
     public var isAssetLookup: Bool {
         guard let callee else { return false }
         return Self.assetCallees.contains(callee) || label == "imageNamed" || label == "colorNamed"
-            || (label == "named" && !Self.namedResourceCallees.contains(callee))
+            || (label == "named" && !Self.namedResourceCallees.contains(callee)
+                && !Self.nonAssetNamedCallees.contains(callee.split(separator: ".").last.map(String.init) ?? callee))
     }
 
     /// True when this call loads a bundle resource by name.
     public var isResourceLookup: Bool {
-        label == "forResource" || label == "pathForResource" || label == "URLForResource"
+        label == "forResource" || label == "pathForResource" || label == "URLForResource" || label == "bundleName"
             || (label == "named" && callee.map(Self.namedResourceCallees.contains) == true)
     }
 }

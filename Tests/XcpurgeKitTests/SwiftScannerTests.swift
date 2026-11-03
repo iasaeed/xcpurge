@@ -145,6 +145,40 @@ final class SwiftScannerTests: XCTestCase {
         XCTAssertFalse(out.patterns.contains { $0.suffix == "_x" })
     }
 
+    func testChainIntoInterpolationFoldsIntoThePrefix() {
+        let out = SwiftScanner.scan(#"""
+        let a = UIImage(named: "a" + "b" + "\(k)")
+        let b = UIImage(named: "x" + "\(k)")
+        """#)
+        XCTAssertNil(literal(out, "ab"), "the chain is not the constant `ab`")
+        XCTAssertNil(literal(out, "xy"))
+        let a = out.patterns.filter { $0.line == 1 }
+        XCTAssertEqual(a.map(\.prefix), ["ab"], "one pattern, the whole chain as its prefix")
+        XCTAssertEqual(a.first?.domain, .asset)
+        XCTAssertEqual(a.first?.segments, ["ab", ""])
+        XCTAssertEqual(out.patterns.filter { $0.line == 2 }.map(\.prefix), ["x"])
+    }
+
+    func testResourceNameWithNestedCallLiteralsStillMakesAPattern() {
+        let out = SwiftScanner.scan("""
+        let a = Bundle.main.url(forResource: name.replacingOccurrences(of: " ", with: "-"), withExtension: "mp4")
+        let b = Bundle.main.url(forResource: flag ? "on" : "off", withExtension: "mp4")
+        """)
+        let resource = out.patterns.filter { $0.domain == .resource }
+        XCTAssertEqual(resource.first { $0.line == 1 }?.suffix, ".mp4")
+        XCTAssertTrue(resource.filter { $0.line == 2 }.isEmpty, "literals of the argument itself are indexed instead")
+    }
+
+    func testSelfPropertyIsAResourceName() {
+        let out = SwiftScanner.scan("""
+        let a = Bundle.main.url(forResource: self.video, withExtension: "mp4")
+        let b = Bundle.main.url(forResource: self, withExtension: "mp4")
+        """)
+        let resource = out.patterns.filter { $0.domain == .resource }
+        XCTAssertEqual(resource.first { $0.line == 1 }?.suffix, ".mp4")
+        XCTAssertTrue(resource.filter { $0.line == 2 }.isEmpty, "a bare `self` is not a name")
+    }
+
     func testVariableResourceNameGetsTheCallsExtensionAsSuffix() {
         let out = SwiftScanner.scan("""
         let a = Bundle.main.url(forResource: title.bundleName, withExtension: "mp4")
@@ -210,5 +244,18 @@ final class SwiftScannerTests: XCTestCase {
         XCTAssertFalse(anchored("_x"))
         XCTAssertFalse(anchored("_x.png"))
         XCTAssertFalse(anchored(""))
+    }
+
+    func testNamedLabelOfTestHelpersIsNotAnAssetLookup() {
+        let out = SwiftScanner.scan("""
+        XCTContext.runActivity(named: "act") { _ in }
+        assertSnapshot(of: v, as: .image, named: "snap")
+        let a = UIImage(named: "hero")
+        """)
+        XCTAssertEqual(literal(out, "act")?.context?.isAssetLookup, false)
+        XCTAssertEqual(literal(out, "snap")?.context?.isAssetLookup, false)
+        XCTAssertEqual(literal(out, "hero")?.context?.isAssetLookup, true)
+        XCTAssertFalse(CallContext(callee: "XCTContext.runActivity", label: "named").isAssetLookup)
+        XCTAssertTrue(CallContext(callee: "loadImage", label: "named").isAssetLookup)
     }
 }

@@ -25,7 +25,7 @@ enum ResourceFileUsage {
         let tails = pathTails(ctx.refs)
         let components = pathComponents(ctx.refs)
         let isUser = FilesDetector.userFilter(ctx, orphans: orphans)
-        let patterns = dynamicPatterns(ctx, domains: [.resource, .any])
+        let shapes = dynamicShapes(ctx, domains: [.resource, .any])
         var out: [Finding] = []
         for (i, file) in ctx.inventory.files.enumerated() where isCandidate(file) {
             guard !file.modules.isEmpty, !orphans.contains(file.path), !consumed.contains(file.path),
@@ -50,7 +50,7 @@ enum ResourceFileUsage {
             } else if let site = folderLoad(ext, ctx, canSee: canSee) {
                 low = "every .\(ext) resource is loaded at \(site)"
             } else {
-                low = dynamicMatch(stem, fileName: file.fileName, patterns: patterns, ctx, canSee: canSee)
+                low = dynamicMatch(stem, fileName: file.fileName, shapes, ctx, canSee: canSee)
                     .map { "may be built dynamically at \($0)" }
             }
             var reasons = ["no reference to '\(stem)' or '\(file.fileName)' from a visible file"]
@@ -127,36 +127,57 @@ enum ResourceFileUsage {
         }.map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 
-    /// Patterns of these domains that carry literal text, filtered once so a per-file loop does not rescan them all.
-    static func dynamicPatterns(_ ctx: ScanContext, domains: Set<DynamicPattern.Domain>) -> [DynamicPattern] {
-        ctx.refs.dynamicPatterns.filter { domains.contains($0.domain) && !$0.isKeyless }
+    /// A dynamic pattern with everything `dynamicMatch` needs precomputed, so the per-file loop does no string or
+    /// bundle classification work.
+    struct DynamicShape {
+        let pattern: DynamicPattern
+        let prefix: String
+        let suffix: String
+        let literal: Int
+        let prefixed: Bool
+        let anchored: Bool
     }
 
-    /// `dynamicMatch` over the stem only, filtering the patterns itself.
-    static func dynamicMatch(_ name: String, domains: Set<DynamicPattern.Domain>, _ ctx: ScanContext,
-                             canSee: (Int32) -> Bool) -> String? {
-        dynamicMatch(name, fileName: name, patterns: dynamicPatterns(ctx, domains: domains), ctx, canSee: canSee)
+    /// Shapes of the patterns of these domains that carry literal text, built once so a per-file loop does not rescan
+    /// them all. Resource lookups are case-insensitive and may anchor on a distinctive suffix from any module;
+    /// interface files (`caseInsensitive: false`, `anchoring: false`) are neither.
+    struct DynamicShapes {
+        let list: [DynamicShape]
+        let caseInsensitive: Bool
     }
 
-    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce the stem or the file name (plan §4.7
-    /// step 3; `"\(x).html"` and a keyless lookup with `withExtension: "mp4"` build the file name). OSS scan #3: a
-    /// constant prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that
-    /// starts the name (`"intro-"`) counts from any module, not only visible ones; so does a distinctive suffix on a
-    /// lookup that reads the main bundle (`"\(theme)Theme.css"`). Anything else needs a visible site. Case-insensitive,
-    /// like the resource lookup itself.
-    static func dynamicMatch(_ stem: String, fileName: String, patterns: [DynamicPattern], _ ctx: ScanContext,
-                             canSee: (Int32) -> Bool) -> String? {
-        let names = stem == fileName ? [stem.lowercased()] : [stem.lowercased(), fileName.lowercased()]
-        let pattern = patterns.first { p in
-            let prefix = p.prefix.lowercased(), suffix = p.suffix.lowercased()
-            let literal = prefix.count + suffix.count
-            guard (p.domain == .any ? literal >= 3 : literal >= 1),
-                  names.contains(where: { $0.count > literal && $0.hasPrefix(prefix) && $0.hasSuffix(suffix) }) else { return false }
-            let prefixed = prefix.count >= (p.domain == .any ? 3 : 1)
-            let anchored = p.hasAnchoredSuffix && p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
-            return prefixed || anchored || canSee(p.file)
+    static func dynamicShapes(_ ctx: ScanContext, domains: Set<DynamicPattern.Domain>, caseInsensitive: Bool = true,
+                              anchoring: Bool = true) -> DynamicShapes {
+        let list = ctx.refs.dynamicPatterns.filter { domains.contains($0.domain) && !$0.isKeyless }.map { p in
+            let prefix = caseInsensitive ? p.prefix.lowercased() : p.prefix
+            let suffix = caseInsensitive ? p.suffix.lowercased() : p.suffix
+            let anchored = anchoring && p.hasAnchoredSuffix
+                && (p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true)
+            return DynamicShape(pattern: p, prefix: prefix, suffix: suffix, literal: prefix.count + suffix.count,
+                                prefixed: prefix.count >= (p.domain == .any ? 3 : 1), anchored: anchored)
         }
-        if let p = pattern { return "\(ctx.refs.path(of: p.file)):\(p.line)" }
+        return DynamicShapes(list: list, caseInsensitive: caseInsensitive)
+    }
+
+    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce the stem or, for resource-domain patterns,
+    /// the file name (plan §4.7 step 3; `"\(x).html"` and a keyless lookup with `withExtension: "mp4"` build the file
+    /// name, while an `.any` pattern such as a cache path builder matches the stem only). OSS scan #3: a constant
+    /// prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that starts the
+    /// name (`"intro-"`) counts from any module, not only visible ones; so does a distinctive suffix on a lookup that
+    /// reads the main bundle (`"\(theme)Theme.css"`). Anything else needs a visible site. Case folding follows `shapes`.
+    static func dynamicMatch(_ stem: String, fileName: String, _ shapes: DynamicShapes, _ ctx: ScanContext,
+                             canSee: (Int32) -> Bool) -> String? {
+        let fold = { (s: String) in shapes.caseInsensitive ? s.lowercased() : s }
+        let stemName = fold(stem)
+        let fileNames = stem == fileName ? [stemName] : [stemName, fold(fileName)]
+        let match = shapes.list.first { s in
+            guard s.pattern.domain == .any ? s.literal >= 3 : s.literal >= 1 else { return false }
+            let names = s.pattern.domain == .resource ? fileNames : [stemName]
+            guard names.contains(where: { $0.count > s.literal && $0.hasPrefix(s.prefix) && $0.hasSuffix(s.suffix) })
+            else { return false }
+            return s.prefixed || s.anchored || canSee(s.pattern.file)
+        }
+        if let p = match?.pattern { return "\(ctx.refs.path(of: p.file)):\(p.line)" }
         return ctx.refs.separatorPrefix(of: stem).map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 }

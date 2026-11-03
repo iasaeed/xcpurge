@@ -309,4 +309,129 @@ final class RuntimeNameTests: XCTestCase {
         XCTAssertEqual(green.confidence, .low)
         XCTAssertTrue(green.reasons.contains { $0.contains("Icons.swift:6") && $0.contains("built dynamically") }, "\(green.reasons)")
     }
+
+    /// A suffix on a non-lookup (`print("\(e)_selected")`) says nothing about asset names in another module.
+    func testSuffixOnANonLookupStaysModuleLocal() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("tab_selected", in: root)
+        try write("""
+        public func log(_ e: String) { print("\\(e)_selected") }
+        """, to: "Packages/Core/Sources/Core/Log.swift", in: root)
+
+        let findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "tab_selected" }?.confidence, .high, "Core cannot see the app's catalog")
+    }
+
+    /// `UIImage(named: "dPad-" + d, in: .module, …)` and `#bundle` lookups never reach the app's catalog; the same
+    /// lookup on the main bundle does.
+    func testPrefixedAndKeylessLookupsHonourTheBundle() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        for name in ["dPad-Up", "flag_de"] { try addImageSet(name, in: root) }
+        func core(_ body: String) throws {
+            try write("import SwiftUI\nimport UIKit\n" + body, to: "Packages/Core/Sources/Core/Pad.swift", in: root)
+        }
+        try core("""
+        public func pad(_ d: String) -> UIImage? { UIImage(named: "dPad-" + d, in: .module, compatibleWith: nil) }
+        public func flag(_ code: String) -> Image { Image("flag_\\(code)", bundle: #bundle) }
+        """)
+        var findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "dPad-Up" }?.confidence, .high, ".module stays in Core")
+        XCTAssertEqual(findings.first { $0.name == "flag_de" }?.confidence, .high, "#bundle stays in Core")
+
+        try core("""
+        public func pad(_ d: String) -> UIImage? { UIImage(named: "dPad-" + d, in: .main, compatibleWith: nil) }
+        public func flag(_ code: String) -> Image { Image("flag_\\(code)") }
+        """)
+        findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "dPad-Up" }?.confidence, .low, "the main bundle is the app's")
+        XCTAssertEqual(findings.first { $0.name == "flag_de" }?.confidence, .low)
+
+        try core("""
+        public func flag(_ folder: String, _ code: String) -> Image {
+            let path = folder + code.lowercased()
+            return Image("\\(path)\\(code)", bundle: #bundle)
+        }
+        """)
+        findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "flag_de" }?.confidence, .high, "a keyless #bundle lookup stays in Core")
+    }
+
+    /// The real shape: a computed property (no call) `"\(iconName)-Preview"` plus the enum's explicit raw values.
+    func testComputedPropertyWithEnumRawValuesIsUsed() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        for name in ["AppIcon-Red-Preview", "AppIcon-Green-Preview"] { try addImageSet(name, in: root) }
+        try write("""
+        public enum AppIconOption: String {
+            case blue = "AppIcon-Blue"
+            case red = "AppIcon-Red"
+        }
+        public struct IconPicker {
+            public var iconName = "AppIcon-Blue"
+            public var previewImageName: String { "\\(iconName)-Preview" }
+        }
+        """, to: "Packages/Core/Sources/Core/Icons.swift", in: root)
+
+        let findings = try await assets(root)
+        XCTAssertNil(findings.first { $0.name == "AppIcon-Red-Preview" }, "built from AppIcon-Red")
+        let green = try XCTUnwrap(findings.first { $0.name == "AppIcon-Green-Preview" })
+        XCTAssertEqual(green.confidence, .low, "a bare computed property with a distinctive suffix anchors in any module")
+    }
+
+    /// `CodingKeys` raw values are wire keys, not asset names; they must not hide an unused `settings_icon`.
+    func testCodingKeysRawValuesDoNotCompleteAffixPatterns() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("settings_icon", in: root)
+        try write("""
+        import UIKit
+        struct Payload: Codable {
+            var s: String
+            enum CodingKeys: String, CodingKey { case s = "settings" }
+        }
+        public func icon(_ n: String) -> UIImage? { UIImage(named: "\\(n)_icon") }
+        """, to: "Packages/Core/Sources/Core/Payload.swift", in: root)
+
+        let all = try await assets(root)
+        let settings = try XCTUnwrap(all.first { $0.name == "settings_icon" })
+        XCTAssertEqual(settings.confidence, .low, "reported at low, not dropped: \(settings.reasons)")
+    }
+
+    /// An enum a pattern's module cannot see does not complete it (the app declares it; Core cannot use it).
+    func testEnumRawValuesFromAnInvisibleModuleDoNotCompletePatterns() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("AppIcon-Red-Preview", in: root)
+        try write("""
+        enum AppIconOption: String { case red = "AppIcon-Red" }
+        """, to: "App/App/AppIcons.swift", in: root)
+        try write("""
+        import UIKit
+        public func preview(_ iconName: String) -> UIImage? { UIImage(named: "\\(iconName)-Preview") }
+        """, to: "Packages/Core/Sources/Core/Icons.swift", in: root)
+
+        let all = try await assets(root)
+        let red = try XCTUnwrap(all.first { $0.name == "AppIcon-Red-Preview" })
+        XCTAssertEqual(red.confidence, .low)
+    }
+
+    /// `explain` lists keyless asset lookups only where they can load the asset's catalog: a `.module` lookup in a
+    /// package is not one.
+    func testExplainListsOnlyReachingKeylessLookups() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("flag_de", in: root)
+        func core(_ lookup: String) throws {
+            try write("""
+            import SwiftUI
+            public func flag(_ folder: String, _ code: String) -> some View {
+                let path = folder + code.lowercased()
+                return \(lookup)
+            }
+            """, to: "Packages/Core/Sources/Core/Flags.swift", in: root)
+        }
+        try core(#"Image("\(path)\(code)", bundle: .module)"#)
+        var report = try await Explainer.explain(subject: "flag_de", root: root, config: config)
+        XCTAssertEqual(report.matches.first?.dynamicPatterns.count, 0, "\(report.matches.first?.dynamicPatterns ?? [])")
+
+        try core(#"Image("\(path)\(code)")"#)
+        report = try await Explainer.explain(subject: "flag_de", root: root, config: config)
+        XCTAssertEqual(report.matches.first?.dynamicPatterns.map(\.path), ["Packages/Core/Sources/Core/Flags.swift"])
+    }
 }

@@ -39,8 +39,8 @@ public enum GeneratedAccessorScanner {
 
     /// Accessor path -> raw name. Each declaration is registered under its full type path and under
     /// `<enclosing type>.<name>` so uses like `R.image.foo` and `Asset.foo` both resolve. A declaration none of the
-    /// known shapes resolves (a custom template: `Image("foo", bundle: .module)`) falls back to its first
-    /// non-interpolated string literal.
+    /// known shapes resolves (a custom template: `Image("foo", bundle: .module)`) falls back to the first
+    /// non-empty, non-interpolated literal of an `Image` / `UIImage` / `NSImage` / `Color` / `UIColor` / `NSColor` initializer.
     public static func accessors(in tokens: [SwiftToken]) -> [String: String] {
         var map: [String: String] = [:]
         var typeStack: [(name: String, depth: Int)] = []
@@ -56,6 +56,13 @@ public enum GeneratedAccessorScanner {
                 let short = path.suffix(2).joined(separator: ".")
                 map[short] = map[short] ?? raw
             }
+        }
+        /// True when `tokens[t]` is the first argument (unlabeled or `decorative:`) of an `Image("foo")` /
+        /// `UIColor("foo")` style initializer. A custom template's other literals (`L10n.table`, a scene id) name nothing.
+        func isImageInitArgument(_ t: Int, label: String?) -> Bool {
+            let open = label == nil ? t - 1 : t - 3
+            guard label == nil || label == "decorative", open >= 1, tokens[open].isPunct("(") else { return false }
+            return ["Image", "UIImage", "NSImage", "Color", "UIColor", "NSColor"].contains(tokens[open - 1].text)
         }
         func finishDeclaration() {
             if let current = decl, !current.resolved, let raw = current.fallback { register(current.path, raw) }
@@ -100,7 +107,10 @@ public enum GeneratedAccessorScanner {
                     trStrings += 1
                     if trStrings == 3 { raw = tok.text }  // L10n.tr("Table", "key", …)
                 }
-                else if current.fallback == nil { current.fallback = tok.text; decl = current }
+                else if current.fallback == nil, !tok.text.isEmpty, isImageInitArgument(t, label: labelBefore) {
+                    current.fallback = tok.text
+                    decl = current
+                }
                 if let raw {
                     register(current.path, raw)
                     current.resolved = true

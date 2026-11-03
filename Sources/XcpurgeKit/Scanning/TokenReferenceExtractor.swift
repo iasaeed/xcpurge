@@ -56,6 +56,8 @@ struct TokenReferenceExtractor {
     private var droppedPatterns = Set<Int>()
     /// Token index of an explicit `case b = "lit"` raw value -> its enum's name.
     private var rawValueTokens: [Int: String] = [:]
+    /// Token index of an interpolated string -> the literal chain before it (`"a" + "b" + "\(k)"` -> `"ab"`).
+    private var foldedPrefixes: [Int: String] = [:]
 
     static let declarationKeywords: Set<String> = ["var", "let", "func"]
     /// Keywords that end a pending `var`/`let`/`func` without a body (protocol requirements, new scopes).
@@ -171,7 +173,8 @@ struct TokenReferenceExtractor {
                 // A resource name read from a variable or property (`forResource: title.bundleName`): keyless pattern,
                 // given the call's extension as suffix by `popFrame`. A plain name bound to literals is indexed instead.
                 if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
-                   !Self.literalKeywords.contains(tok.text), context(for: f).isResourceLookup, !argumentHasLiteral(t),
+                   !Self.literalKeywords.contains(tok.text) || isSelfPropertyRead(t), context(for: f).isResourceLookup,
+                   !argumentHasLiteral(t),
                    !(stringBound.contains(tok.text) && (token(t + 1)?.isPunct(",") == true || token(t + 1)?.isPunct(")") == true)) {
                     f.resourcePatterns.append(out.patterns.count)
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
@@ -212,7 +215,10 @@ struct TokenReferenceExtractor {
                 f.resourcePatterns.append(out.patterns.count)
                 frames[frames.count - 1] = f
             }
-            addPattern(prefix: tok.text, suffix: tok.suffix, line: tok.line, context: ctx, segments: tok.segments)
+            var segments = tok.segments
+            let lead = foldedPrefixes[t] ?? ""
+            segments[0] = lead + segments[0]
+            addPattern(prefix: lead + tok.text, suffix: tok.suffix, line: tok.line, context: ctx, segments: segments)
             return
         }
         addRef(.stringLiteral, tok.text, tok.line, ctx)
@@ -223,11 +229,17 @@ struct TokenReferenceExtractor {
             chain.insert(prev.text, at: 0)
             first -= 2
         }
-        let continues = token(t + 1)?.isPunct("+") == true && token(t + 2).map { $0.kind == .string && !$0.interpolated } == true
         let folded = chain.joined()
+        // A chain that goes on into an interpolated operand (`"a" + "b" + "\(k)"`) is not the constant either: its
+        // folded text becomes the prefix of that interpolation's pattern.
+        let interpolatedNext = token(t + 1)?.isPunct("+") == true ? interpolatedOperand(at: t + 2, line: tok.line) : nil
+        if let s = interpolatedNext { foldedPrefixes[s] = folded }
+        let continues = interpolatedNext != nil
+            || (token(t + 1)?.isPunct("+") == true && token(t + 2).map { $0.kind == .string && !$0.interpolated } == true)
         if chain.count > 1, !continues { addRef(.stringLiteral, folded, tok.line, ctx) }
         // `"lit" + x` -> prefix; `x + "lit"` -> suffix.
-        if token(t + 1)?.isPunct("+") == true, let next = token(t + 2), next.kind != .string, !next.isPunct("=") {
+        if interpolatedNext == nil, token(t + 1)?.isPunct("+") == true, let next = token(t + 2), next.kind != .string,
+           !next.isPunct("=") {
             addPattern(prefix: folded, suffix: "", line: tok.line, context: ctx)
         }
         if token(first - 1)?.isPunct("+") == true, let prev = token(first - 2), prev.kind != .string, !folded.isEmpty,
@@ -239,6 +251,28 @@ struct TokenReferenceExtractor {
            let (prefix, suffix) = Self.formatParts(tok.text) {
             addPattern(prefix: prefix, suffix: suffix, line: tok.line, context: ctx)
         }
+    }
+
+    /// Index of the interpolated string that is the `+` operand starting at `t` (`"a" + "\(k)"`; the tokenizer emits an
+    /// interpolation's code tokens before its string). Only plain reads and calls count: `"\(k + 1)"` cannot be told
+    /// from `k + "…\(1)"`, so an operator before the string, or a new line, means no match.
+    private func interpolatedOperand(at t: Int, line: Int32) -> Int? {
+        var k = t, depth = 0
+        while let x = token(k), k < t + 24, x.line == line {
+            if x.kind == .string {
+                if depth == 0 { return x.interpolated ? k : nil }
+            } else if x.isPunct("(") || x.isPunct("[") {
+                depth += 1
+            } else if x.isPunct(")") || x.isPunct("]") {
+                depth -= 1
+                if depth < 0 { return nil }
+            } else if x.kind == .punct {
+                let plain = x.isPunct(".") || x.isPunct("?") || x.isPunct("!") || (depth > 0 && (x.isPunct(",") || x.isPunct(":")))
+                if !plain { return nil }
+            }
+            k += 1
+        }
+        return nil
     }
 
     /// Follows `var`/`let`/`func` declarations so string literals know the declaration whose body holds them.
@@ -286,18 +320,26 @@ struct TokenReferenceExtractor {
         tokens[range].contains { $0.kind == .string && (!$0.interpolated || $0.segments.contains { !$0.isEmpty }) }
     }
 
-    /// True when the call argument starting at `t` holds a string token: an interpolation (the tokenizer emits `code`
-    /// of `"flag_\(code)"` before the string itself) or literals (`flag ? "on" : "off"`).
+    /// True when the call argument starting at `t` holds a string token of its own: an interpolation (the tokenizer
+    /// emits `code` of `"flag_\(code)"` before the string itself) or literals (`flag ? "on" : "off"`). Strings nested
+    /// in a call (`name.replacingOccurrences(of: " ", with: "-")`) are not the name's text. The argument ends at a `,`
+    /// or, in Objective-C, at the next message label (`name ofType:@"mp4"`).
     private func argumentHasLiteral(_ t: Int) -> Bool {
         var k = t, depth = 0
         while let next = token(k), k < t + 64 {
             if next.isPunct("(") || next.isPunct("[") || next.isPunct("{") { depth += 1 }
             else if next.isPunct(")") || next.isPunct("]") || next.isPunct("}") { if depth == 0 { return false }; depth -= 1 }
             else if depth == 0, next.isPunct(",") { return false }
-            else if next.kind == .string { return true }
+            else if depth == 0, dialect == .objc, k > t, next.isName, token(k + 1)?.isPunct(":") == true { return false }
+            else if depth == 0, next.kind == .string { return true }
             k += 1
         }
         return false
+    }
+
+    /// True for a `self.property` read starting at `t`, the one use of a `self` argument that names a variable.
+    private func isSelfPropertyRead(_ t: Int) -> Bool {
+        token(t)?.text == "self" && token(t + 1)?.isPunct(".") == true && token(t + 2)?.isName == true
     }
 
     /// True when the tokens in `range` only read a value (`a`, `a.b?.c`): forwarding, not computing a name.

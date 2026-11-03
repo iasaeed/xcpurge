@@ -27,6 +27,18 @@ final class ObjCScannerTests: XCTestCase {
         XCTAssertTrue(out.patterns.contains { $0.prefix == "flag_" })
     }
 
+    func testResourceNameStopsAtTheNextMessageLabel() {
+        let out = ObjCScanner.scan("""
+        NSString *a = [bundle pathForResource:name ofType:@"mp4"];
+        NSString *b = [bundle pathForResource:@"fixed" ofType:@"mp4"];
+        NSString *c = [bundle pathForResource:self.video ofType:@"mp4"];
+        """)
+        let resource = out.patterns.filter { $0.domain == .resource }
+        XCTAssertEqual(resource.first { $0.line == 1 }?.suffix, ".mp4", "the `ofType:` literal is not part of the name")
+        XCTAssertTrue(resource.filter { $0.line == 2 }.isEmpty)
+        XCTAssertEqual(resource.first { $0.line == 3 }?.suffix, ".mp4")
+    }
+
     func testNoNestedCommentsInObjC() {
         let out = ObjCScanner.scan("/* a /* b */ id x = @\"visible\";")
         XCTAssertTrue(out.references.contains { $0.value == "visible" })

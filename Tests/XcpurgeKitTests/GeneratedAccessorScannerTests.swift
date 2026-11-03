@@ -193,4 +193,34 @@ final class GeneratedAccessorScannerTests: XCTestCase {
         XCTAssertEqual(map["Asset.Icons.viaLabel"], "label_icon")
         XCTAssertNil(map["Asset.Icons.dynamic"], "an interpolated literal names nothing")
     }
+
+    /// A custom template's non-image declarations must not map to an unrelated name: a table constant, a helper whose
+    /// first literal is empty, and a storyboard scene id.
+    func testCustomTemplateIgnoresNonImageLiterals() {
+        let src = """
+        // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+        import SwiftUI
+        internal enum L10n {
+          internal static let table = "Localizable"
+          private static func tr(_ key: String) -> String {
+            NSLocalizedString(key, tableName: table, bundle: .main, value: "", comment: "")
+          }
+        }
+        internal enum StoryboardScene {
+          internal enum Main {
+            internal static let detail = SceneType<DetailViewController>(storyboard: Main.self, identifier: "Detail")
+          }
+        }
+        internal enum Icons {
+          internal static let ok = UIImage("ok_icon")
+          internal static let tint = Color("tint_color")
+        }
+        """
+        let map = GeneratedAccessorScanner.accessors(in: SwiftTokenizer.tokenize(src).tokens)
+        XCTAssertNil(map["L10n.table"])
+        XCTAssertNil(map["L10n.tr"])
+        XCTAssertNil(map["StoryboardScene.Main.detail"])
+        XCTAssertEqual(map["Icons.ok"], "ok_icon", "an unlabeled image initializer still maps")
+        XCTAssertEqual(map["Icons.tint"], "tint_color")
+    }
 }

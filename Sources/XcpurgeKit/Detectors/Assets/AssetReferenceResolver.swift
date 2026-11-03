@@ -33,11 +33,17 @@ struct AssetReferenceResolver: Sendable {
     private let prefixedIndex: [String: [Int]]
     /// Indices of patterns that apply only from visible modules (no constant prefix, no anchored main-bundle suffix).
     private let visibleOnly: [Int]
+    /// `visibleOnly` as a set, the starting point of every candidate lookup.
+    private let visibleOnlySet: Set<Int>
     /// Indices of anchored-suffix patterns that read the main bundle (they apply in any module), keyed by the last
     /// one to three lowercased characters of the suffix; a name looks up its own last three.
     private let suffixIndex: [String: [Int]]
-    /// Explicit raw values of `String` enums (`case red = "AppIcon-Red"`), for `"\(iconName)-Preview"` style affix patterns.
-    private let rawValues: Set<String>
+    /// Explicit raw values of `String` enums (`case red = "AppIcon-Red"`) -> files declaring them, for
+    /// `"\(iconName)-Preview"` style affix patterns. `CodingKeys` enums are left out: their raw values are wire keys.
+    private let rawValues: [String: [Int32]]
+    /// Lowercased literals ending in `-`, `_` or `.` (`"pause-animation-"`) -> first reference index, leaving out
+    /// lookups bound to `.module`, `#bundle` or another bundle and `xcpurge:ignore` lines.
+    private let separatorLiterals: [String: Int]
 
     /// One dynamic pattern prepared for matching against many names.
     private struct PatternShape: Sendable {
@@ -54,12 +60,17 @@ struct AssetReferenceResolver: Sendable {
         let refs = ctx.refs
         self.refs = refs
         self.graph = ctx.graph
-        var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:], raw = Set<String>()
+        var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:], raw: [String: [Int32]] = [:]
+        var separators: [String: Int] = [:]
         for (i, r) in refs.references.enumerated() {
+            if r.kind == .stringLiteral, ReferenceIndex.isSeparatorPrefix(r.value), separators[r.value.lowercased()] == nil,
+               Self.readsMainBundle(r.context), !refs.isIgnored(file: r.file, line: r.line) {
+                separators[r.value.lowercased()] = i
+            }
             if r.kind == .memberSymbol {
                 fuzzy[AssetSymbolMangler.fuzzyKey(r.value), default: []].append(r.file)
             } else if r.kind == .stringLiteral, r.context?.label == "rawValue", r.context?.callee?.hasPrefix("enum ") == true {
-                raw.insert(r.value)
+                if r.context?.callee != "enum CodingKeys" { raw[r.value, default: []].append(r.file) }
             } else if RefKindMask.names.contains(r.kind.mask), r.value.contains("/") {
                 let last = RelPath.lastComponent(r.value).lowercased()
                 tails[last, default: []].append(i)
@@ -70,18 +81,21 @@ struct AssetReferenceResolver: Sendable {
         fuzzyMembers = fuzzy
         pathTails = tails
         rawValues = raw
+        separatorLiterals = separators
         patterns = refs.dynamicPatterns.filter { !$0.isKeyless && !refs.isIgnored(file: $0.file, line: $0.line) }
         var shapes: [PatternShape] = [], index: [String: [Int]] = [:], visibleOnly: [Int] = []
         var suffixes: [String: [Int]] = [:]
         for (i, p) in patterns.enumerated() {
             let literal = p.prefix.count + p.suffix.count
-            // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in.
-            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
-            // OSS scan #4: `code.lowercased() + "-large"` builds names whatever module the site is in, as long as the
-            // lookup reads the main bundle; `.module`, `#bundle` and other bundles never reach another module's catalog.
-            let anchored = !prefixed && p.hasAnchoredSuffix && p.context.map {
-                [.none, .main].contains(LocalizationCallClassifier.bundle($0))
-            } ?? true
+            // `.module`, `#bundle` and other bundles never reach another module's catalog: those lookups stay local.
+            let readsMainBundle = Self.readsMainBundle(p.context)
+            // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in, as
+            // long as the lookup reads the main bundle.
+            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1) && readsMainBundle
+            // OSS scan #4: `code.lowercased() + "-large"` builds names whatever module the site is in, again for the
+            // main bundle only. Only an asset lookup or a bare computed property (no call) anchors: `print("\(e)_selected")`
+            // says nothing about asset names in other modules.
+            let anchored = !prefixed && p.hasAnchoredSuffix && readsMainBundle && (p.domain == .asset || p.context == nil)
             let shape = PatternShape(prefix: p.prefix.lowercased(), suffix: p.suffix.lowercased(), literal: literal,
                                      matches: p.domain == .any ? literal >= 3 : literal >= 1,
                                      prefixed: prefixed, anchored: anchored)
@@ -97,10 +111,28 @@ struct AssetReferenceResolver: Sendable {
         self.shapes = shapes
         self.prefixedIndex = index
         self.visibleOnly = visibleOnly
+        self.visibleOnlySet = Set(visibleOnly)
         self.suffixIndex = suffixes
         keylessLookups = refs.dynamicPatterns.filter {
             $0.isKeyless && $0.domain == .asset && !refs.isIgnored(file: $0.file, line: $0.line)
         }
+    }
+
+    /// True unless the call binds the lookup to `.module`, `#bundle` or another bundle.
+    private static func readsMainBundle(_ context: CallContext?) -> Bool {
+        context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
+    }
+
+    /// OSS scan #3b: a string literal ending in a separator that is a proper prefix of `name` (`"pause-animation-"` for
+    /// `pause-animation-3`), compared ignoring case, in any module: the rest is appended at runtime.
+    private func separatorPrefix(of name: String) -> Reference? {
+        var prefix = ""
+        for (n, c) in name.lowercased().enumerated() {
+            prefix.append(c)
+            guard ReferenceIndex.nameSeparators.contains(c), n < name.count - 1, let i = separatorLiterals[prefix] else { continue }
+            return refs.references[i]
+        }
+        return nil
     }
 
     /// Union of `consumers(of:)` over the owning modules (plan §4.2).
@@ -175,9 +207,9 @@ struct AssetReferenceResolver: Sendable {
 
     /// Indices (in pattern order) of the patterns that apply to `names` as seen from `visible`: right domain, enough
     /// literal text, visible or module-independent, and shaped like one of the names.
-    private func applicablePatterns(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> [Int] {
+    func applicablePatterns(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> [Int] {
         let lowered = names.map { $0.lowercased() }
-        var candidates = Set(visibleOnly)
+        var candidates = visibleOnlySet
         for name in lowered {
             for k in 1...3 where name.count >= k {
                 candidates.formUnion(prefixedIndex[String(name.prefix(k))] ?? [])
@@ -192,18 +224,20 @@ struct AssetReferenceResolver: Sendable {
         }
     }
 
-    /// OSS scan #4: `"\(iconName)-Preview"` with `enum AppIconOption: String { case red = "AppIcon-Red" }` builds
-    /// `AppIcon-Red-Preview`: a two-part pattern whose dynamic middle is a raw value of some `String` enum.
-    func enumAffixMatch(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> Evidence? {
+    /// `"\(iconName)-Preview"` with `enum AppIconOption: String { case red = "AppIcon-Red" }` builds
+    /// `AppIcon-Red-Preview`: a pattern with a literal suffix (and perhaps prefix) around one dynamic middle that is a raw value
+    /// of a `String` enum the pattern's module can see (`CodingKeys` enums never count).
+    /// - Parameter applicable: `applicablePatterns` for the same names, computed once by the caller.
+    func enumAffixMatch(_ names: [String], applicable: [Int]) -> Evidence? {
         guard !rawValues.isEmpty else { return nil }
-        for i in applicablePatterns(names, visible: visible, domains: domains) {
+        for i in applicable {
             let p = patterns[i], shape = shapes[i]
-            guard p.segments.count == 2 else { continue }
+            guard p.segments.count == 2, !p.suffix.isEmpty else { continue }
             for name in names where name.count > shape.literal {
                 let lowered = name.lowercased()
                 guard lowered.hasPrefix(shape.prefix), lowered.hasSuffix(shape.suffix) else { continue }
                 let middle = String(name.dropFirst(shape.prefix.count).dropLast(shape.suffix.count))
-                if rawValues.contains(middle) {
+                if let files = rawValues[middle], enumVisible(files, from: p.file) {
                     return Evidence(strength: .high, reason: "built from enum raw value \"\(middle)\" at \(location(p.file, p.line))")
                 }
             }
@@ -211,12 +245,19 @@ struct AssetReferenceResolver: Sendable {
         return nil
     }
 
+    /// True when a pattern in `site` can name an enum declared in one of `files`: same module or a dependency.
+    private func enumVisible(_ files: [Int32], from site: Int32) -> Bool {
+        let sites = refs.modules(of: site)
+        return files.contains { f in refs.modules(of: f).contains { graph.isVisible(from: sites, to: $0) } }
+    }
+
     /// Plan §4.7 step 3: the most severe downgrade any visible pattern implies for `names`.
-    /// - Parameter domains: pattern domains that load this kind of resource; `.any` patterns always apply.
-    func downgrade(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> Downgrade? {
+    /// - Parameter applicable: `applicablePatterns` for the same names (it takes the pattern domains that load this kind
+    ///   of resource; `.any` patterns always apply), computed once by the caller.
+    func downgrade(_ names: [String], applicable: [Int]) -> Downgrade? {
         var best: Downgrade?
         // Candidates in pattern order (the first most severe match wins, as before the index existed).
-        for i in applicablePatterns(names, visible: visible, domains: domains) {
+        for i in applicable {
             let p = patterns[i], shape = shapes[i]
             let confidence: Confidence = p.domain == .any && !shape.prefixed && !shape.anchored ? .medium : .low
             if best == nil || confidence < best!.confidence {
@@ -227,7 +268,7 @@ struct AssetReferenceResolver: Sendable {
         }
         // OSS scan #3b: `generateAnimation(with: "pause-animation-", …)` appends the rest at runtime, in any module.
         if best?.confidence != .low,
-           let r = names.lazy.compactMap({ refs.separatorPrefix(of: $0) }).first(where: { !refs.isIgnored(file: $0.file, line: $0.line) }) {
+           let r = names.lazy.compactMap({ separatorPrefix(of: $0) }).first {
             best = Downgrade(confidence: .low, reason: "may be built dynamically at \(location(r.file, r.line)) (\"\(r.value)…\")",
                              pattern: DynamicPattern(prefix: r.value, suffix: "", file: r.file, line: r.line, domain: .any,
                                                      context: r.context))
@@ -238,11 +279,16 @@ struct AssetReferenceResolver: Sendable {
     /// OSS scan #3e: an asset lookup whose name is a variable, in one of `owners`, or in a module in `reach`
     /// (`graph.mainBundleReach(of: owners)`) when it reads the main bundle.
     func keylessLookup(in owners: Set<ModuleID>, reach: Set<ModuleID> = []) -> DynamicPattern? {
-        keylessLookups.first { p in
-            let sites = refs.modules(of: p.file)
-            if !sites.isDisjoint(with: owners) { return true }
-            guard !reach.isEmpty, !sites.isDisjoint(with: reach) else { return false }
-            return p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
-        }
+        keylessLookups.first { Self.isKeylessLookup($0, in: owners, reach: reach, refs: refs) }
+    }
+
+    /// True when the keyless asset lookup `p` can load assets of `owners`: it sits in an owner, or in a module in `reach`
+    /// and reads the main bundle.
+    static func isKeylessLookup(_ p: DynamicPattern, in owners: Set<ModuleID>, reach: Set<ModuleID>,
+                                refs: ReferenceIndex) -> Bool {
+        let sites = refs.modules(of: p.file)
+        if !sites.isDisjoint(with: owners) { return true }
+        guard !reach.isEmpty, !sites.isDisjoint(with: reach) else { return false }
+        return readsMainBundle(p.context)
     }
 }
