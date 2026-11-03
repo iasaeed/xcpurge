@@ -38,15 +38,29 @@ public enum GeneratedAccessorScanner {
     }
 
     /// Accessor path -> raw name. Each declaration is registered under its full type path and under
-    /// `<enclosing type>.<name>` so uses like `R.image.foo` and `Asset.foo` both resolve.
+    /// `<enclosing type>.<name>` so uses like `R.image.foo` and `Asset.foo` both resolve. A declaration none of the
+    /// known shapes resolves (a custom template: `Image("foo", bundle: .module)`) falls back to its first
+    /// non-interpolated string literal.
     public static func accessors(in tokens: [SwiftToken]) -> [String: String] {
         var map: [String: String] = [:]
         var typeStack: [(name: String, depth: Int)] = []
         var depth = 0
         var pendingType: String?
-        var decl: (path: [String], resolved: Bool)?
+        var decl: (path: [String], resolved: Bool, fallback: String?)?
         var trStrings = 0
         var labelBefore: String?
+
+        func register(_ path: [String], _ raw: String) {
+            map[path.joined(separator: ".")] = map[path.joined(separator: ".")] ?? raw
+            if path.count >= 2 {
+                let short = path.suffix(2).joined(separator: ".")
+                map[short] = map[short] ?? raw
+            }
+        }
+        func finishDeclaration() {
+            if let current = decl, !current.resolved, let raw = current.fallback { register(current.path, raw) }
+            decl = nil
+        }
 
         for (t, tok) in tokens.enumerated() {
             if tok.kind == .punct {
@@ -55,7 +69,7 @@ public enum GeneratedAccessorScanner {
                     depth += 1
                     if let name = pendingType { typeStack.append((name, depth)); pendingType = nil }
                 case "}":
-                    if let top = typeStack.last, top.depth == depth { typeStack.removeLast() }
+                    if let top = typeStack.last, top.depth == depth { finishDeclaration(); typeStack.removeLast() }
                     depth -= 1
                 case ":":
                     labelBefore = t > 0 && tokens[t - 1].isName ? tokens[t - 1].text : nil
@@ -73,7 +87,8 @@ public enum GeneratedAccessorScanner {
             }
             if tok.kind == .identifier, ["let", "var", "func", "case"].contains(tok.text),
                t + 1 < tokens.count, tokens[t + 1].kind == .identifier {
-                decl = (typeStack.map(\.name) + [tokens[t + 1].text], false)
+                finishDeclaration()
+                decl = (typeStack.map(\.name) + [tokens[t + 1].text], false, nil)
                 trStrings = 0
                 continue
             }
@@ -85,19 +100,16 @@ public enum GeneratedAccessorScanner {
                     trStrings += 1
                     if trStrings == 3 { raw = tok.text }  // L10n.tr("Table", "key", …)
                 }
+                else if current.fallback == nil { current.fallback = tok.text; decl = current }
                 if let raw {
-                    let path = current.path
-                    map[path.joined(separator: ".")] = map[path.joined(separator: ".")] ?? raw
-                    if path.count >= 2 {
-                        let short = path.suffix(2).joined(separator: ".")
-                        map[short] = map[short] ?? raw
-                    }
+                    register(current.path, raw)
                     current.resolved = true
                     decl = current
                 }
             }
             labelBefore = nil
         }
+        finishDeclaration()
         return map
     }
 }

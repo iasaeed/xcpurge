@@ -95,4 +95,102 @@ final class GeneratedAccessorScannerTests: XCTestCase {
         XCTAssertEqual(ctx.refs.generatedFiles.count, 2)
         XCTAssertTrue(ctx.refs.sites("hero-image", kinds: .stringLiteral).isEmpty, "generated file is not a reference source")
     }
+
+    // MARK: - Checked-in tables across modules
+
+    private func write(_ text: String, to path: String, in root: URL) throws {
+        let url = root.appendingPathComponent(path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
+    }
+
+    private func addImageSet(_ name: String, catalog: String, in root: URL) throws {
+        let dir = "\(catalog)/\(name).imageset"
+        try write(#"{"images":[{"filename":"\#(name).png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#,
+                  to: "\(dir)/Contents.json", in: root)
+        try write("\(name)-bytes", to: "\(dir)/\(name).png", in: root)
+    }
+
+    private func assetFindings(_ root: URL) async throws -> [Finding] {
+        var config = Config()
+        config.noSwift = true
+        return try await ScanEngine(root: root, config: config).run(categories: [.assets]).findings
+    }
+
+    private let coreCatalog = "Packages/Core/Sources/Core/Resources/Core.xcassets"
+    private let designCatalog = "Packages/DesignSystem/Sources/DesignSystem/Resources/DesignSystem.xcassets"
+
+    /// A checked-in `Assets.swift` in a package; the app spells `Asset.Icons.foo.image`.
+    func testCrossModuleAccessorUseMarksAssetUsed() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("foo_icon", catalog: coreCatalog, in: root)
+        try addImageSet("bar_icon", catalog: coreCatalog, in: root)
+        try write("""
+        // swiftlint:disable all
+        // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+        public enum Asset {
+          public enum Icons {
+            public static let foo = ImageAsset(name: "foo_icon")
+            public static let bar = ImageAsset(name: "bar_icon")
+          }
+        }
+        """, to: "Packages/Core/Sources/Core/Assets.swift", in: root)
+        try write("import Core\nlet icon = Asset.Icons.foo.image\n", to: "App/App/IconUse.swift", in: root)
+
+        let findings = try await assetFindings(root)
+        XCTAssertNil(findings.first { $0.name == "foo_icon" }, "used through Asset.Icons.foo")
+        XCTAssertEqual(findings.first { $0.name == "bar_icon" }?.confidence, .high, "bar is never spelled")
+    }
+
+    /// Two modules each ship a generated `Asset.Colors.primary` with a different raw name; one use site cannot
+    /// tell them apart, so both assets count as used.
+    func testSameAccessorPathInTwoModulesCreditsBothAssets() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("primary_core", catalog: coreCatalog, in: root)
+        try addImageSet("primary_ds", catalog: designCatalog, in: root)
+        try addImageSet("secondary_ds", catalog: designCatalog, in: root)
+        for (path, raw) in [("Packages/Core/Sources/Core/Assets.swift", "primary_core"),
+                            ("Packages/DesignSystem/Sources/DesignSystem/Assets.swift", "primary_ds")] {
+            try write("""
+            // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+            public enum Asset {
+              public enum Colors {
+                public static let primary = ColorAsset(name: "\(raw)")
+              }
+            }
+            """, to: path, in: root)
+        }
+        try write("let c = Asset.Colors.primary.color\n", to: "App/App/ColorUse.swift", in: root)
+
+        let ctx = try await ScanEngine(root: root, config: Config()).makeContext()
+        for raw in ["primary_core", "primary_ds"] {
+            XCTAssertEqual(ctx.refs.sites(raw, kinds: .accessorUse).count, 1, raw)
+        }
+        let findings = try await assetFindings(root)
+        XCTAssertNil(findings.first { $0.name == "primary_core" }, "\(findings.map(\.name))")
+        XCTAssertNil(findings.first { $0.name == "primary_ds" }, "\(findings.map(\.name))")
+        XCTAssertEqual(findings.first { $0.name == "secondary_ds" }?.confidence, .high)
+    }
+
+    /// A custom template with a SwiftGen header that wraps the name in `Image("foo", bundle: .module)`.
+    func testCustomTemplateImageInitIsMapped() async throws {
+        let src = """
+        // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+        import SwiftUI
+        public enum Asset {
+          public enum Icons {
+            public static var foo: Image { Image("foo_icon", bundle: .module) }
+            public static var tinted: Image { Image("tinted_icon", bundle: .module).renderingMode(.template) }
+            public static var viaLabel: Image { Image(decorative: "label_icon", bundle: .module) }
+            public static var dynamic: Image { Image("prefix_\\(suffix)", bundle: .module) }
+          }
+        }
+        """
+        let map = GeneratedAccessorScanner.accessors(in: SwiftTokenizer.tokenize(src).tokens)
+        XCTAssertEqual(map["Asset.Icons.foo"], "foo_icon")
+        XCTAssertEqual(map["Icons.foo"], "foo_icon")
+        XCTAssertEqual(map["Asset.Icons.tinted"], "tinted_icon")
+        XCTAssertEqual(map["Asset.Icons.viaLabel"], "label_icon")
+        XCTAssertNil(map["Asset.Icons.dynamic"], "an interpolated literal names nothing")
+    }
 }

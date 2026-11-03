@@ -192,6 +192,8 @@ public struct ReferenceIndex: Sendable {
         var references: [Reference] = [], patterns: [DynamicPattern] = [], ignored = Set<FileLine>()
         var markers: [Int32: [IgnoreMarker]] = [:]
         var accessors: [String: String] = [:], generated = Set<Int32>()
+        // Every raw name per accessor path: two modules may each generate `Asset.Colors.primary`.
+        var rawNames: [String: Set<String>] = [:]
         var skipped: [(path: String, reason: String)] = []
         var enclosing: [Int32: String] = [:], declarations: [String: Int] = [:]
         for (i, out) in outputs {
@@ -201,7 +203,10 @@ public struct ReferenceIndex: Sendable {
             }
             if out.isGenerated {
                 generated.insert(Int32(i))
-                for (k, v) in out.accessors.sorted(by: { $0.key < $1.key }) where accessors[k] == nil { accessors[k] = v }
+                for (k, v) in out.accessors.sorted(by: { $0.key < $1.key }) {
+                    if accessors[k] == nil { accessors[k] = v }
+                    rawNames[k, default: []].insert(v)
+                }
                 continue
             }
             for (k, decl) in out.enclosingDeclarations { enclosing[Int32(references.count + k)] = decl }
@@ -219,7 +224,8 @@ public struct ReferenceIndex: Sendable {
                 let qualifier = r.context?.qualifier ?? ""
                 let chain = qualifier.isEmpty ? r.value : qualifier + "." + r.value
                 let short = (qualifier.split(separator: ".").last.map { String($0) + "." } ?? "") + r.value
-                if let raw = accessors[chain] ?? accessors[short] {
+                guard let raws = rawNames[chain] ?? rawNames[short] else { continue }
+                for raw in raws.sorted() {
                     uses.append(Reference(kind: .accessorUse(chain), value: raw, file: r.file, line: r.line, context: r.context))
                 }
             }
