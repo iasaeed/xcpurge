@@ -25,6 +25,7 @@ enum ResourceFileUsage {
         let tails = pathTails(ctx.refs)
         let components = pathComponents(ctx.refs)
         let isUser = FilesDetector.userFilter(ctx, orphans: orphans)
+        let patterns = dynamicPatterns(ctx, domains: [.resource, .any])
         var out: [Finding] = []
         for (i, file) in ctx.inventory.files.enumerated() where isCandidate(file) {
             guard !file.modules.isEmpty, !orphans.contains(file.path), !consumed.contains(file.path),
@@ -49,7 +50,7 @@ enum ResourceFileUsage {
             } else if let site = folderLoad(ext, ctx, canSee: canSee) {
                 low = "every .\(ext) resource is loaded at \(site)"
             } else {
-                low = dynamicMatch(stem, domains: [.resource, .any], ctx, canSee: canSee)
+                low = dynamicMatch(stem, fileName: file.fileName, patterns: patterns, ctx, canSee: canSee)
                     .map { "may be built dynamically at \($0)" }
             }
             var reasons = ["no reference to '\(stem)' or '\(file.fileName)' from a visible file"]
@@ -126,19 +127,36 @@ enum ResourceFileUsage {
         }.map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 
-    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce `name` (plan §4.7 step 3). OSS scan #3: a
-    /// constant prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that
-    /// starts the name (`"intro-"`) counts from any module, not only visible ones.
+    /// Patterns of these domains that carry literal text, filtered once so a per-file loop does not rescan them all.
+    static func dynamicPatterns(_ ctx: ScanContext, domains: Set<DynamicPattern.Domain>) -> [DynamicPattern] {
+        ctx.refs.dynamicPatterns.filter { domains.contains($0.domain) && !$0.isKeyless }
+    }
+
+    /// `dynamicMatch` over the stem only, filtering the patterns itself.
     static func dynamicMatch(_ name: String, domains: Set<DynamicPattern.Domain>, _ ctx: ScanContext,
                              canSee: (Int32) -> Bool) -> String? {
-        let pattern = ctx.refs.dynamicPatterns.first { p in
-            guard domains.contains(p.domain), !p.isKeyless, name.count > p.prefix.count + p.suffix.count,
-                  name.hasPrefix(p.prefix), name.hasSuffix(p.suffix) else { return false }
-            let literal = p.prefix.count + p.suffix.count
-            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
-            return (p.domain == .any ? literal >= 3 : literal >= 1) && (prefixed || canSee(p.file))
+        dynamicMatch(name, fileName: name, patterns: dynamicPatterns(ctx, domains: domains), ctx, canSee: canSee)
+    }
+
+    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce the stem or the file name (plan §4.7
+    /// step 3; `"\(x).html"` and a keyless lookup with `withExtension: "mp4"` build the file name). OSS scan #3: a
+    /// constant prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that
+    /// starts the name (`"intro-"`) counts from any module, not only visible ones; so does a distinctive suffix on a
+    /// lookup that reads the main bundle (`"\(theme)Theme.css"`). Anything else needs a visible site. Case-insensitive,
+    /// like the resource lookup itself.
+    static func dynamicMatch(_ stem: String, fileName: String, patterns: [DynamicPattern], _ ctx: ScanContext,
+                             canSee: (Int32) -> Bool) -> String? {
+        let names = stem == fileName ? [stem.lowercased()] : [stem.lowercased(), fileName.lowercased()]
+        let pattern = patterns.first { p in
+            let prefix = p.prefix.lowercased(), suffix = p.suffix.lowercased()
+            let literal = prefix.count + suffix.count
+            guard (p.domain == .any ? literal >= 3 : literal >= 1),
+                  names.contains(where: { $0.count > literal && $0.hasPrefix(prefix) && $0.hasSuffix(suffix) }) else { return false }
+            let prefixed = prefix.count >= (p.domain == .any ? 3 : 1)
+            let anchored = p.hasAnchoredSuffix && p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
+            return prefixed || anchored || canSee(p.file)
         }
         if let p = pattern { return "\(ctx.refs.path(of: p.file)):\(p.line)" }
-        return ctx.refs.separatorPrefix(of: name).map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
+        return ctx.refs.separatorPrefix(of: stem).map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
     }
 }

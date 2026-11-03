@@ -208,8 +208,16 @@ public enum Explainer {
     static func dynamicSites(for f: Finding, visible: Set<ModuleID>, refs: ReferenceIndex) -> [Explanation.DynamicSite] {
         guard f.kind != .dynamicLookup, f.kind != .staleIgnore else { return [] }
         let name = f.name ?? RelPath.stem(RelPath.lastComponent(f.path))
+        // Resource patterns can build the file name too (`"\(x).html"`, a keyless lookup with `withExtension:`).
+        let isFile = f.category == .files
+        let names = isFile ? [name, RelPath.lastComponent(f.path)].map { $0.lowercased() } : [name]
         let hits = refs.dynamicPatterns.filter { p in
-            p.isKeyless ? (f.category == .strings && p.domain == .string) : p.couldBuild(name)
+            guard p.isKeyless else {
+                var q = p
+                if isFile { q.segments = p.segments.map { $0.lowercased() } }  // resource lookups ignore case
+                return names.contains(where: q.couldBuild)
+            }
+            return (f.category == .strings && p.domain == .string) || (f.category == .assets && p.domain == .asset)
         }
         let sites = hits.map { p in
             Explanation.DynamicSite(path: refs.path(of: p.file), line: Int(p.line),

@@ -179,6 +179,52 @@ final class FilesDetectorTests: XCTestCase {
         XCTAssertNil(unused["Sources/Kit/Model.mlpackage/Data/weights.json"], "inside an opaque model package")
     }
 
+    /// Data-driven lookups: a variable name with a literal extension, `"\(x).html"` and `"Prefix-\(x).txt"` build file
+    /// names, so the loose files they could load are low; unrelated files stay high.
+    func testDataDrivenResourceLookupsAreLow() async throws {
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import Foundation
+            struct Lesson { var bundleName: String }
+            func video(_ title: Lesson) -> URL? { Bundle.main.url(forResource: title.bundleName, withExtension: "mp4") }
+            func page(_ chapter: String) -> String? { Bundle.main.path(forResource: "\\(chapter).html", ofType: nil) }
+            func quiz(_ f: Int) -> URL? { Bundle.main.url(forResource: "SpotTheError-\\(f).txt", withExtension: nil) }
+            func theme(_ t: String) -> String? { Bundle.main.path(forResource: "\\(t)Theme.css", ofType: nil) }
+            """,
+            "Sources/Kit/intro.mp4": "x",
+            "Sources/Kit/intro.html": "<html/>",
+            "Sources/Kit/SpotTheError-1.txt": "x",
+            "Sources/Kit/dark.css": "x",
+            "Sources/Kit/darkTheme.css": "x",
+            "Sources/Kit/orphaned.json": "{}",
+        ])
+        let unused = byPath(f, .unusedResource)
+        XCTAssertEqual(unused["Sources/Kit/intro.mp4"]?.confidence, .low, "variable name, literal extension")
+        XCTAssertEqual(unused["Sources/Kit/intro.html"]?.confidence, .low, "\"\\(chapter).html\"")
+        XCTAssertEqual(unused["Sources/Kit/SpotTheError-1.txt"]?.confidence, .low, "prefix and extension")
+        XCTAssertEqual(unused["Sources/Kit/darkTheme.css"]?.confidence, .low, "\"\\(t)Theme.css\"")
+        XCTAssertEqual(unused["Sources/Kit/dark.css"]?.confidence, .high, "the pattern needs the Theme suffix")
+        XCTAssertEqual(unused["Sources/Kit/orphaned.json"]?.confidence, .high)
+        XCTAssertTrue(unused["Sources/Kit/intro.mp4"]?.reasons.contains { $0.hasPrefix("may be built dynamically at ") } == true)
+    }
+
+    /// Item 8: an `.ahap` haptic pattern is JSON naming its sibling audio by path, so the audio is used.
+    func testAhapNamesItsSiblingAudio() async throws {
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import Foundation
+            func haptic(_ name: String) -> URL? { Bundle.main.url(forResource: name, withExtension: "ahap") }
+            """,
+            "Sources/Kit/Resources/AHAP/Drums.ahap": #"{"Pattern":[{"Event":{"EventType":"HapticAudioCustom","EventWaveformPath":"AHAP/Drums.wav"}}]}"#,
+            "Sources/Kit/Resources/AHAP/Drums.wav": "x",
+            "Sources/Kit/Resources/AHAP/Lonely.wav": "x",
+        ])
+        let unused = byPath(f, .unusedResource)
+        XCTAssertNil(unused["Sources/Kit/Resources/AHAP/Drums.wav"], "named by the .ahap file")
+        XCTAssertEqual(unused["Sources/Kit/Resources/AHAP/Lonely.wav"]?.confidence, .high)
+        XCTAssertEqual(unused["Sources/Kit/Resources/AHAP/Drums.ahap"]?.confidence, .low, "loaded by a variable name")
+    }
+
     func testFolderReferenceAndCopiedResourcesAreLow() async throws {
         let f = try await package([
             "Sources/Kit/Kit.swift": "enum Kit {}\n",

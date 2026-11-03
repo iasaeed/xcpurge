@@ -138,6 +138,37 @@ final class ExplainTests: XCTestCase {
         XCTAssertTrue(e.toMakeSafe.contains { $0.contains("Do not remove") })
     }
 
+    /// A variable resource name with a literal extension builds every file with that extension: the explanation
+    /// lists the `forResource:` site for the loose file.
+    func testLooseResourceListsForResourceSite() async throws {
+        let root = try FixtureSupport.tempTree([
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+
+            let package = Package(name: "Kit", targets: [.target(name: "Kit")])
+            """,
+            "Sources/Kit/Use.swift": """
+            import Foundation
+            struct Lesson { var bundleName: String }
+            func video(_ title: Lesson) -> URL? { Bundle.main.url(forResource: title.bundleName, withExtension: "mp4") }
+            """,
+            "Sources/Kit/intro.mp4": "x",
+        ])
+        var config = Config()
+        config.noSwift = true
+        let report = try await explain("Sources/Kit/intro.mp4", root: root, config: config)
+        let e = try XCTUnwrap(report.matches.first)
+        XCTAssertEqual(e.status, .reported)
+        XCTAssertEqual(e.finding?.confidence, .low)
+        let site = try XCTUnwrap(e.dynamicPatterns.first)
+        XCTAssertEqual(site.path, "Sources/Kit/Use.swift")
+        XCTAssertEqual(site.line, 3)
+        XCTAssertEqual(site.domain, "resource")
+        XCTAssertTrue(site.visible)
+        XCTAssertTrue(site.pattern.hasSuffix(".mp4"))
+    }
+
     func testNoMatchThrowsWithSuggestions() async {
         do {
             _ = try await explain("legacy_unusd")

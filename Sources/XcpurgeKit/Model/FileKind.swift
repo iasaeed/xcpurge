@@ -28,7 +28,7 @@ public enum FileKind: String, Codable, Sendable {
         case "plist": self = .plist
         case "entitlements": self = .entitlements
         case "xcconfig": self = .xcconfig
-        case "json", "geojson": self = .json
+        case "json", "geojson", "ahap": self = .json
         case "html", "htm": self = .html
         case "css": self = .css
         case "js": self = .js
