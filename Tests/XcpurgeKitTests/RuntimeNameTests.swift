@@ -236,4 +236,77 @@ final class RuntimeNameTests: XCTestCase {
         XCTAssertEqual(byName["onboarding_page_2"], .low)
         XCTAssertEqual(byName["other"], .high)
     }
+
+    /// `NSImage(named: code.lowercased() + "-large")` in a package: the literal suffix builds names in the app's
+    /// catalog, but only when the lookup reads the main bundle.
+    func testAnchoredSuffixesLowerCatalogsOfOtherModules() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        for name in ["de-large", "plain_other"] { try addImageSet(name, in: root) }
+        try write("""
+        import AppKit
+        public func flag(_ code: String) -> NSImage? { NSImage(named: code.lowercased() + "-large") }
+        """, to: "Packages/Core/Sources/Core/Flags.swift", in: root)
+
+        var findings = try await assets(root)
+        let flag = try XCTUnwrap(findings.first { $0.name == "de-large" })
+        XCTAssertEqual(flag.confidence, .low)
+        XCTAssertTrue(flag.reasons.contains { $0.contains("Flags.swift:2") && $0.contains("\"…-large\"") }, "\(flag.reasons)")
+        XCTAssertEqual(findings.first { $0.name == "plain_other" }?.confidence, .high)
+
+        try write("""
+        import AppKit
+        public func flag(_ code: String) -> NSImage? { NSImage(named: code.lowercased() + "-large", in: .module, compatibleWith: nil) }
+        """, to: "Packages/Core/Sources/Core/Flags.swift", in: root)
+        findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "de-large" }?.confidence, .high, "an explicit .module bundle is not the app's")
+    }
+
+    /// A fully interpolated `Image("\(path)\(code)")` in a package reads the app bundle: medium, with a lookup record.
+    func testKeylessLookupInADependencyReachesTheAppCatalog() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("flag_de", in: root)
+        try write("""
+        import SwiftUI
+        public func flag(_ folder: String, _ code: String) -> some View {
+            let path = folder + code.lowercased()
+            return Image("\\(path)\\(code)")
+        }
+        """, to: "Packages/Core/Sources/Core/Flags.swift", in: root)
+
+        var findings = try await assets(root)
+        let flag = try XCTUnwrap(findings.first { $0.name == "flag_de" })
+        XCTAssertEqual(flag.confidence, .medium)
+        XCTAssertTrue(flag.reasons.contains { $0.contains("Flags.swift:4 (name passed as a variable)") }, "\(flag.reasons)")
+        XCTAssertTrue(findings.contains { $0.kind == .dynamicLookup && $0.path.hasSuffix("Flags.swift") })
+
+        try write("""
+        import SwiftUI
+        public func flag(_ folder: String, _ code: String) -> some View {
+            let path = folder + code.lowercased()
+            return Image("\\(path)\\(code)", bundle: .module)
+        }
+        """, to: "Packages/Core/Sources/Core/Flags.swift", in: root)
+        findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "flag_de" }?.confidence, .high, "an explicit .module bundle is not the app's")
+    }
+
+    /// `"\(iconName)-Preview"` with `case red = "AppIcon-Red"`: the enum's raw value is the dynamic middle.
+    func testEnumRawValuesCompleteAffixPatterns() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        for name in ["AppIcon-Red-Preview", "AppIcon-Green-Preview"] { try addImageSet(name, in: root) }
+        try write("""
+        import UIKit
+        public enum AppIconOption: String {
+            case blue = "AppIcon-Blue"
+            case red = "AppIcon-Red"
+        }
+        public func preview(_ iconName: String) -> UIImage? { UIImage(named: "\\(iconName)-Preview") }
+        """, to: "Packages/Core/Sources/Core/Icons.swift", in: root)
+
+        let findings = try await assets(root)
+        XCTAssertNil(findings.first { $0.name == "AppIcon-Red-Preview" }, "built from AppIcon-Red")
+        let green = try XCTUnwrap(findings.first { $0.name == "AppIcon-Green-Preview" })
+        XCTAssertEqual(green.confidence, .low)
+        XCTAssertTrue(green.reasons.contains { $0.contains("Icons.swift:6") && $0.contains("built dynamically") }, "\(green.reasons)")
+    }
 }

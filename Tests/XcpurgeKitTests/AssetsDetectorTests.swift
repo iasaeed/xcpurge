@@ -225,4 +225,55 @@ final class AssetsDetectorTests: XCTestCase {
         XCTAssertTrue(logo.reasons.contains { $0.contains("referenced from DesignSystem without a bundle") }, "\(logo.reasons)")
         XCTAssertEqual(findings.first { $0.name == "elsewhere" }?.confidence, .high, "an explicit .module bundle is not Bundle.main")
     }
+
+    private func addImageSet(_ name: String, in root: URL) throws {
+        let dir = root.appendingPathComponent("App/App/Assets.xcassets/\(name).imageset")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"images":[{"filename":"\#(name).png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#.utf8)
+            .write(to: dir.appendingPathComponent("Contents.json"))
+        try Data("\(name)-bytes".utf8).write(to: dir.appendingPathComponent("\(name).png"))
+    }
+
+    private func scanAssets(_ root: URL) async throws -> [Finding] {
+        var config = Config()
+        config.noSwift = true
+        return try await ScanEngine(root: root, config: config).run(categories: [.assets]).findings
+    }
+
+    /// `utility.loadImage(named: "x")` is an asset lookup whatever the wrapper is called. In the same module the name
+    /// is a use; from a module that cannot see the catalog it resolves via the main bundle, so low.
+    func testNamedWrapperCallsAreAssetLookups() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("wrapped_here", in: root)
+        try addImageSet("wrapped_far", in: root)
+        try Data("""
+        import UIKit
+        func show(_ utility: Utility) { _ = utility.loadImage(named: "wrapped_here") }
+        """.utf8).write(to: root.appendingPathComponent("App/App/Wrapped.swift"))
+        try Data("""
+        import UIKit
+        public func far(_ utility: Utility) { _ = utility.loadImage(named: "wrapped_far") }
+        """.utf8).write(to: root.appendingPathComponent("Packages/Core/Sources/Core/Wrapped.swift"))
+
+        let findings = try await scanAssets(root)
+        XCTAssertNil(findings.first { $0.name == "wrapped_here" })
+        let far = try XCTUnwrap(findings.first { $0.name == "wrapped_far" })
+        XCTAssertEqual(far.confidence, .low)
+        XCTAssertTrue(far.reasons.contains { $0.contains("resolves to the main bundle at runtime") }, "\(far.reasons)")
+    }
+
+    /// `"more" + "-20"` is the literal `more-20`.
+    func testConcatenatedLiteralsNameTheAsset() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try addImageSet("more-20", in: root)
+        try addImageSet("other_icon", in: root)
+        try Data("""
+        import UIKit
+        func icon() -> UIImage? { UIImage(named: "more" + "-20") }
+        """.utf8).write(to: root.appendingPathComponent("App/App/More.swift"))
+
+        let findings = try await scanAssets(root)
+        XCTAssertNil(findings.first { $0.name == "more-20" })
+        XCTAssertEqual(findings.first { $0.name == "other_icon" }?.confidence, .high)
+    }
 }

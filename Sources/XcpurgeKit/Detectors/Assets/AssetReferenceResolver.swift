@@ -31,8 +31,13 @@ struct AssetReferenceResolver: Sendable {
     /// Indices of patterns with a constant prefix (they apply in any module), keyed by the prefix's first one to three
     /// lowercased characters; a name looks up its own first one, two and three characters.
     private let prefixedIndex: [String: [Int]]
-    /// Indices of patterns that apply only from visible modules (no constant prefix).
+    /// Indices of patterns that apply only from visible modules (no constant prefix, no anchored main-bundle suffix).
     private let visibleOnly: [Int]
+    /// Indices of anchored-suffix patterns that read the main bundle (they apply in any module), keyed by the last
+    /// one to three lowercased characters of the suffix; a name looks up its own last three.
+    private let suffixIndex: [String: [Int]]
+    /// Explicit raw values of `String` enums (`case red = "AppIcon-Red"`), for `"\(iconName)-Preview"` style affix patterns.
+    private let rawValues: Set<String>
 
     /// One dynamic pattern prepared for matching against many names.
     private struct PatternShape: Sendable {
@@ -41,16 +46,20 @@ struct AssetReferenceResolver: Sendable {
         var literal: Int
         var matches: Bool
         var prefixed: Bool
+        /// A distinctive literal suffix on a lookup that reads the main bundle: applies in any module.
+        var anchored: Bool
     }
 
     init(_ ctx: ScanContext) {
         let refs = ctx.refs
         self.refs = refs
         self.graph = ctx.graph
-        var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:]
+        var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:], raw = Set<String>()
         for (i, r) in refs.references.enumerated() {
             if r.kind == .memberSymbol {
                 fuzzy[AssetSymbolMangler.fuzzyKey(r.value), default: []].append(r.file)
+            } else if r.kind == .stringLiteral, r.context?.label == "rawValue", r.context?.callee?.hasPrefix("enum ") == true {
+                raw.insert(r.value)
             } else if RefKindMask.names.contains(r.kind.mask), r.value.contains("/") {
                 let last = RelPath.lastComponent(r.value).lowercased()
                 tails[last, default: []].append(i)
@@ -60,20 +69,35 @@ struct AssetReferenceResolver: Sendable {
         }
         fuzzyMembers = fuzzy
         pathTails = tails
+        rawValues = raw
         patterns = refs.dynamicPatterns.filter { !$0.isKeyless && !refs.isIgnored(file: $0.file, line: $0.line) }
         var shapes: [PatternShape] = [], index: [String: [Int]] = [:], visibleOnly: [Int] = []
+        var suffixes: [String: [Int]] = [:]
         for (i, p) in patterns.enumerated() {
             let literal = p.prefix.count + p.suffix.count
             // OSS scan #3a: a constant prefix (`"avatar_\(rawValue)"`) builds names whatever module the site is in.
+            let prefixed = p.prefix.count >= (p.domain == .any ? 3 : 1)
+            // OSS scan #4: `code.lowercased() + "-large"` builds names whatever module the site is in, as long as the
+            // lookup reads the main bundle; `.module`, `#bundle` and other bundles never reach another module's catalog.
+            let anchored = !prefixed && p.hasAnchoredSuffix && p.context.map {
+                [.none, .main].contains(LocalizationCallClassifier.bundle($0))
+            } ?? true
             let shape = PatternShape(prefix: p.prefix.lowercased(), suffix: p.suffix.lowercased(), literal: literal,
                                      matches: p.domain == .any ? literal >= 3 : literal >= 1,
-                                     prefixed: p.prefix.count >= (p.domain == .any ? 3 : 1))
+                                     prefixed: prefixed, anchored: anchored)
             shapes.append(shape)
-            if shape.prefixed { index[String(shape.prefix.prefix(3)), default: []].append(i) } else { visibleOnly.append(i) }
+            if prefixed {
+                index[String(shape.prefix.prefix(3)), default: []].append(i)
+            } else if anchored {
+                suffixes[String(shape.suffix.suffix(3)), default: []].append(i)
+            } else {
+                visibleOnly.append(i)
+            }
         }
         self.shapes = shapes
         self.prefixedIndex = index
         self.visibleOnly = visibleOnly
+        self.suffixIndex = suffixes
         keylessLookups = refs.dynamicPatterns.filter {
             $0.isKeyless && $0.domain == .asset && !refs.isIgnored(file: $0.file, line: $0.line)
         }
@@ -149,24 +173,52 @@ struct AssetReferenceResolver: Sendable {
         refs.sites(identifier, kinds: .symbols).contains { counts($0.file, visible) }
     }
 
+    /// Indices (in pattern order) of the patterns that apply to `names` as seen from `visible`: right domain, enough
+    /// literal text, visible or module-independent, and shaped like one of the names.
+    private func applicablePatterns(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> [Int] {
+        let lowered = names.map { $0.lowercased() }
+        var candidates = Set(visibleOnly)
+        for name in lowered {
+            for k in 1...3 where name.count >= k {
+                candidates.formUnion(prefixedIndex[String(name.prefix(k))] ?? [])
+                candidates.formUnion(suffixIndex[String(name.suffix(k))] ?? [])
+            }
+        }
+        return candidates.sorted().filter { i in
+            let p = patterns[i], shape = shapes[i]
+            guard domains.contains(p.domain) || p.domain == .any else { return false }
+            guard shape.matches, shape.prefixed || shape.anchored || counts(p.file, visible) else { return false }
+            return lowered.contains { l in l.count > shape.literal && l.hasPrefix(shape.prefix) && l.hasSuffix(shape.suffix) }
+        }
+    }
+
+    /// OSS scan #4: `"\(iconName)-Preview"` with `enum AppIconOption: String { case red = "AppIcon-Red" }` builds
+    /// `AppIcon-Red-Preview`: a two-part pattern whose dynamic middle is a raw value of some `String` enum.
+    func enumAffixMatch(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> Evidence? {
+        guard !rawValues.isEmpty else { return nil }
+        for i in applicablePatterns(names, visible: visible, domains: domains) {
+            let p = patterns[i], shape = shapes[i]
+            guard p.segments.count == 2 else { continue }
+            for name in names where name.count > shape.literal {
+                let lowered = name.lowercased()
+                guard lowered.hasPrefix(shape.prefix), lowered.hasSuffix(shape.suffix) else { continue }
+                let middle = String(name.dropFirst(shape.prefix.count).dropLast(shape.suffix.count))
+                if rawValues.contains(middle) {
+                    return Evidence(strength: .high, reason: "built from enum raw value \"\(middle)\" at \(location(p.file, p.line))")
+                }
+            }
+        }
+        return nil
+    }
+
     /// Plan §4.7 step 3: the most severe downgrade any visible pattern implies for `names`.
     /// - Parameter domains: pattern domains that load this kind of resource; `.any` patterns always apply.
     func downgrade(_ names: [String], visible: Set<ModuleID>, domains: Set<DynamicPattern.Domain>) -> Downgrade? {
         var best: Downgrade?
-        let lowered = names.map { $0.lowercased() }
         // Candidates in pattern order (the first most severe match wins, as before the index existed).
-        var candidates = Set(visibleOnly)
-        for name in lowered {
-            for k in 1...3 where name.count >= k { candidates.formUnion(prefixedIndex[String(name.prefix(k))] ?? []) }
-        }
-        for i in candidates.sorted() {
+        for i in applicablePatterns(names, visible: visible, domains: domains) {
             let p = patterns[i], shape = shapes[i]
-            guard domains.contains(p.domain) || p.domain == .any else { continue }
-            guard shape.matches, shape.prefixed || counts(p.file, visible) else { continue }
-            guard lowered.contains(where: { l in
-                l.count > shape.literal && l.hasPrefix(shape.prefix) && l.hasSuffix(shape.suffix)
-            }) else { continue }
-            let confidence: Confidence = p.domain == .any && !shape.prefixed ? .medium : .low
+            let confidence: Confidence = p.domain == .any && !shape.prefixed && !shape.anchored ? .medium : .low
             if best == nil || confidence < best!.confidence {
                 best = Downgrade(confidence: confidence,
                                  reason: "may be built dynamically at \(location(p.file, p.line)) (\"\(p.prefix)…\(p.suffix)\")",
@@ -183,8 +235,14 @@ struct AssetReferenceResolver: Sendable {
         return best
     }
 
-    /// OSS scan #3e: an asset lookup whose name is a variable, in one of `owners` (same-module catalogs only).
-    func keylessLookup(in owners: Set<ModuleID>) -> DynamicPattern? {
-        keylessLookups.first { !refs.modules(of: $0.file).isDisjoint(with: owners) }
+    /// OSS scan #3e: an asset lookup whose name is a variable, in one of `owners`, or in a module in `reach`
+    /// (`graph.mainBundleReach(of: owners)`) when it reads the main bundle.
+    func keylessLookup(in owners: Set<ModuleID>, reach: Set<ModuleID> = []) -> DynamicPattern? {
+        keylessLookups.first { p in
+            let sites = refs.modules(of: p.file)
+            if !sites.isDisjoint(with: owners) { return true }
+            guard !reach.isEmpty, !sites.isDisjoint(with: reach) else { return false }
+            return p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
+        }
     }
 }

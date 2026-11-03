@@ -78,16 +78,22 @@ public struct AssetsDetector: Detector {
         var usedPatterns = Set<DynamicPattern>()
         let siblings = Self.usedNumberedNames(candidates)
         var findings: [Finding] = []
+        var reachByOwners: [Set<ModuleID>: Set<ModuleID>] = [:]
         for var c in candidates where !c.used {
+            if resolver.enumAffixMatch(c.names, visible: c.visible, domains: c.domains) != nil { continue }
             if let d = resolver.downgrade(c.names, visible: c.visible, domains: c.domains), d.confidence < c.confidence {
                 c.confidence = d.confidence
                 c.reasons.append(d.reason)
                 if d.pattern.domain == .any { usedPatterns.insert(d.pattern) }
             }
-            if c.confidence > .medium, c.domains.contains(.asset), let p = resolver.keylessLookup(in: c.owners) {
-                c.confidence = .medium
-                c.reasons.append("may be built dynamically at \(resolver.location(p.file, p.line)) (name passed as a variable)")
-                usedPatterns.insert(p)
+            if c.confidence > .medium, c.domains.contains(.asset) {
+                let reach = reachByOwners[c.owners] ?? ctx.graph.mainBundleReach(of: c.owners)
+                reachByOwners[c.owners] = reach
+                if let p = resolver.keylessLookup(in: c.owners, reach: reach) {
+                    c.confidence = .medium
+                    c.reasons.append("may be built dynamically at \(resolver.location(p.file, p.line)) (name passed as a variable)")
+                    usedPatterns.insert(p)
+                }
             }
             if c.confidence > .medium, let sibling = Self.numberedSibling(of: c, used: siblings) {
                 c.confidence = .medium
