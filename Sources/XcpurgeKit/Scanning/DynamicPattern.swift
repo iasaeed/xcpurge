@@ -29,6 +29,14 @@ public struct DynamicPattern: Sendable, Hashable {
     /// True when the pattern carries no literal text (a localization call with a variable key).
     public var isKeyless: Bool { prefix.isEmpty && suffix.isEmpty }
 
+    /// True when the suffix is distinctive enough to match across modules (`"-large"`, `"-Preview"`, `"-20.png"`):
+    /// its core, the suffix minus a trailing file extension, has at least three characters. A suffix that is only an
+    /// extension (`".mp4"`) has an empty core, and short tails like `"_x"` are too common to anchor on.
+    public var hasAnchoredSuffix: Bool {
+        let core = suffix.hasPrefix(".") ? "" : (suffix.lastIndex(of: ".").map { String(suffix[..<$0]) } ?? suffix)
+        return core.count >= 3
+    }
+
     /// True when some literal part (prefix, suffix or a middle segment) carries text.
     public var hasLiteralText: Bool { segments.contains { !$0.isEmpty } }
 

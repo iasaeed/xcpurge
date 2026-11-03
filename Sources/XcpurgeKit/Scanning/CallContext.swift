@@ -33,6 +33,8 @@ public struct CallContext: Sendable, Hashable {
         "UIImage", "Image", "Color", "UIColor", "NSImage", "NSColor", "NSDataAsset", "ImageResource",
         "ColorResource", "setAlternateIconName", "imageNamed", "colorNamed", "#imageLiteral",
     ]
+    /// Initializers whose `named:` loads a bundle resource (a scene, sound, particle file), not an asset-catalog entry.
+    static let namedResourceCallees: Set<String> = ["SCNScene", "NSSound", "SCNParticleSystem", "MDLAsset"]
 
     /// True when a string literal at this position is a localization key.
     public func isLocalization(extraMacros: [String] = []) -> Bool {
@@ -46,14 +48,17 @@ public struct CallContext: Sendable, Hashable {
         return Self.localizedViews.contains(callee) && label == nil && argIndex == 0
     }
 
-    /// True when this call loads an asset by name.
+    /// True when this call loads an asset by name: a known asset type, or any `*(named:)` call (wrappers such as
+    /// `utility.loadImage(named: "x")`) except the resource loaders in `namedResourceCallees`.
     public var isAssetLookup: Bool {
         guard let callee else { return false }
         return Self.assetCallees.contains(callee) || label == "imageNamed" || label == "colorNamed"
+            || (label == "named" && !Self.namedResourceCallees.contains(callee))
     }
 
     /// True when this call loads a bundle resource by name.
     public var isResourceLookup: Bool {
         label == "forResource" || label == "pathForResource" || label == "URLForResource"
+            || (label == "named" && callee.map(Self.namedResourceCallees.contains) == true)
     }
 }

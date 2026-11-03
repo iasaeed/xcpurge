@@ -107,4 +107,108 @@ final class SwiftScannerTests: XCTestCase {
         XCTAssertTrue(out.references.isEmpty)
         XCTAssertEqual(out.accessors["Asset.hero"], "hero")
     }
+
+    func testNamedWrapperIsAnAssetLookupButResourceLoadersAreNot() {
+        let out = SwiftScanner.scan("""
+        let a = utility.loadImage(named: "a")
+        let b = SCNScene(named: "level.scn")
+        let c = NSSound(named: "ping")
+        """)
+        XCTAssertEqual(literal(out, "a")?.context?.isAssetLookup, true)
+        XCTAssertEqual(literal(out, "a")?.context?.isResourceLookup, false)
+        XCTAssertEqual(literal(out, "level.scn")?.context?.isAssetLookup, false)
+        XCTAssertEqual(literal(out, "level.scn")?.context?.isResourceLookup, true)
+        XCTAssertEqual(literal(out, "ping")?.context?.isResourceLookup, true)
+        XCTAssertEqual(DynamicPattern.domain(for: literal(out, "a")?.context), .asset)
+        XCTAssertEqual(DynamicPattern.domain(for: literal(out, "level.scn")?.context), .resource)
+        let patterns = SwiftScanner.scan(#"let a = SCNScene(named: "lvl_\(n)"); let b = wrap(named: "img_\(n)")"#).patterns
+        XCTAssertEqual(patterns.first { $0.prefix == "lvl_" }?.domain, .resource)
+        XCTAssertEqual(patterns.first { $0.prefix == "img_" }?.domain, .asset)
+    }
+
+    func testLiteralConcatenationIsFolded() {
+        let out = SwiftScanner.scan("""
+        let a = UIImage(named: "more" + "-20")
+        let b = UIImage(named: "a" + "b" + "c")
+        let c = UIImage(named: "pre" + "fix_" + kind)
+        let d = UIImage(named: kind + "_x" + "yz")
+        """)
+        let folded = literal(out, "more-20")
+        XCTAssertEqual(folded?.context?.callee, "UIImage")
+        XCTAssertEqual(folded?.context?.label, "named")
+        XCTAssertEqual(folded?.context?.isAssetLookup, true)
+        XCTAssertNotNil(literal(out, "abc"))
+        XCTAssertNil(literal(out, "ab"), "only the whole chain is folded")
+        XCTAssertTrue(out.patterns.contains { $0.prefix == "prefix_" && $0.domain == .asset })
+        XCTAssertFalse(out.patterns.contains { $0.prefix == "fix_" }, "the folded chain, not its last literal, is the prefix")
+        XCTAssertTrue(out.patterns.contains { $0.suffix == "_xyz" })
+        XCTAssertFalse(out.patterns.contains { $0.suffix == "_x" })
+    }
+
+    func testVariableResourceNameGetsTheCallsExtensionAsSuffix() {
+        let out = SwiftScanner.scan("""
+        let a = Bundle.main.url(forResource: title.bundleName, withExtension: "mp4")
+        let b = Bundle.main.path(forResource: name, ofType: ".json", inDirectory: "Data")
+        let c = Bundle.main.url(forResource: "\\(page)", withExtension: "html")
+        let d = Bundle.main.url(forResource: other, withExtension: ext)
+        let e = Bundle.main.url(forResource: "fixed", withExtension: "txt")
+        let f = Bundle.main.url(forResource: "\\(chapter).html", withExtension: nil)
+        """)
+        let resource = out.patterns.filter { $0.domain == .resource }
+        let mp4 = resource.first { $0.line == 1 }
+        XCTAssertEqual(mp4?.suffix, ".mp4")
+        XCTAssertEqual(mp4?.prefix, "")
+        XCTAssertEqual(mp4?.segments, ["", ".mp4"])
+        XCTAssertEqual(mp4?.hasAnchoredSuffix, false)
+        XCTAssertEqual(mp4?.context?.label, "forResource")
+        XCTAssertEqual(resource.first { $0.line == 2 }?.suffix, ".json")
+        XCTAssertEqual(resource.first { $0.line == 3 }?.suffix, ".html")
+        XCTAssertTrue(resource.filter { $0.line == 4 }.isEmpty, "a call without a literal extension makes no pattern")
+        XCTAssertTrue(resource.filter { $0.line == 5 }.isEmpty)
+        XCTAssertFalse(resource.contains { $0.isKeyless })
+        let interpolated = resource.first { $0.line == 6 }
+        XCTAssertEqual(interpolated?.suffix, ".html")
+        XCTAssertTrue(interpolated?.couldBuild("intro.html") == true)
+    }
+
+    func testPlainNameBoundToLiteralsMakesNoResourcePattern() {
+        let out = SwiftScanner.scan("""
+        let name = "data"
+        let a = Bundle.main.url(forResource: name, withExtension: "json")
+        """)
+        XCTAssertTrue(out.patterns.isEmpty)
+    }
+
+    func testExplicitRawValueLiteralCarriesTheEnumContext() {
+        let out = SwiftScanner.scan("""
+        enum Icon: String {
+            case blue = "AppIcon-Blue"
+            case red, green = "AppIcon-Green"
+            case plain
+        }
+        let x = UIImage(named: "AppIcon-Blue")
+        """)
+        let tagged = out.references.filter { $0.kind == .stringLiteral && $0.value == "AppIcon-Blue" }
+        XCTAssertEqual(tagged.count, 2)
+        XCTAssertEqual(tagged.first?.context?.callee, "enum Icon")
+        XCTAssertEqual(tagged.first?.context?.label, "rawValue")
+        XCTAssertEqual(tagged.first?.context?.isAssetLookup, false)
+        XCTAssertEqual(tagged.first?.context?.isLocalization(), false)
+        XCTAssertEqual(tagged.last?.context?.callee, "UIImage")
+        XCTAssertEqual(literal(out, "AppIcon-Green")?.context?.callee, "enum Icon")
+        XCTAssertTrue(out.references.contains { $0.kind == .implicitRawValue("Icon") && $0.value == "plain" })
+    }
+
+    func testHasAnchoredSuffix() {
+        func anchored(_ suffix: String) -> Bool { DynamicPattern(prefix: "", suffix: suffix, file: 0, line: 0, domain: .any).hasAnchoredSuffix }
+        XCTAssertTrue(anchored("-large"))
+        XCTAssertTrue(anchored("-Preview"))
+        XCTAssertTrue(anchored("@2x"))
+        XCTAssertTrue(anchored("-20.png"), "core `-20` has three characters")
+        XCTAssertFalse(anchored(".mp4"))
+        XCTAssertFalse(anchored(".html"))
+        XCTAssertFalse(anchored("_x"))
+        XCTAssertFalse(anchored("_x.png"))
+        XCTAssertFalse(anchored(""))
+    }
 }

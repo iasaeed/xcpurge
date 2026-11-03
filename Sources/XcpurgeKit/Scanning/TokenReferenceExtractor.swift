@@ -14,6 +14,10 @@ struct TokenReferenceExtractor {
         var closer: String
         var refStart: Int
         var patternStart: Int
+        /// Extension literal of `withExtension:` / `ofType:` / `extension:` and the keyless resource-name patterns of
+        /// this call, which `popFrame` turns into `"." + ext` suffix patterns.
+        var resourceExt: String?
+        var resourcePatterns: [Int] = []
     }
 
     let tokens: [SwiftToken]
@@ -48,6 +52,10 @@ struct TokenReferenceExtractor {
     /// keyless pattern index -> that function: a function whose body holds literals returns names already indexed.
     private var localCallee: [String: String] = [:]
     private var keylessCallee: [Int: String] = [:]
+    /// Keyless resource-name patterns whose call has no literal extension: dropped, they would match every file.
+    private var droppedPatterns = Set<Int>()
+    /// Token index of an explicit `case b = "lit"` raw value -> its enum's name.
+    private var rawValueTokens: [Int: String] = [:]
 
     static let declarationKeywords: Set<String> = ["var", "let", "func"]
     /// Keywords that end a pending `var`/`let`/`func` without a body (protocol requirements, new scopes).
@@ -78,9 +86,9 @@ struct TokenReferenceExtractor {
     private mutating func run() {
         for t in tokens.indices { visit(t) }
         while !frames.isEmpty { popFrame() }
-        if !keylessCallee.isEmpty {
-            let returnsLiterals = Set(out.enclosingDeclarations.values)
-            let drop = Set(keylessCallee.filter { returnsLiterals.contains($0.value) }.keys)
+        let returnsLiterals = Set(out.enclosingDeclarations.values)
+        let drop = droppedPatterns.union(keylessCallee.filter { returnsLiterals.contains($0.value) }.keys)
+        if !drop.isEmpty {
             out.patterns = out.patterns.enumerated().filter { !drop.contains($0.offset) }.map(\.element)
         }
     }
@@ -160,8 +168,19 @@ struct TokenReferenceExtractor {
                     if let callee = localCallee[tok.text] { keylessCallee[out.patterns.count] = callee }
                     addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
                 }
+                // A resource name read from a variable or property (`forResource: title.bundleName`): keyless pattern,
+                // given the call's extension as suffix by `popFrame`. A plain name bound to literals is indexed instead.
+                if tok.kind == .identifier, let first = tok.text.first, first.isLowercase || first == "_",
+                   !Self.literalKeywords.contains(tok.text), context(for: f).isResourceLookup, !argumentHasLiteral(t),
+                   !(stringBound.contains(tok.text) && (token(t + 1)?.isPunct(",") == true || token(t + 1)?.isPunct(")") == true)) {
+                    f.resourcePatterns.append(out.patterns.count)
+                    addPattern(prefix: "", suffix: "", line: tok.line, context: context(for: f))
+                }
             }
             if tok.kind == .string, !tok.interpolated {
+                if f.label == "withExtension" || f.label == "ofType" || f.label == "extension" {
+                    f.resourceExt = tok.text.hasPrefix(".") ? String(tok.text.dropFirst()) : tok.text
+                }
                 if f.label == "tableName" || f.label == "table" { f.table = tok.text }
                 if f.argIndex == 1, f.label == nil, f.callee?.hasPrefix("NSLocalizedStringFromTable") == true {
                     f.table = tok.text
@@ -185,18 +204,35 @@ struct TokenReferenceExtractor {
     }
 
     private mutating func emitString(_ t: Int, _ tok: SwiftToken) {
-        let ctx = frames.last.flatMap { $0.isBarrier ? nil : context(for: $0) }
+        var ctx = frames.last.flatMap { $0.isBarrier ? nil : context(for: $0) }
+        if let enumName = rawValueTokens[t] { ctx = CallContext(callee: "enum " + enumName, label: "rawValue") }
         if tok.interpolated {
+            // `forResource: "\(name)"`: a keyless name whose extension the call supplies.
+            if let ctx, ctx.isResourceLookup, tok.segments.allSatisfy(\.isEmpty), var f = frames.last, !f.isBarrier {
+                f.resourcePatterns.append(out.patterns.count)
+                frames[frames.count - 1] = f
+            }
             addPattern(prefix: tok.text, suffix: tok.suffix, line: tok.line, context: ctx, segments: tok.segments)
             return
         }
         addRef(.stringLiteral, tok.text, tok.line, ctx)
+        // `"a" + "b"` (any chain of literals) is the constant `"ab"`: index it too, and use it as the literal part of
+        // a surrounding `+ x` / `x +`.
+        var chain = [tok.text], first = t
+        while token(first - 1)?.isPunct("+") == true, let prev = token(first - 2), prev.kind == .string, !prev.interpolated {
+            chain.insert(prev.text, at: 0)
+            first -= 2
+        }
+        let continues = token(t + 1)?.isPunct("+") == true && token(t + 2).map { $0.kind == .string && !$0.interpolated } == true
+        let folded = chain.joined()
+        if chain.count > 1, !continues { addRef(.stringLiteral, folded, tok.line, ctx) }
         // `"lit" + x` -> prefix; `x + "lit"` -> suffix.
         if token(t + 1)?.isPunct("+") == true, let next = token(t + 2), next.kind != .string, !next.isPunct("=") {
-            addPattern(prefix: tok.text, suffix: "", line: tok.line, context: ctx)
+            addPattern(prefix: folded, suffix: "", line: tok.line, context: ctx)
         }
-        if token(t - 1)?.isPunct("+") == true, let prev = token(t - 2), prev.kind != .string, !tok.text.isEmpty {
-            addPattern(prefix: "", suffix: tok.text, line: tok.line, context: ctx)
+        if token(first - 1)?.isPunct("+") == true, let prev = token(first - 2), prev.kind != .string, !folded.isEmpty,
+           !continues {
+            addPattern(prefix: "", suffix: folded, line: tok.line, context: ctx)
         }
         // `String(format: "img%d", n)` / `stringWithFormat:@"img%d"` -> cut at the specifiers.
         if let ctx, ctx.label == "format" || ctx.label == "stringWithFormat" || ctx.callee == "localizedStringWithFormat",
@@ -337,7 +373,9 @@ struct TokenReferenceExtractor {
         while let name = token(k), name.kind == .identifier {
             var next = k + 1
             if token(next)?.isPunct("=") == true {
-                next += 2  // explicit raw value: `case b = "bee"`
+                // Explicit raw value `case b = "bee"`: the literal is tagged as an enum raw value, not a lookup.
+                if let value = token(next + 1), value.kind == .string, !value.interpolated { rawValueTokens[next + 1] = e.name }
+                next += 2
             } else if token(next)?.isPunct("(") != true {
                 addRef(.implicitRawValue(e.name), name.text, name.line, nil)
             }
@@ -399,6 +437,14 @@ struct TokenReferenceExtractor {
         }
         if rawEnums.last?.frame == f.id { rawEnums.removeLast() }
         guard !f.isBarrier else { return }
+        for p in f.resourcePatterns {
+            if let ext = f.resourceExt, !ext.isEmpty {
+                out.patterns[p].suffix = "." + ext
+                out.patterns[p].segments = ["", "." + ext]
+            } else {
+                droppedPatterns.insert(p)
+            }
+        }
         let bundle = f.bundleTokens.isEmpty ? nil : f.bundleTokens.prefix(4).joined()
         guard f.table != nil || bundle != nil else { return }
         for r in f.refStart..<out.references.count where refFrame[r] == f.id {
