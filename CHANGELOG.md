@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+
+- Accuracy round from a sweep of 67 open-source iOS apps. Names built at runtime are followed further before an asset or loose resource is reported:
+  - Any call taking `named:` counts as an asset lookup, so a project's own `loadImage(named: "x")` helper credits the asset (SceneKit/`NSSound` `named:` calls stay resource lookups; `XCTContext.runActivity(named:)` and snapshot assertions are ignored).
+  - Chains of string literals joined by `+` (`"more" + "-20"`) resolve to the exact name.
+  - A name with a literal suffix of three or more characters (`code + "-large"`, `"\(icon)-Preview"`) read from the main bundle lowers matching assets and loose files in any module to low, as literal prefixes already did; when the middle is an explicit `enum: String` raw value visible from the lookup, the asset counts as used. Lookups bound to `.module`, `#bundle` or another bundle now stay module-local for prefixes and separator literals too.
+  - A fully computed name (`"\(folder)\(code)"`) in a dependency that reads the main bundle lowers the app's catalog to medium and is listed by `explain`.
+  - A `forResource:`/`ofType:` call whose name is computed and whose extension is a literal (`forResource: title.slug, withExtension: "mp4"`, `"\(chapter).html"`) lowers every visible loose resource of that extension to low. An untyped name built with the file's extension (`decode(from: "\(name).json")`, a local passed to a loader) is a weaker hint and gives medium. `explain` lists the site either way.
+  - `.ahap` haptic patterns are read as JSON, so the audio files they name count as used.
+  - Two SwiftGen accessor files defining the same path in different modules (`Asset.Colors.primary`) now credit both assets, and a custom-template accessor whose body is `Image("name", bundle: .module)` or `UIImage(named:)` is mapped.
+  - Storyboard and xib names match exact-case and module-local only.
+
 ### Fixed
 
 - `restore --path` no longer rewrites project files whose cleanup edit did not touch the restored file; they are left alone and not reported.
