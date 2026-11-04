@@ -215,7 +215,19 @@ public enum Explainer {
         let names = isFile ? [name, RelPath.lastComponent(f.path)].map { $0.lowercased() } : [name]
         // Keyless asset lookups only count where they can load this module's catalog (see `keylessLookup`).
         let reach = f.category == .assets ? graph.mainBundleReach(of: owners) : []
+        // Loose resources and interface files list exactly the patterns the detector applies.
+        let interface = f.kind == .unusedInterfaceFile
+        var stem = name
+        for device in ["~iphone", "~ipad"] where interface && stem.hasSuffix(device) { stem.removeLast(device.count) }
+        let fileNames = ResourceFileUsage.DynamicNames(stem: stem, fileName: interface ? stem : RelPath.lastComponent(f.path),
+                                                       caseInsensitive: !interface)
         let hits = refs.dynamicPatterns.filter { p in
+            if f.kind == .unusedResource || interface {
+                guard !p.isKeyless, p.domain == .resource || p.domain == .any else { return false }
+                let shape = ResourceFileUsage.shape(p, caseInsensitive: !interface, anchoring: !interface)
+                return ResourceFileUsage.strength(of: shape, fileNames, fileHint: !interface,
+                                                  canSee: { _ in refs.isVisible(p.file, visible) }) != nil
+            }
             guard p.isKeyless else {
                 var q = p
                 if isFile { q.segments = p.segments.map { $0.lowercased() } }  // resource lookups ignore case

@@ -41,9 +41,9 @@ struct AssetReferenceResolver: Sendable {
     /// Explicit raw values of `String` enums (`case red = "AppIcon-Red"`) -> files declaring them, for
     /// `"\(iconName)-Preview"` style affix patterns. `CodingKeys` enums are left out: their raw values are wire keys.
     private let rawValues: [String: [Int32]]
-    /// Lowercased literals ending in `-`, `_` or `.` (`"pause-animation-"`) -> first reference index, leaving out
-    /// lookups bound to `.module`, `#bundle` or another bundle and `xcpurge:ignore` lines.
-    private let separatorLiterals: [String: Int]
+    /// Lowercased literals ending in `-`, `_` or `.` (`"pause-animation-"`) -> reference indices, leaving out
+    /// `xcpurge:ignore` lines. Those bound to `.module`, `#bundle` or another bundle apply to their own module only.
+    private let separatorLiterals: [String: [Int]]
 
     /// One dynamic pattern prepared for matching against many names.
     private struct PatternShape: Sendable {
@@ -61,11 +61,10 @@ struct AssetReferenceResolver: Sendable {
         self.refs = refs
         self.graph = ctx.graph
         var fuzzy: [String: [Int32]] = [:], tails: [String: [Int]] = [:], raw: [String: [Int32]] = [:]
-        var separators: [String: Int] = [:]
+        var separators: [String: [Int]] = [:]
         for (i, r) in refs.references.enumerated() {
-            if r.kind == .stringLiteral, ReferenceIndex.isSeparatorPrefix(r.value), separators[r.value.lowercased()] == nil,
-               Self.readsMainBundle(r.context), !refs.isIgnored(file: r.file, line: r.line) {
-                separators[r.value.lowercased()] = i
+            if r.kind == .stringLiteral, ReferenceIndex.isSeparatorPrefix(r.value), !refs.isIgnored(file: r.file, line: r.line) {
+                separators[r.value.lowercased(), default: []].append(i)
             }
             if r.kind == .memberSymbol {
                 fuzzy[AssetSymbolMangler.fuzzyKey(r.value), default: []].append(r.file)
@@ -95,7 +94,7 @@ struct AssetReferenceResolver: Sendable {
             // OSS scan #4: `code.lowercased() + "-large"` builds names whatever module the site is in, again for the
             // main bundle only. Only an asset lookup or a bare computed property (no call) anchors: `print("\(e)_selected")`
             // says nothing about asset names in other modules.
-            let anchored = !prefixed && p.hasAnchoredSuffix && readsMainBundle && (p.domain == .asset || p.context == nil)
+            let anchored = !prefixed && p.hasAnchoredSuffix && readsMainBundle && (p.domain == .asset || p.domain == .resource || p.context == nil)
             let shape = PatternShape(prefix: p.prefix.lowercased(), suffix: p.suffix.lowercased(), literal: literal,
                                      matches: p.domain == .any ? literal >= 3 : literal >= 1,
                                      prefixed: prefixed, anchored: anchored)
@@ -119,18 +118,21 @@ struct AssetReferenceResolver: Sendable {
     }
 
     /// True unless the call binds the lookup to `.module`, `#bundle` or another bundle.
-    private static func readsMainBundle(_ context: CallContext?) -> Bool {
+    static func readsMainBundle(_ context: CallContext?) -> Bool {
         context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true
     }
 
     /// OSS scan #3b: a string literal ending in a separator that is a proper prefix of `name` (`"pause-animation-"` for
-    /// `pause-animation-3`), compared ignoring case, in any module: the rest is appended at runtime.
-    private func separatorPrefix(of name: String) -> Reference? {
+    /// `pause-animation-3`), compared ignoring case, in any module when the lookup reads the main bundle, else in a module
+    /// visible to `visible`: the rest is appended at runtime.
+    private func separatorPrefix(of name: String, visible: Set<ModuleID>) -> Reference? {
         var prefix = ""
         for (n, c) in name.lowercased().enumerated() {
             prefix.append(c)
-            guard ReferenceIndex.nameSeparators.contains(c), n < name.count - 1, let i = separatorLiterals[prefix] else { continue }
-            return refs.references[i]
+            guard ReferenceIndex.nameSeparators.contains(c), n < name.count - 1, let indices = separatorLiterals[prefix] else { continue }
+            if let i = indices.first(where: { Self.readsMainBundle(refs.references[$0].context) || counts(refs.references[$0].file, visible) }) {
+                return refs.references[i]
+            }
         }
         return nil
     }
@@ -254,7 +256,7 @@ struct AssetReferenceResolver: Sendable {
     /// Plan §4.7 step 3: the most severe downgrade any visible pattern implies for `names`.
     /// - Parameter applicable: `applicablePatterns` for the same names (it takes the pattern domains that load this kind
     ///   of resource; `.any` patterns always apply), computed once by the caller.
-    func downgrade(_ names: [String], applicable: [Int]) -> Downgrade? {
+    func downgrade(_ names: [String], visible: Set<ModuleID>, applicable: [Int]) -> Downgrade? {
         var best: Downgrade?
         // Candidates in pattern order (the first most severe match wins, as before the index existed).
         for i in applicable {
@@ -268,7 +270,7 @@ struct AssetReferenceResolver: Sendable {
         }
         // OSS scan #3b: `generateAnimation(with: "pause-animation-", …)` appends the rest at runtime, in any module.
         if best?.confidence != .low,
-           let r = names.lazy.compactMap({ separatorPrefix(of: $0) }).first {
+           let r = names.lazy.compactMap({ separatorPrefix(of: $0, visible: visible) }).first {
             best = Downgrade(confidence: .low, reason: "may be built dynamically at \(location(r.file, r.line)) (\"\(r.value)…\")",
                              pattern: DynamicPattern(prefix: r.value, suffix: "", file: r.file, line: r.line, domain: .any,
                                                      context: r.context))

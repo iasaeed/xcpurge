@@ -45,25 +45,38 @@ enum ResourceFileUsage {
 
             let ext = (file.fileName as NSString).pathExtension.lowercased()
             let low: String?
+            var hint: String?
             if let root = roots.first(where: { RelPath.isUnder(file.path, $0.0, foldingCase: ctx.inventory.isCaseInsensitive) }) {
                 low = root.1
             } else if let site = folderLoad(ext, ctx, canSee: canSee) {
                 low = "every .\(ext) resource is loaded at \(site)"
+            } else if let hit = dynamicMatch(stem, fileName: file.fileName, fileHint: true, shapes, ctx, canSee: canSee) {
+                if hit.weak {
+                    low = nil
+                    hint = "may be built dynamically at \(hit.site) (an untyped name ending in \".\(ext)\")"
+                } else {
+                    low = "may be built dynamically at \(hit.site)"
+                }
             } else {
-                low = dynamicMatch(stem, fileName: file.fileName, shapes, ctx, canSee: canSee)
-                    .map { "may be built dynamically at \($0)" }
+                low = nil
             }
             var reasons = ["no reference to '\(stem)' or '\(file.fileName)' from a visible file"]
             var confidence = Confidence.high
             if let low {
                 confidence = .low
                 reasons.append(low)
-            } else if file.kind == .plist {
-                confidence = .medium
-                reasons.append("plists are sometimes read by SDKs by convention")
-            } else if file.kind == .dataModel {
-                confidence = .medium
-                reasons.append("Core Data models load without a name (NSManagedObjectModel.mergedModel(from:))")
+            } else {
+                if file.kind == .plist {
+                    confidence = .medium
+                    reasons.append("plists are sometimes read by SDKs by convention")
+                } else if file.kind == .dataModel {
+                    confidence = .medium
+                    reasons.append("Core Data models load without a name (NSManagedObjectModel.mergedModel(from:))")
+                }
+                if let hint {
+                    confidence = .medium
+                    reasons.append(hint)
+                }
             }
             // OSS scan #1: `Bundle.main.url(forResource:)` (low) or another exact match (medium) in a module that
             // cannot see the file. Heuristic: the receiver of `url(forResource:)` is not tracked, only `bundle:`.
@@ -139,45 +152,109 @@ enum ResourceFileUsage {
     }
 
     /// Shapes of the patterns of these domains that carry literal text, built once so a per-file loop does not rescan
-    /// them all. Resource lookups are case-insensitive and may anchor on a distinctive suffix from any module;
-    /// interface files (`caseInsensitive: false`, `anchoring: false`) are neither.
+    /// them all. Resource lookups are case-insensitive and may anchor on a distinctive suffix or constant prefix from any
+    /// module that reads the main bundle; interface files (`caseInsensitive: false`, `anchoring: false`) are neither:
+    /// every pattern and separator literal there must be visible.
     struct DynamicShapes {
         let list: [DynamicShape]
         let caseInsensitive: Bool
+        let anchoring: Bool
+        /// Literals ending in a separator (`"intro-"`), keyed by the lowercased (or exact) value, off `xcpurge:ignore` lines.
+        /// With `anchoring`, only those that read the main bundle.
+        let separators: [String: [Reference]]
+
+        /// A separator literal that is a proper prefix of `name` (already folded like the keys), from any module when
+        /// `anchoring`, else from a source `canSee` accepts.
+        func separatorSite(of name: String, canSee: (Int32) -> Bool) -> Reference? {
+            var prefix = ""
+            for (n, c) in name.enumerated() {
+                prefix.append(c)
+                guard ReferenceIndex.nameSeparators.contains(c), n < name.count - 1,
+                      let hit = separators[prefix]?.first(where: { anchoring || canSee($0.file) }) else { continue }
+                return hit
+            }
+            return nil
+        }
     }
 
     static func dynamicShapes(_ ctx: ScanContext, domains: Set<DynamicPattern.Domain>, caseInsensitive: Bool = true,
                               anchoring: Bool = true) -> DynamicShapes {
-        let list = ctx.refs.dynamicPatterns.filter { domains.contains($0.domain) && !$0.isKeyless }.map { p in
-            let prefix = caseInsensitive ? p.prefix.lowercased() : p.prefix
-            let suffix = caseInsensitive ? p.suffix.lowercased() : p.suffix
-            let anchored = anchoring && p.hasAnchoredSuffix
-                && (p.context.map { [.none, .main].contains(LocalizationCallClassifier.bundle($0)) } ?? true)
-            return DynamicShape(pattern: p, prefix: prefix, suffix: suffix, literal: prefix.count + suffix.count,
-                                prefixed: prefix.count >= (p.domain == .any ? 3 : 1), anchored: anchored)
+        let list = ctx.refs.dynamicPatterns.filter { domains.contains($0.domain) && !$0.isKeyless }.map {
+            shape($0, caseInsensitive: caseInsensitive, anchoring: anchoring)
         }
-        return DynamicShapes(list: list, caseInsensitive: caseInsensitive)
+        var separators: [String: [Reference]] = [:]
+        for r in ctx.refs.references where r.kind == .stringLiteral && ReferenceIndex.isSeparatorPrefix(r.value)
+            && !ctx.refs.isIgnored(file: r.file, line: r.line) && (!anchoring || AssetReferenceResolver.readsMainBundle(r.context)) {
+            separators[caseInsensitive ? r.value.lowercased() : r.value, default: []].append(r)
+        }
+        return DynamicShapes(list: list, caseInsensitive: caseInsensitive, anchoring: anchoring, separators: separators)
     }
 
-    /// `file:line` of a dynamic pattern (`"intro_\(n)"`) that could produce the stem or, for resource-domain patterns,
-    /// the file name (plan §4.7 step 3; `"\(x).html"` and a keyless lookup with `withExtension: "mp4"` build the file
-    /// name, while an `.any` pattern such as a cache path builder matches the stem only). OSS scan #3: a constant
-    /// prefix (`"intro_\(n)"`, three characters for untyped strings) or a literal ending in a separator that starts the
-    /// name (`"intro-"`) counts from any module, not only visible ones; so does a distinctive suffix on a lookup that
-    /// reads the main bundle (`"\(theme)Theme.css"`). Anything else needs a visible site. Case folding follows `shapes`.
-    static func dynamicMatch(_ stem: String, fileName: String, _ shapes: DynamicShapes, _ ctx: ScanContext,
-                             canSee: (Int32) -> Bool) -> String? {
-        let fold = { (s: String) in shapes.caseInsensitive ? s.lowercased() : s }
-        let stemName = fold(stem)
-        let fileNames = stem == fileName ? [stemName] : [stemName, fold(fileName)]
-        let match = shapes.list.first { s in
-            guard s.pattern.domain == .any ? s.literal >= 3 : s.literal >= 1 else { return false }
-            let names = s.pattern.domain == .resource ? fileNames : [stemName]
-            guard names.contains(where: { $0.count > s.literal && $0.hasPrefix(s.prefix) && $0.hasSuffix(s.suffix) })
-            else { return false }
-            return s.prefixed || s.anchored || canSee(s.pattern.file)
+    static func shape(_ p: DynamicPattern, caseInsensitive: Bool, anchoring: Bool) -> DynamicShape {
+        let prefix = caseInsensitive ? p.prefix.lowercased() : p.prefix
+        let suffix = caseInsensitive ? p.suffix.lowercased() : p.suffix
+        let readsMainBundle = anchoring && AssetReferenceResolver.readsMainBundle(p.context)
+        return DynamicShape(pattern: p, prefix: prefix, suffix: suffix, literal: prefix.count + suffix.count,
+                            prefixed: readsMainBundle && prefix.count >= (p.domain == .any ? 3 : 1),
+                            anchored: readsMainBundle && p.hasAnchoredSuffix)
+    }
+
+    /// The names a pattern is compared with, folded like the shapes.
+    struct DynamicNames {
+        let stem: String
+        let fileName: String
+        let ext: String
+
+        init(stem: String, fileName: String, caseInsensitive: Bool) {
+            let fold = { (s: String) in caseInsensitive ? s.lowercased() : s }
+            self.stem = fold(stem)
+            self.fileName = fold(fileName)
+            self.ext = (fileName as NSString).pathExtension.lowercased()
         }
-        if let p = match?.pattern { return "\(ctx.refs.path(of: p.file)):\(p.line)" }
-        return ctx.refs.separatorPrefix(of: stem).map { "\(ctx.refs.path(of: $0.file)):\($0.line)" }
+    }
+
+    /// How a pattern relates to a file: it builds the stem or, for a resource lookup, the file name (`strong`, low);
+    /// or it is an untyped name (`.any`: a cache path builder, a local `let name = "x-\(n).txt"`) whose literal
+    /// suffix ends with the file's extension and fits the file name (`weak`, medium: it may well build the file name,
+    /// but `appendingPathComponent("\(id).json")` builds paths that are not bundle lookups).
+    enum DynamicStrength { case strong, weak }
+
+    /// `s` against `names`, or nil when it cannot apply. Needs enough literal text (three characters for untyped
+    /// strings); a constant prefix or an anchored suffix on a main-bundle lookup counts from any module, anything else
+    /// needs a site `canSee` accepts. `fileHint` allows the weak extension match.
+    static func strength(of s: DynamicShape, _ names: DynamicNames, fileHint: Bool, canSee: (Int32) -> Bool) -> DynamicStrength? {
+        let any = s.pattern.domain == .any
+        guard any ? s.literal >= 3 : s.literal >= 1 else { return nil }
+        let fits = { (n: String) in n.count > s.literal && n.hasPrefix(s.prefix) && n.hasSuffix(s.suffix) }
+        let strength: DynamicStrength
+        if fits(names.stem) || (!any && fits(names.fileName)) {
+            strength = .strong
+        } else if fileHint, any, !names.ext.isEmpty, s.suffix.hasSuffix(".\(names.ext)"), fits(names.fileName) {
+            strength = .weak
+        } else {
+            return nil
+        }
+        return s.prefixed || s.anchored || canSee(s.pattern.file) ? strength : nil
+    }
+
+    /// `file:line` of the dynamic pattern (`"intro_\(n)"`) that could produce the stem or file name (plan §4.7 step 3),
+    /// or of a literal ending in a separator that starts the name (`"intro-"`); `weak` when only an untyped pattern
+    /// matches the file name (see `DynamicStrength`). A strong match from any pattern wins over a weak one. Case
+    /// folding follows `shapes`.
+    static func dynamicMatch(_ stem: String, fileName: String, fileHint: Bool = false, _ shapes: DynamicShapes,
+                             _ ctx: ScanContext, canSee: (Int32) -> Bool) -> (site: String, weak: Bool)? {
+        let names = DynamicNames(stem: stem, fileName: fileName, caseInsensitive: shapes.caseInsensitive)
+        var weak: DynamicPattern?
+        for s in shapes.list {
+            switch strength(of: s, names, fileHint: fileHint, canSee: canSee) {
+            case .strong: return ("\(ctx.refs.path(of: s.pattern.file)):\(s.pattern.line)", false)
+            case .weak: weak = weak ?? s.pattern
+            case nil: break
+            }
+        }
+        if let r = shapes.separatorSite(of: names.stem, canSee: canSee) {
+            return ("\(ctx.refs.path(of: r.file)):\(r.line)", false)
+        }
+        return weak.map { ("\(ctx.refs.path(of: $0.file)):\($0.line)", true) }
     }
 }

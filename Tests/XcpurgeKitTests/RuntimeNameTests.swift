@@ -261,6 +261,46 @@ final class RuntimeNameTests: XCTestCase {
         XCTAssertEqual(findings.first { $0.name == "de-large" }?.confidence, .high, "an explicit .module bundle is not the app's")
     }
 
+    /// A loose image loaded by `Bundle.main.url(forResource: "\(theme)Background", …)` in Core: the resource-domain pattern
+    /// anchors on its suffix across modules like an asset lookup does.
+    func testAnchoredSuffixOfAResourceLookupLowersLooseImagesOfOtherModules() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try write("png-bytes", to: "App/App/darkBackground.png", in: root)
+        try write("png-bytes", to: "App/App/plain_other.png", in: root)
+        try write("""
+        import Foundation
+        public func background(_ theme: String) -> URL? { Bundle.main.url(forResource: "\\(theme)Background", withExtension: "png") }
+        """, to: "Packages/Core/Sources/Core/Theme.swift", in: root)
+
+        let findings = try await assets(root)
+        let dark = try XCTUnwrap(findings.first { $0.path.hasSuffix("darkBackground.png") })
+        XCTAssertEqual(dark.confidence, .low, "\(dark.reasons)")
+        XCTAssertTrue(dark.reasons.contains { $0.contains("Theme.swift:2") && $0.contains("built dynamically") }, "\(dark.reasons)")
+        XCTAssertEqual(findings.first { $0.path.hasSuffix("plain_other.png") }?.confidence, .high)
+    }
+
+    /// `frames(prefix: "spin-", bundle: .module)` in Core builds names in Core's own catalog only.
+    func testSeparatorLiteralBoundToModuleStaysModuleLocal() async throws {
+        let root = try FixtureSupport.copyToTemp("ModularWorkspace")
+        try write("""
+        import Foundation
+        func frames(prefix: String, bundle: Bundle) {}
+        public func spin() { frames(prefix: "spin-", bundle: .module) }
+        """, to: "Packages/Core/Sources/Core/Spin.swift", in: root)
+        let catalog = "Packages/Core/Sources/Core/Resources/Core.xcassets"
+        for name in ["spin-1", "plain_other"] {
+            try write(#"{"images":[{"filename":"\#(name).png","idiom":"universal"}],"info":{"author":"xcode","version":1}}"#,
+                      to: "\(catalog)/\(name).imageset/Contents.json", in: root)
+            try write("\(name)-bytes", to: "\(catalog)/\(name).imageset/\(name).png", in: root)
+        }
+        try addImageSet("spin-2", in: root)
+
+        let findings = try await assets(root)
+        XCTAssertEqual(findings.first { $0.name == "spin-1" }?.confidence, .low, "Core's own catalog")
+        XCTAssertEqual(findings.first { $0.name == "spin-2" }?.confidence, .high, "the app's catalog is not Core's bundle")
+        XCTAssertEqual(findings.first { $0.name == "plain_other" }?.confidence, .high)
+    }
+
     /// A fully interpolated `Image("\(path)\(code)")` in a package reads the app bundle: medium, with a lookup record.
     func testKeylessLookupInADependencyReachesTheAppCatalog() async throws {
         let root = try FixtureSupport.copyToTemp("ModularWorkspace")

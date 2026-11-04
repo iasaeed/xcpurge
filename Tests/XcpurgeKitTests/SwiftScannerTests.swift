@@ -159,6 +159,18 @@ final class SwiftScannerTests: XCTestCase {
         XCTAssertEqual(out.patterns.filter { $0.line == 2 }.map(\.prefix), ["x"])
     }
 
+    /// A chain after an operand is not the interpolation's leading text: the pre-chain-folding behaviour stays
+    /// (a keyless pattern for the interpolation plus the `x + "_"` suffix pattern). The interpolation's pattern is
+    /// never `_`-prefixed (the lone `_` prefix is the separate `"_" + x` rule, as before).
+    func testChainAfterOperandIsNotFoldedIntoThePrefix() {
+        let out = SwiftScanner.scan(#"""
+        let a = UIImage(named: theme + "_" + "\(size)")
+        """#)
+        XCTAssertEqual(out.patterns.filter { $0.prefix.hasPrefix("_") }.count, 1, "only the `\"_\" + x` rule, no folded second one")
+        XCTAssertTrue(out.patterns.contains { $0.prefix.isEmpty && $0.suffix.isEmpty && !$0.hasLiteralText && $0.domain == .asset }, "keyless pattern")
+        XCTAssertTrue(out.patterns.contains { $0.prefix.isEmpty && $0.suffix == "_" }, "the `x + \"_\"` suffix pattern")
+    }
+
     func testResourceNameWithNestedCallLiteralsStillMakesAPattern() {
         let out = SwiftScanner.scan("""
         let a = Bundle.main.url(forResource: name.replacingOccurrences(of: " ", with: "-"), withExtension: "mp4")
@@ -250,12 +262,17 @@ final class SwiftScannerTests: XCTestCase {
         let out = SwiftScanner.scan("""
         XCTContext.runActivity(named: "act") { _ in }
         assertSnapshot(of: v, as: .image, named: "snap")
+        assert(state: s, locale: l, named: "x")
         let a = UIImage(named: "hero")
+        let b = String(bundleName: "bn")
         """)
         XCTAssertEqual(literal(out, "act")?.context?.isAssetLookup, false)
         XCTAssertEqual(literal(out, "snap")?.context?.isAssetLookup, false)
+        XCTAssertEqual(literal(out, "x")?.context?.isAssetLookup, false)
         XCTAssertEqual(literal(out, "hero")?.context?.isAssetLookup, true)
+        XCTAssertEqual(literal(out, "bn")?.context?.isResourceLookup, false, "bundleName: names a bundle, not a resource")
         XCTAssertFalse(CallContext(callee: "XCTContext.runActivity", label: "named").isAssetLookup)
+        XCTAssertFalse(CallContext(callee: "assert", label: "named").isAssetLookup)
         XCTAssertTrue(CallContext(callee: "loadImage", label: "named").isAssetLookup)
     }
 }

@@ -231,8 +231,11 @@ struct TokenReferenceExtractor {
         }
         let folded = chain.joined()
         // A chain that goes on into an interpolated operand (`"a" + "b" + "\(k)"`) is not the constant either: its
-        // folded text becomes the prefix of that interpolation's pattern.
-        let interpolatedNext = token(t + 1)?.isPunct("+") == true ? interpolatedOperand(at: t + 2, line: tok.line) : nil
+        // folded text becomes the prefix of that interpolation's pattern. Only when the chain starts the expression:
+        // after an operand (`theme + "_" + "\(size)"`) the chain is not the pattern's leading text.
+        let startsExpression = token(first - 1)?.isPunct("+") != true
+        let interpolatedNext = startsExpression && token(t + 1)?.isPunct("+") == true
+            ? interpolatedOperand(at: t + 2, line: tok.line) : nil
         if let s = interpolatedNext { foldedPrefixes[s] = folded }
         let continues = interpolatedNext != nil
             || (token(t + 1)?.isPunct("+") == true && token(t + 2).map { $0.kind == .string && !$0.interpolated } == true)

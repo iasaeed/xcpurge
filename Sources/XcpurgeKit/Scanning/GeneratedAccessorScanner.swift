@@ -57,11 +57,11 @@ public enum GeneratedAccessorScanner {
                 map[short] = map[short] ?? raw
             }
         }
-        /// True when `tokens[t]` is the first argument (unlabeled or `decorative:`) of an `Image("foo")` /
-        /// `UIColor("foo")` style initializer. A custom template's other literals (`L10n.table`, a scene id) name nothing.
+        /// True when `tokens[t]` is the first argument (unlabeled, `decorative:` or `named:`) of an `Image("foo")` /
+        /// `UIImage(named: "foo", in: .module, compatibleWith: nil)` style initializer. A custom template's other literals (`L10n.table`, a scene id) name nothing.
         func isImageInitArgument(_ t: Int, label: String?) -> Bool {
             let open = label == nil ? t - 1 : t - 3
-            guard label == nil || label == "decorative", open >= 1, tokens[open].isPunct("(") else { return false }
+            guard label == nil || label == "decorative" || label == "named", open >= 1, tokens[open].isPunct("(") else { return false }
             return ["Image", "UIImage", "NSImage", "Color", "UIColor", "NSColor"].contains(tokens[open - 1].text)
         }
         func finishDeclaration() {

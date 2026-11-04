@@ -82,7 +82,7 @@ public struct AssetsDetector: Detector {
         for var c in candidates where !c.used {
             let applicable = resolver.applicablePatterns(c.names, visible: c.visible, domains: c.domains)
             if resolver.enumAffixMatch(c.names, applicable: applicable) != nil { continue }
-            if let d = resolver.downgrade(c.names, applicable: applicable), d.confidence < c.confidence {
+            if let d = resolver.downgrade(c.names, visible: c.visible, applicable: applicable), d.confidence < c.confidence {
                 c.confidence = d.confidence
                 c.reasons.append(d.reason)
                 if d.pattern.domain == .any { usedPatterns.insert(d.pattern) }

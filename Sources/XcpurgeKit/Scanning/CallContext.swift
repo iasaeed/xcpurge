@@ -37,7 +37,7 @@ public struct CallContext: Sendable, Hashable {
     static let namedResourceCallees: Set<String> = ["SCNScene", "NSSound", "SCNParticleSystem", "MDLAsset"]
     /// Callees whose `named:` labels an activity, snapshot or attachment, never an asset-catalog entry.
     static let nonAssetNamedCallees: Set<String> = [
-        "runActivity", "assertSnapshot", "assertSnapshots", "verifySnapshot", "XCTContext", "XCTAttachment",
+        "runActivity", "assert", "assertSnapshot", "assertSnapshots", "verifySnapshot", "XCTContext", "XCTAttachment",
     ]
 
     /// True when a string literal at this position is a localization key.
@@ -63,7 +63,7 @@ public struct CallContext: Sendable, Hashable {
 
     /// True when this call loads a bundle resource by name.
     public var isResourceLookup: Bool {
-        label == "forResource" || label == "pathForResource" || label == "URLForResource" || label == "bundleName"
+        label == "forResource" || label == "pathForResource" || label == "URLForResource"
             || (label == "named" && callee.map(Self.namedResourceCallees.contains) == true)
     }
 }

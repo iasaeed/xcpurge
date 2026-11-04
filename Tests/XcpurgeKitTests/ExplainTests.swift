@@ -169,6 +169,39 @@ final class ExplainTests: XCTestCase {
         XCTAssertTrue(site.pattern.hasSuffix(".mp4"))
     }
 
+    /// The explanation lists the patterns the detector applies: an asset lookup does not build a loose json, an untyped
+    /// `"\\(id).json"` does (as a weak hint), and a pattern in another module never lowers a xib.
+    func testFilePatternsFollowTheDetectorRules() async throws {
+        let xib = "<document><objects><view id=\"1\"/></objects></document>\n"
+        let root = try FixtureSupport.tempTree([
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+
+            let package = Package(name: "Pkg", targets: [.target(name: "Kit"), .target(name: "Other")])
+            """,
+            "Sources/Kit/Use.swift": """
+            import UIKit
+            func cache(_ dir: URL, _ id: String) -> URL { dir.appendingPathComponent("\\(id).json") }
+            func pic(_ n: Int) -> UIImage? { UIImage(named: "intro\\(n)") }
+            """,
+            "Sources/Kit/intro.json": "{}",
+            "Sources/Kit/FooCell.xib": xib,
+            "Sources/Other/Use.swift": "func nib(_ x: String) -> String { \"Foo\" + x }\n",
+        ])
+        var config = Config()
+        config.noSwift = true
+        let jsonReport = try await explain("Sources/Kit/intro.json", root: root, config: config)
+        let json = try XCTUnwrap(jsonReport.matches.first)
+        XCTAssertEqual(json.finding?.confidence, .medium)
+        XCTAssertEqual(json.dynamicPatterns.map(\.line), [2], "\(json.dynamicPatterns)")
+        XCTAssertEqual(json.dynamicPatterns.first?.domain, "any")
+        let nibReport = try await explain("Sources/Kit/FooCell.xib", root: root, config: config)
+        let nib = try XCTUnwrap(nibReport.matches.first)
+        XCTAssertEqual(nib.finding?.confidence, .high)
+        XCTAssertTrue(nib.dynamicPatterns.isEmpty, "\(nib.dynamicPatterns)")
+    }
+
     func testNoMatchThrowsWithSuggestions() async {
         do {
             _ = try await explain("legacy_unusd")

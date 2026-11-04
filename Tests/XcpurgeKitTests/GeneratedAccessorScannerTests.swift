@@ -194,6 +194,27 @@ final class GeneratedAccessorScannerTests: XCTestCase {
         XCTAssertNil(map["Asset.Icons.dynamic"], "an interpolated literal names nothing")
     }
 
+    /// `UIImage(named: "foo", in: .module, compatibleWith: nil)` (and `UIColor` / `NSImage`) maps through the `named:` label.
+    func testCustomTemplateNamedLabelInitIsMapped() {
+        let src = """
+        // Generated using SwiftGen — https://github.com/SwiftGen/SwiftGen
+        import UIKit
+        internal enum Icons {
+          internal static let foo = UIImage(named: "foo_icon", in: .module, compatibleWith: nil)!
+          internal static let tint = UIColor(named: "tint_color", in: .module, compatibleWith: nil)!
+          internal static let mac = NSImage(named: "mac_icon")!
+        }
+        internal enum L10n {
+          internal static let table = "Localizable"
+        }
+        """
+        let map = GeneratedAccessorScanner.accessors(in: SwiftTokenizer.tokenize(src).tokens)
+        XCTAssertEqual(map["Icons.foo"], "foo_icon")
+        XCTAssertEqual(map["Icons.tint"], "tint_color")
+        XCTAssertEqual(map["Icons.mac"], "mac_icon")
+        XCTAssertNil(map["L10n.table"])
+    }
+
     /// A custom template's non-image declarations must not map to an unrelated name: a table constant, a helper whose
     /// first literal is empty, and a storyboard scene id.
     func testCustomTemplateIgnoresNonImageLiterals() {

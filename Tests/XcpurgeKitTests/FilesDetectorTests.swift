@@ -208,8 +208,8 @@ final class FilesDetectorTests: XCTestCase {
         XCTAssertTrue(unused["Sources/Kit/intro.mp4"]?.reasons.contains { $0.hasPrefix("may be built dynamically at ") } == true)
     }
 
-    /// A cache path builder (`.any` domain) names loose files by stem only: `"\(id).json"` must not lower every
-    /// visible `.json`, while `String(bundleName: "\(x).html")` is a resource lookup that builds a file name.
+    /// A cache path builder (`.any` domain) is only a weak hint: it can build a loose file's name, so `"\(id).json"`
+    /// lowers every visible `.json` to medium, never low. A `String(bundleName:)` call is not a resource lookup either.
     func testFileNameMatchingIsLimitedToResourceLookups() async throws {
         let f = try await package([
             "Sources/Kit/Use.swift": """
@@ -221,11 +221,74 @@ final class FilesDetectorTests: XCTestCase {
             "Sources/Kit/stale_photo.json": "{}",
             "Sources/Kit/intro.html": "<html/>",
             "Sources/Kit/Intro.MP4": "x",
+            "Sources/Kit/notes.md": "x",
+            "Sources/Kit/notes.txt": "x",
         ])
         let unused = byPath(f, .unusedResource)
-        XCTAssertEqual(unused["Sources/Kit/stale_photo.json"]?.confidence, .high, "an .any pattern matches the stem only")
-        XCTAssertEqual(unused["Sources/Kit/intro.html"]?.confidence, .low, "String(bundleName:) builds a file name")
+        let photo = try XCTUnwrap(unused["Sources/Kit/stale_photo.json"])
+        XCTAssertEqual(photo.confidence, .medium, "an .any pattern ending in the extension is a weak hint")
+        XCTAssertTrue(photo.reasons.contains { $0.contains("built dynamically at Sources/Kit/Use.swift:2") }, "\(photo.reasons)")
+        XCTAssertEqual(unused["Sources/Kit/intro.html"]?.confidence, .medium, "String(bundleName:) is not a resource lookup")
         XCTAssertEqual(unused["Sources/Kit/Intro.MP4"]?.confidence, .low, "resource lookups are case-insensitive")
+        XCTAssertEqual(unused["Sources/Kit/notes.txt"]?.confidence, .high, "no pattern ends in .txt")
+        XCTAssertNil(unused["Sources/Kit/notes.md"], "not a resource kind")
+    }
+
+    /// A same-module wrapper `decode(_, from: "\(name).json")` and a local `let f = "Prefix-\(x).txt"` later passed to a
+    /// lookup build file names from untyped patterns: medium. A low from a resource lookup still wins.
+    func testUntypedFileNamePatternsGiveMedium() async throws {
+        let f = try await package([
+            "Sources/Kit/Use.swift": """
+            import Foundation
+            extension Bundle { func decode<T>(_ type: T.Type, from file: String) -> T? { nil } }
+            func review(_ name: String) { _ = Bundle.main.decode(String.self, from: "\\(name).json") }
+            func question(_ x: Int) -> String {
+                let f = "SpotTheError-\\(x).txt"
+                return String(bundleName: f)
+            }
+            func other(_ name: String) -> URL? { Bundle.main.url(forResource: name, withExtension: "csv") }
+            func csv(_ dir: URL, _ n: String) -> URL { dir.appendingPathComponent("\\(n).csv") }
+            """,
+            "Sources/Kit/review.json": "{}",
+            "Sources/Kit/SpotTheError-1.txt": "x",
+            "Sources/Kit/table.csv": "x",
+            "Sources/Kit/other.txt": "x",
+        ])
+        let unused = byPath(f, .unusedResource)
+        XCTAssertEqual(unused["Sources/Kit/review.json"]?.confidence, .medium)
+        XCTAssertEqual(unused["Sources/Kit/SpotTheError-1.txt"]?.confidence, .medium)
+        XCTAssertEqual(unused["Sources/Kit/table.csv"]?.confidence, .low, "the forResource lookup wins over the weak hint")
+        XCTAssertEqual(unused["Sources/Kit/other.txt"]?.confidence, .high)
+    }
+
+    /// `loadClip(name: "intro_\(n)", bundle: .module)` in Core reads Core's bundle: it does not lower the app's
+    /// `intro_old.mp4`, however distinctive its prefix (a `Bundle.module.url(…)` receiver is not tracked).
+    func testModulePrefixInADependencyDoesNotLowerTheAppsResources() async throws {
+        let tree = [
+            "Package.swift": """
+            // swift-tools-version: 5.9
+            import PackageDescription
+
+            let package = Package(
+                name: "Pkg",
+                targets: [.target(name: "Core"), .target(name: "App", dependencies: ["Core"])]
+            )
+            """,
+            "Sources/Core/Core.swift": """
+            import Foundation
+            func loadClip(name: String, bundle: Bundle) -> URL? { nil }
+            public func intro(_ n: Int) -> URL? { loadClip(name: "intro_\\(n)", bundle: .module) }
+            """,
+            "Sources/App/App.swift": "enum App {}\n",
+            "Sources/App/intro_old.mp4": "x",
+            "Sources/Core/intro_1.mp4": "x",
+        ]
+        var config = Config()
+        config.noSwift = true
+        let f = try await findings(try FixtureSupport.tempTree(tree), config: config)
+        let unused = byPath(f, .unusedResource)
+        XCTAssertEqual(unused["Sources/App/intro_old.mp4"]?.confidence, .high)
+        XCTAssertEqual(unused["Sources/Core/intro_1.mp4"]?.confidence, .low, "same module")
     }
 
     /// Nib loading is case-sensitive and stays inside a module's bundle: a suffix pattern in another module, even
@@ -253,6 +316,47 @@ final class FilesDetectorTests: XCTestCase {
         let unused = byPath(f, .unusedInterfaceFile)
         XCTAssertEqual(unused["Sources/Cells/FooCell.xib"]?.confidence, .high, "case differs")
         XCTAssertEqual(unused["Sources/Cells/Foo_cell.xib"]?.confidence, .high, "pattern lives in another module")
+    }
+
+    /// A prefixed shape (`"Foo" + x`) or a separator literal (`"foo-"`) in another module does not lower a xib, and a
+    /// separator literal compares with exact case; the same shapes in the xib's own module do.
+    func testInterfacePrefixesNeedAVisibleSiteAndExactCase() async throws {
+        let xib = "<document><objects><view id=\"1\"/></objects></document>\n"
+        func tree(_ otherSource: String, _ cellsSource: String = "enum Cells {}\n") -> [String: String] {
+            [
+                "Package.swift": """
+                // swift-tools-version: 5.9
+                import PackageDescription
+
+                let package = Package(
+                    name: "Pkg",
+                    targets: [.target(name: "Cells"), .target(name: "Other")]
+                )
+                """,
+                "Sources/Cells/Cells.swift": cellsSource,
+                "Sources/Cells/FooCell.xib": xib,
+                "Sources/Cells/Foo-Cell.xib": xib,
+                "Sources/Other/Use.swift": otherSource,
+            ]
+        }
+        var config = Config()
+        config.noSwift = true
+        var f = try await findings(try FixtureSupport.tempTree(tree(
+            "func nib(_ x: String) -> String { \"Foo\" + x }\nlet prefix = \"foo-\"\n")), config: config)
+        var unused = byPath(f, .unusedInterfaceFile)
+        XCTAssertEqual(unused["Sources/Cells/FooCell.xib"]?.confidence, .high, "prefixed shape lives in another module")
+        XCTAssertEqual(unused["Sources/Cells/Foo-Cell.xib"]?.confidence, .high, "other module, other case")
+
+        f = try await findings(try FixtureSupport.tempTree(tree(
+            "enum Other {}\n", "func nib(_ x: String) -> String { \"Foo\" + x }\nlet prefix = \"foo-\"\n")), config: config)
+        unused = byPath(f, .unusedInterfaceFile)
+        XCTAssertEqual(unused["Sources/Cells/FooCell.xib"]?.confidence, .low, "same module")
+        XCTAssertEqual(unused["Sources/Cells/Foo-Cell.xib"]?.confidence, .low, "same module: the prefix also fits")
+
+        f = try await findings(try FixtureSupport.tempTree(tree(
+            "enum Other {}\n", "let prefix = \"foo-\"\n")), config: config)
+        unused = byPath(f, .unusedInterfaceFile)
+        XCTAssertEqual(unused["Sources/Cells/Foo-Cell.xib"]?.confidence, .high, "separator literals compare with exact case")
     }
 
     /// Item 8: an `.ahap` haptic pattern is JSON naming its sibling audio by path, so the audio is used.
